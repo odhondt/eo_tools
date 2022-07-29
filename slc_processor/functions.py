@@ -368,7 +368,7 @@ def Reproc_by_ErrorLog(dir_log, fp_S1, coh_dist):
         
     return(fp2rp_nst)
 
-def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, subset=False, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
+def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
                     IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                     ext_DEM_EGM= True, imgResamp= "BICUBIC_INTERPOLATION", demResamp= "BILINEAR_INTERPOLATION",\
                     speckFilter= "Boxcar", filterSizeX= 5, filterSizeY= 5, ml_RgLook= 4, ml_AzLook= 1, ref_plain= "gamma",\
@@ -526,12 +526,48 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, subset=Fal
 
                 workflow_slcAs.insert_node(slcAs, before= readers)
                 read1= slcAs
+                last_node= slcAs.id
+                
+                if shapefile:
+                     if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow.insert_node(subset, before=last.id)
+                    last_node = subset.id
+                
 
                 write_slcAs=parse_node("Write")
                 write_slcAs.parameters["file"]= slcAs_out
                 write_slcAs.parameters["formatName"]= tpm_format
 
-                workflow_slcAs.insert_node(write_slcAs, before= slcAs.id)
+                workflow_slcAs.insert_node(write_slcAs, before= last_node)
 
                 workflow_slcAs.write("INT_slc_prep_graph")
 
@@ -634,6 +670,40 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, subset=Fal
                     tpm.parameters["selectedPolarisations"]=p
                     workflow_tpm.insert_node(tpm, before=readers)
                     last_node= tpm.id
+                
+                if shapefile and len(fps_grp) == 1:
+                     if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow.insert_node(subset, before=last.id)
+                    last_node = subset.id
 
                 ##multi looking
                 ml= parse_node("Multilook")
