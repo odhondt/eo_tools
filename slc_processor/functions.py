@@ -1600,12 +1600,12 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, subset=
 
             if coh_proc == True:
                 S1_InSAR_coh_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_coh, t_res= res_coh, tmpdir=tmpdir, t_crs= t_crs,  out_format=out_format, gpt_paras=gpt_paras,\
-                                  pol= pol, IWs= IWs, ext_DEM= ext_DEM, ext_DEM_noDatVal=ext_DEM_noDatVal, ext_Dem_file=ext_Dem_file, msk_noDatVal=msk_noDatVal,\
-                                  ext_DEM_EGM= ext_DEM_EGM, BGC_demResamp= BGC_demResamp, TC_demResamp= TC_demResamp, cohWinRg= cohWinRg, cohWinAz=cohWinAz, osvPath= osvPath,\
-                                  ml_RgLook= ml_RgLook, ml_AzLook= ml_AzLook, firstBurstIndex= firstBurstIndex, lastBurstIndex= lastBurstIndex, clean_tmpdir=clean_tmpdir, osvFail= osvFail)
+                                  pol= pol, IWs= iws, ext_DEM= ext_dem, ext_DEM_noDatVal=ext_dem_nodatval, ext_Dem_file=ext_dem_file, msk_noDatVal=msk_nodatval,\
+                                  ext_DEM_EGM= ext_dem_egm, BGC_demResamp= bgc_demresamp, TC_demResamp= tc_demresamp, cohWinRg= cohwinrg, cohWinAz=cohwinaz, osvPath= osvpath,\
+                                  ml_RgLook= ml_rglook, ml_AzLook= ml_azlook, firstBurstIndex= firstburstindex, lastBurstIndex= lastburstindex, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
             if ha_proc == True:
                 S1_HA_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_ha, t_res= res_ha, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras,\
-                        IWs=IWs, ext_DEM=ext_DEM, ext_DEM_noDatVal= ext_DEM_noDatVal, ext_Dem_file= ext_Dem_file, msk_noDatVal= msk_noDatVal, ext_DEM_EGM= ext_DEM_EGM,\
-                        imgResamp= imgResamp, demResamp=demResamp, speckFilter= HAspeckFilter, decomp_win_size= decomp_win_size, decompFeats=decompFeats,\
-                        ml_RgLook= ml_RgLook, ml_AzLook=ml_AzLook,osvPath= osvPath, osvFail= osvFail,\
-                        firstBurstIndex=firstBurstIndex, lastBurstIndex=lastBurstIndex, clean_tmpdir=clean_tmpdir)
+                        IWs=iws, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
+                        imgResamp= imgresamp, demResamp=demresamp, speckFilter= ha_speckfilter, decomp_win_size= decomp_win_size, decompFeats=decompfeats,\
+                        ml_RgLook= ml_rglook, ml_AzLook=ml_azlook,osvPath= osvpath, osvFail= osvfail,\
+                        firstBurstIndex=firstburstindex, lastBurstIndex=lastburstindex, clean_tmpdir=clean_tmpdir)
