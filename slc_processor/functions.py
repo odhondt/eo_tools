@@ -529,7 +529,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 last_node= slcAs.id
                 
                 if shapefile:
-                     if isinstance(shapefile, dict):
+                    if isinstance(shapefile, dict):
                         ext = shapefile
                     else:
                         if isinstance(shapefile, Vector):
@@ -559,7 +559,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
                     subset.parameters['geoRegion'] = wkt
                     subset.parameters['copyMetadata'] = True
-                    workflow.insert_node(subset, before=last.id)
+                    workflow_slcAs.insert_node(subset, before=last_node)
                     last_node = subset.id
                 
 
@@ -672,7 +672,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     last_node= tpm.id
                 
                 if shapefile and len(fps_grp) == 1:
-                     if isinstance(shapefile, dict):
+                    if isinstance(shapefile, dict):
                         ext = shapefile
                     else:
                         if isinstance(shapefile, Vector):
@@ -702,7 +702,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
                     subset.parameters['geoRegion'] = wkt
                     subset.parameters['copyMetadata'] = True
-                    workflow.insert_node(subset, before=last.id)
+                    workflow_tpm.insert_node(subset, before=last_node)
                     last_node = subset.id
 
                 ##multi looking
@@ -787,24 +787,24 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     ##change output name to reflect dB conversion
                     out_name= out_name+ "_dB"
 
-                if subset == True:
-                    shp = Vector(shapefile)
-                    shp.reproject(4326)
-                    ext = shp.extent
-                    shp.close()
-                    buffer = 0.01
-                    ext['xmin'] -= buffer
-                    ext['ymin'] -= buffer
-                    ext['xmax'] += buffer
-                    ext['ymax'] += buffer
-                    with bbox(ext, 4326) as bounds:
-                        wkt = bounds.convert2wkt()[0]
+                #if subset == True:
+                #    shp = Vector(shapefile)
+                #    shp.reproject(4326)
+                #    ext = shp.extent
+                #    shp.close()
+                #    buffer = 0.01
+                #    ext['xmin'] -= buffer
+                #    ext['ymin'] -= buffer
+                #    ext['xmax'] += buffer
+                #    ext['ymax'] += buffer
+                #    with bbox(ext, 4326) as bounds:
+                #        wkt = bounds.convert2wkt()[0]
                 
-                    subset = parse_node('Subset')
-                    subset.parameters['region'] = [0, 0, 0, 0]
-                    subset.parameters['geoRegion'] = wkt
-                    subset.parameters['copyMetadata'] = True
-                    workflow_tpm.insert_node(subset, before=last_node)
+                #    subset = parse_node('Subset')
+                #    subset.parameters['region'] = [0, 0, 0, 0]
+                #    subset.parameters['geoRegion'] = wkt
+                #    subset.parameters['copyMetadata'] = True
+                #    workflow_tpm.insert_node(subset, before=last_node)
 
                 write_tpm=parse_node("Write")
                 write_tpm.parameters["file"]= out_path
@@ -1621,7 +1621,7 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
     if clean_tmpdir == True:
         shutil.rmtree(tmpdir)
 
-def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, subset=False, int_proc = False, coh_proc= False, ha_proc= False, INT_Test= False, outdir_int= None, outdir_coh= None, outdir_ha= None, INT_test_dir= None, tmpdir= None, res_int= 20, res_coh= 20, res_ha= 20, t_crs= 4326, out_format= "GeoTIFF",\
+def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_proc = False, coh_proc= False, ha_proc= False, INT_Test= False, outdir_int= None, outdir_coh= None, outdir_ha= None, INT_test_dir= None, tmpdir= None, res_int= 20, res_coh= 20, res_ha= 20, t_crs= 4326, out_format= "GeoTIFF",\
                     gpt_paras= None, pol= 'full', iws= ["IW1", "IW2", "IW3"], ext_dem= False, ext_dem_nodatval= -9999, ext_dem_file= None, msk_nodatval= False, ext_dem_egm= True,\
                     decompfeats= ["Alpha", "Entropy", "Anisotropy"], ha_speckfilter= "Box Car Filter", decomp_win_size= 5, osvpath= None,\
                     imgresamp= "BICUBIC_INTERPOLATION", demresamp= "BILINEAR_INTERPOLATION", bgc_demresamp= "BICUBIC_INTERPOLATION", tc_demresamp= "BILINEAR_INTERPOLATION", \
@@ -1662,7 +1662,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, subset=
         for ro in range(0, len(grp_by_relOrb)):
         ##selected options for features to be processed
             if int_proc == True:
-                S1_INT_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_int, shapefile=shapefile, subset=subset, t_res= res_int, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras, pol=pol,\
+                S1_INT_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_int, shapefile=shapefile, t_res= res_int, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras, pol=pol,\
                         IWs=iws, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter=speckfilter, osvPath= osvpath, ref_plain= ref_plain,\
                         filterSizeX= filtersizex, filterSizeY=filtersizey, ml_RgLook= ml_rglook, ml_AzLook=ml_azlook, l2dB_arg= l2db_arg,\

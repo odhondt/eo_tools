@@ -19,6 +19,5 @@ if download['download'] == True:
 
 proc = get_config(config_file, 'Processing')
 proc.update(general)
-print(proc['subset'])
 S1_SLC_proc(**proc)
 
