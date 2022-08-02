@@ -478,7 +478,6 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     tmp_dates.append(idx)
 
         pair_dates_idx.append(tmp_dates)
-    
     ##selection of paired files for sliceAssembly
     for i in range(0, len(pair_dates_idx)):
         fps_grp= list(map(fps_lst.__getitem__, pair_dates_idx[i]))
@@ -500,11 +499,11 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         slcAs_name= sensor +"_relOrb_"+ str(relOrb)+"_INT_"+unique_dates_info[i]+"_slcAs"
         slcAs_out= os.path.join(tmpdir, slcAs_name)
         ##exception handling for SNAP errors
+
         try:
             
             ## create workflow for sliceAssembly if more than 1 file is available per date
             if len(fps_grp) > 1:
-
                 workflow_slcAs = parse_recipe("blank")
 
                 read1 = parse_node('Read')
@@ -528,39 +527,58 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 read1= slcAs
                 last_node= slcAs.id
                 
-                if shapefile:
-                    if isinstance(shapefile, dict):
-                        ext = shapefile
-                    else:
-                        if isinstance(shapefile, Vector):
-                            shp = shapefile.clone()
-                        elif isinstance(shapefile, str):
-                            shp = Vector(shapefile)
-                        else:
-                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                #if shapefile:
+                #    for j,scene in enumerate(fps_grp):
+                #        if j == 0:
+                #            info_scene = pyroSAR.identify(scene)
+                #            scene_info = info_scene.bbox()
+                #            scene_extent = scene_info.extent
+                #        else:
+                #            info_scene = pyroSAR.identify(scene)
+                #            scene_info = info_scene.bbox()
+                #            scene_new = scene_info.extent
+                #            if  scene_new['ymin'] < scene_extent['ymin']:
+                #                scene_extent['ymin'] = scene_new['ymin']
+                #            if  scene_new['xmin'] < scene_extent['xmin']:
+                #                scene_extent['xmin'] = scene_new['xmin']
+                #            if  scene_new['ymax'] > scene_extent['ymax']:
+                #                scene_extent['ymax'] = scene_new['ymax']
+                #            if  scene_new['xmax'] > scene_extent['xmax']:
+                #                scene_extent['xmax'] = scene_new['xmax']
+                    
+                #    if isinstance(shapefile, dict):
+                #        ext = shapefile
+                #    else:
+                #        if isinstance(shapefile, Vector):
+                #            shp = shapefile.clone()
+                #        elif isinstance(shapefile, str):
+                #            shp = Vector(shapefile)
+                #        else:
+                #            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
                         # reproject the geometry to WGS 84 latlon
-                        shp.reproject(4326)
-                        ext = shp.extent
-                        shp.close()
+                #        shp.reproject(4326)
+                #        ext = shp.extent
+                #        shp.close()
                     # add an extra buffer of 0.01 degrees
-                    buffer = 0.01
-                    ext['xmin'] -= buffer
-                    ext['ymin'] -= buffer
-                    ext['xmax'] += buffer
-                    ext['ymax'] += buffer
-                    with bbox(ext, 4326) as bounds:
-                        inter = intersect(info_ms.bbox(), bounds)
-                        if not inter:
-                            raise RuntimeError('no bounding box intersection between shapefile and scene')
-                        inter.close()
-                        wkt = bounds.convert2wkt()[0]
+                #    buffer = 0.01
+                #    ext['xmin'] -= buffer
+                #    ext['ymin'] -= buffer
+                #    ext['xmax'] += buffer
+                #    ext['ymax'] += buffer
+                #    with bbox(scene_extent, 4326) as scene_bound:
+                #        with bbox(ext, 4326) as bounds:
+                #            inter = intersect(scene_bound, bounds)
+                #            if not inter:
+                #                raise RuntimeError('no bounding box intersection between shapefile and scene')
+                #            inter.close()
+                #            wkt = bounds.convert2wkt()[0]
 
-                    subset = parse_node('Subset')
-                    subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
-                    subset.parameters['geoRegion'] = wkt
-                    subset.parameters['copyMetadata'] = True
-                    workflow_slcAs.insert_node(subset, before=last_node)
-                    last_node = subset.id
+                #    subset = parse_node('Subset')
+                #    #subset.parameters['region'] = [0, 0, 0, 0]
+                #    subset.parameters['geoRegion'] = wkt
+                #    subset.parameters['copyMetadata'] = True
+                #    workflow_slcAs.insert_node(subset, before=last_node)
+                #    last_node = subset.id
                 
 
                 write_slcAs=parse_node("Write")
@@ -671,7 +689,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     workflow_tpm.insert_node(tpm, before=readers)
                     last_node= tpm.id
                 
-                if shapefile and len(fps_grp) == 1:
+                if shapefile:
                     if isinstance(shapefile, dict):
                         ext = shapefile
                     else:
@@ -699,7 +717,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         wkt = bounds.convert2wkt()[0]
 
                     subset = parse_node('Subset')
-                    subset.parameters['region'] = [0, 0, info_ms.samples, info_ms.lines]
+                    #subset.parameters['region'] = [0, 0, 0, 0]
                     subset.parameters['geoRegion'] = wkt
                     subset.parameters['copyMetadata'] = True
                     workflow_tpm.insert_node(subset, before=last_node)
