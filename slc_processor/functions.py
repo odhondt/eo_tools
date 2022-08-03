@@ -1577,6 +1577,41 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
 
                 else:
                     last_id = read1.id
+                
+                if shapefile:
+                    if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    #subset.parameters['region'] = [0, 0, 0, 0]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow_tpm.insert_node(subset, before=last_id)
+                    last_id = subset.id
+                
                 ##multi looking for either one IW or multiple ones
                 ml= parse_node("Multilook")
                 ml.parameters["sourceBands"]=tpm_source
