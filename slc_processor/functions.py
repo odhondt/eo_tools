@@ -13,10 +13,14 @@ from datetime import timedelta
 import itertools
 import asf_search as asf
 import geopandas as gpd
-from shapely.geometry import box
+from shapely.geometry import box, Polygon
 from tqdm import tqdm
 from multiprocessing import Pool
 import configparser
+from zipfile import ZipFile
+import re
+import xml.etree.ElementTree as ET
+import pandas as pd
 
 ##################################################################
 # Functions
@@ -368,6 +372,88 @@ def Reproc_by_ErrorLog(dir_log, fp_S1, coh_dist):
         
     return(fp2rp_nst)
 
+def load_metadata(zip_path, subswath, polarization):
+    archive = ZipFile(zip_path)
+    archive_files = archive.namelist()
+    regex_filter = r's1(?:a|b)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml'
+    metadata_file_list = []
+    for item in archive_files:
+        #if 'calibration' in item:
+        #    continue
+        match = re.search(regex_filter, item)
+        if match:
+            metadata_file_list.append(item)
+    target_file = None
+    for item in metadata_file_list:
+        if subswath.lower() in item and polarization.lower() in item:
+            target_file = item
+    return archive.open(target_file)
+
+def parse_location_grid(metadata):
+    tree = ET.parse(metadata)
+    root = tree.getroot()
+    lines = []
+    coord_list = []
+    for grid_list in root.iter('geolocationGrid'):
+        for point in grid_list:
+            for item in point:
+                lat = item.find('latitude').text
+                lon = item.find('longitude').text
+                line = item.find('line').text
+                lines.append(line)
+                coord_list.append((float(lat), float(lon)))
+    total_num_bursts = len(set(lines)) - 1
+
+    return total_num_bursts, coord_list
+
+def parse_subswath_geometry(coord_list, total_num_bursts):
+    def get_coords(index, coord_list):
+        coord = coord_list[index]
+        assert isinstance(coord[1], float)
+        assert isinstance(coord[0], float)
+        return coord[1], coord[0]
+
+    bursts_dict = {}
+    top_right_idx = 0
+    top_left_idx = 20
+    bottom_left_idx = 41
+    bottom_right_idx = 21
+
+    for burst_num in range(1, total_num_bursts + 1):
+        burst_polygon = Polygon(
+            [
+                [get_coords(top_right_idx, coord_list)[0], get_coords(top_right_idx, coord_list)[1]],  # Top right
+                [get_coords(top_left_idx, coord_list)[0], get_coords(top_left_idx, coord_list)[1]],  # Top left
+                [get_coords(bottom_left_idx, coord_list)[0], get_coords(bottom_left_idx, coord_list)[1]],  # Bottom left
+                [get_coords(bottom_right_idx, coord_list)[0], get_coords(bottom_right_idx, coord_list)[1]] # Bottom right
+            ]
+        )
+
+        top_right_idx += 21
+        top_left_idx += 21
+        bottom_left_idx += 21
+        bottom_right_idx += 21
+
+        bursts_dict[burst_num] = burst_polygon
+
+    return bursts_dict
+
+def get_burst_geometry(path, target_subswaths, polarization):
+    df_all = gpd.GeoDataFrame(columns=['subswath', 'burst', 'geometry'], crs='EPSG:4326')
+    for subswath in target_subswaths:
+        meta = load_metadata(zip_path = path, subswath = subswath, polarization = polarization)
+        total_num_bursts, coord_list = parse_location_grid(meta)
+        subswath_geom = parse_subswath_geometry(coord_list, total_num_bursts)
+        df = gpd.GeoDataFrame(
+                    {'subswath': [subswath.upper()] * len(subswath_geom),
+                     'burst': [x for x in subswath_geom.keys()],
+                     'geometry': [x for x in subswath_geom.values()]
+                    },
+                    crs='EPSG:4326'
+                )
+        df_all = gpd.GeoDataFrame(pd.concat([df_all, df]), crs='EPSG:4326')
+    return(df_all)
+
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
                     IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                     ext_DEM_EGM= True, imgResamp= "BICUBIC_INTERPOLATION", demResamp= "BILINEAR_INTERPOLATION",\
@@ -501,7 +587,6 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         ##exception handling for SNAP errors
 
         try:
-            
             ## create workflow for sliceAssembly if more than 1 file is available per date
             if len(fps_grp) > 1:
                 workflow_slcAs = parse_recipe("blank")
@@ -512,6 +597,18 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 readers = [read1.id]
 
                 workflow_slcAs.insert_node(read1)
+                if shapefile:
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts[ib] =  [minb, maxb]
+
 
                 for r in range(1, len(fps_grp)):
                     readn = parse_node('Read')
@@ -520,66 +617,27 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
                     readers.append(readn.id)
 
+                    if shapefile:
+                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                        polygon = gpd.read_file(shapefile)
+                        inter = bursts.overlay(polygon, how='intersection')
+                        iw_list = inter['subswath'].unique()
+                        for ib in iw_list:
+                            iw_inter = inter[inter['subswath'] == ib.upper()]
+                            minb = iw_inter['burst'].min()
+                            maxb = iw_inter['burst'].max()
+                            if ib in iw_bursts:
+                                iw_bursts[ib][1]  =  iw_bursts[ib][1] + maxb
+                            else:
+                                iw_bursts[ib] =  [minb, maxb]
+                        IWs = list(iw_bursts.keys())
+
                 slcAs=parse_node("SliceAssembly")
                 slcAs.parameters["selectedPolarisations"]= pol
 
                 workflow_slcAs.insert_node(slcAs, before= readers)
                 read1= slcAs
                 last_node= slcAs.id
-                
-                #if shapefile:
-                #    for j,scene in enumerate(fps_grp):
-                #        if j == 0:
-                #            info_scene = pyroSAR.identify(scene)
-                #            scene_info = info_scene.bbox()
-                #            scene_extent = scene_info.extent
-                #        else:
-                #            info_scene = pyroSAR.identify(scene)
-                #            scene_info = info_scene.bbox()
-                #            scene_new = scene_info.extent
-                #            if  scene_new['ymin'] < scene_extent['ymin']:
-                #                scene_extent['ymin'] = scene_new['ymin']
-                #            if  scene_new['xmin'] < scene_extent['xmin']:
-                #                scene_extent['xmin'] = scene_new['xmin']
-                #            if  scene_new['ymax'] > scene_extent['ymax']:
-                #                scene_extent['ymax'] = scene_new['ymax']
-                #            if  scene_new['xmax'] > scene_extent['xmax']:
-                #                scene_extent['xmax'] = scene_new['xmax']
-                    
-                #    if isinstance(shapefile, dict):
-                #        ext = shapefile
-                #    else:
-                #        if isinstance(shapefile, Vector):
-                #            shp = shapefile.clone()
-                #        elif isinstance(shapefile, str):
-                #            shp = Vector(shapefile)
-                #        else:
-                #            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
-                        # reproject the geometry to WGS 84 latlon
-                #        shp.reproject(4326)
-                #        ext = shp.extent
-                #        shp.close()
-                    # add an extra buffer of 0.01 degrees
-                #    buffer = 0.01
-                #    ext['xmin'] -= buffer
-                #    ext['ymin'] -= buffer
-                #    ext['xmax'] += buffer
-                #    ext['ymax'] += buffer
-                #    with bbox(scene_extent, 4326) as scene_bound:
-                #        with bbox(ext, 4326) as bounds:
-                #            inter = intersect(scene_bound, bounds)
-                #            if not inter:
-                #                raise RuntimeError('no bounding box intersection between shapefile and scene')
-                #            inter.close()
-                #            wkt = bounds.convert2wkt()[0]
-
-                #    subset = parse_node('Subset')
-                #    #subset.parameters['region'] = [0, 0, 0, 0]
-                #    subset.parameters['geoRegion'] = wkt
-                #    subset.parameters['copyMetadata'] = True
-                #    workflow_slcAs.insert_node(subset, before=last_node)
-                #    last_node = subset.id
-                
 
                 write_slcAs=parse_node("Write")
                 write_slcAs.parameters["file"]= slcAs_out
@@ -595,7 +653,18 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             ##pass file path if no sliceAssembly required
             else:
                 INT_proc_in = fps_grp[0]
-
+                if shapefile:
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts[ib] =  [minb, maxb]
+                    IWs = list(iw_bursts.keys())
 
             for p in pol:
                 for iw in IWs:
@@ -611,18 +680,19 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         read.parameters["formatName"]= formatName
                     workflow.insert_node(read)
 
-                    aof=parse_node("Apply-Orbit-File")
-                    aof.parameters["orbitType"]= orbitType
-                    aof.parameters["polyDegree"]= 3
-                    aof.parameters["continueOnFail"]= osvFail
-                    workflow.insert_node(aof, before= read.id)
                     ##TOPSAR split node
                     ts=parse_node("TOPSAR-Split")
                     ts.parameters["subswath"]= iw
                     if firstBurstIndex is not None and lastBurstIndex is not None:
                         ts.parameters["firstBurstIndex"]= firstBurstIndex
                         ts.parameters["lastBurstIndex"]= lastBurstIndex
-                    workflow.insert_node(ts, before=aof.id)
+                    workflow.insert_node(ts, before=read.id)
+
+                    aof=parse_node("Apply-Orbit-File")
+                    aof.parameters["orbitType"]= orbitType
+                    aof.parameters["polyDegree"]= 3
+                    aof.parameters["continueOnFail"]= osvFail
+                    workflow.insert_node(aof, before= ts.id)
 
                     cal= parse_node("Calibration")
                     cal.parameters["selectedPolarisations"]= pol
@@ -630,7 +700,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     cal.parameters["outputBetaBand"]= True
                     cal.parameters["outputSigmaBand"]= False
                     
-                    workflow.insert_node(cal, before= ts.id)
+                    workflow.insert_node(cal, before= aof.id)
 
                     tpd=parse_node("TOPSAR-Deburst")
                     tpd.parameters["selectedPolarisations"]= pol
@@ -688,40 +758,6 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     tpm.parameters["selectedPolarisations"]=p
                     workflow_tpm.insert_node(tpm, before=readers)
                     last_node= tpm.id
-                
-                if shapefile:
-                    if isinstance(shapefile, dict):
-                        ext = shapefile
-                    else:
-                        if isinstance(shapefile, Vector):
-                            shp = shapefile.clone()
-                        elif isinstance(shapefile, str):
-                            shp = Vector(shapefile)
-                        else:
-                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
-                        # reproject the geometry to WGS 84 latlon
-                        shp.reproject(4326)
-                        ext = shp.extent
-                        shp.close()
-                    # add an extra buffer of 0.01 degrees
-                    buffer = 0.01
-                    ext['xmin'] -= buffer
-                    ext['ymin'] -= buffer
-                    ext['xmax'] += buffer
-                    ext['ymax'] += buffer
-                    with bbox(ext, 4326) as bounds:
-                        inter = intersect(info_ms.bbox(), bounds)
-                        if not inter:
-                            raise RuntimeError('no bounding box intersection between shapefile and scene')
-                        inter.close()
-                        wkt = bounds.convert2wkt()[0]
-
-                    subset = parse_node('Subset')
-                    #subset.parameters['region'] = [0, 0, 0, 0]
-                    subset.parameters['geoRegion'] = wkt
-                    subset.parameters['copyMetadata'] = True
-                    workflow_tpm.insert_node(subset, before=last_node)
-                    last_node = subset.id
 
                 ##multi looking
                 ml= parse_node("Multilook")
@@ -805,24 +841,39 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     ##change output name to reflect dB conversion
                     out_name= out_name+ "_dB"
 
-                #if subset == True:
-                #    shp = Vector(shapefile)
-                #    shp.reproject(4326)
-                #    ext = shp.extent
-                #    shp.close()
-                #    buffer = 0.01
-                #    ext['xmin'] -= buffer
-                #    ext['ymin'] -= buffer
-                #    ext['xmax'] += buffer
-                #    ext['ymax'] += buffer
-                #    with bbox(ext, 4326) as bounds:
-                #        wkt = bounds.convert2wkt()[0]
-                
-                #    subset = parse_node('Subset')
-                #    subset.parameters['region'] = [0, 0, 0, 0]
-                #    subset.parameters['geoRegion'] = wkt
-                #    subset.parameters['copyMetadata'] = True
-                #    workflow_tpm.insert_node(subset, before=last_node)
+                if shapefile:
+                    if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    #subset.parameters['region'] = [0, 0, 0, 0]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow_tpm.insert_node(subset, before=last_node)
+                    last_node = subset.id
 
                 write_tpm=parse_node("Write")
                 write_tpm.parameters["file"]= out_path
