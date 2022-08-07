@@ -815,7 +815,9 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
 
                 ## generate str for final output file based on selected IWs
                 if len(IWs) == 1:
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+ IWs[0] + "_"+\
+                    #out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+ IWs[0] + "_"+\
+                    #    date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
+                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+\
                         date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
                 elif len(IWs)== 2:
                     separator = "_"
@@ -830,10 +832,14 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     out_dir_p= os.path.join("INT", p)
                     if os.path.isdir(out_dir_p) == False:
                         os.makedirs(os.path.join(os.getcwd(), out_dir_p))
-                elif os.path.isdir(out_dir):
-                    out_dir_p = out_dir
                 else:
-                    raise RuntimeError("Please provide a valid filepath") 
+                    filename = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+\
+                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
+                    out_folder = f'{out_dir}/{filename}'
+                    isExist = os.path.exists(out_folder)
+                    if not isExist:
+                        os.makedirs(out_folder)
+                    out_dir_p = f'{out_dir}/{filename}'
 
                 out_path= os.path.join(out_dir_p, out_name)   
 
@@ -1742,7 +1748,9 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
     scenes = finder(data, [r'^S1[AB].*(SAFE|zip)$'],
                     regex=True, recursive=True, foldermode=1)
     
-    with Archive(dbfile='scene.db') as archive:
+    database_path = f'{tmpdir}/scene.db'
+
+    with Archive(dbfile= database_path) as archive:
         archive.insert(scenes)
         slc_lst = archive.select(vectorobject=site,
                                    product='SLC', acquisition_mode='IW',
