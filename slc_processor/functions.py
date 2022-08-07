@@ -584,6 +584,12 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         
         slcAs_name= sensor +"_relOrb_"+ str(relOrb)+"_INT_"+unique_dates_info[i]+"_slcAs"
         slcAs_out= os.path.join(tmpdir, slcAs_name)
+
+        graph_dir = f'{tmpdir}/graphs'
+        isExist = os.path.exists(graph_dir)
+        if not isExist:
+            os.makedirs(graph_dir)
+        
         ##exception handling for SNAP errors
 
         try:
@@ -645,9 +651,9 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
 
                 workflow_slcAs.insert_node(write_slcAs, before= last_node)
 
-                workflow_slcAs.write("INT_slc_prep_graph")
+                workflow_slcAs.write(f"{graph_dir}/INT_slc_prep_graph")
 
-                gpt('INT_slc_prep_graph.xml', gpt_args= gpt_paras, tmpdir = tmpdir)
+                gpt(f"{graph_dir}/INT_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)
 
                 INT_proc_in= slcAs_out+".dim"
             ##pass file path if no sliceAssembly required
@@ -711,9 +717,9 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     write_tmp.parameters["formatName"]= tpm_format
                     workflow.insert_node(write_tmp, before=tpd.id)
 
-                    workflow.write("Int_proc_IW_graph")
+                    workflow.write(f"{graph_dir}/Int_proc_IW_graph")
 
-                    execute('Int_proc_IW_graph.xml', gpt_args= gpt_paras)    
+                    execute(f"{graph_dir}/Int_proc_IW_graph.xml", gpt_args= gpt_paras)    
 
                 ##load temporary files
                 tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
@@ -881,9 +887,9 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 workflow_tpm.insert_node(write_tpm, before= last_node)
 
                 ##write graph and execute it
-                workflow_tpm.write("Int_TPM_continued_proc_graph")
+                workflow_tpm.write(f"{graph_dir}/Int_TPM_continued_proc_graph")
 
-                execute('Int_TPM_continued_proc_graph.xml', gpt_args= gpt_paras)
+                execute(f"{graph_dir}/Int_TPM_continued_proc_graph.xml", gpt_args= gpt_paras)
         #exception for SNAP errors & creating error log        
         except RuntimeError as e:
             print(str(e))
