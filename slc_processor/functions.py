@@ -689,9 +689,9 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     ##TOPSAR split node
                     ts=parse_node("TOPSAR-Split")
                     ts.parameters["subswath"]= iw
-                    if firstBurstIndex is not None and lastBurstIndex is not None:
-                        ts.parameters["firstBurstIndex"]= firstBurstIndex
-                        ts.parameters["lastBurstIndex"]= lastBurstIndex
+                    if iw_bursts[iw][0] is not None and iw_bursts[iw][1] is not None:
+                        ts.parameters["firstBurstIndex"]= iw_bursts[iw][0]
+                        ts.parameters["lastBurstIndex"]= iw_bursts[iw][1]
                     workflow.insert_node(ts, before=read.id)
 
                     aof=parse_node("Apply-Orbit-File")
@@ -920,7 +920,8 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 shutil.rmtree(f)
     ##delete tmp folder after processing
     if clean_tmpdir == True:
-        shutil.rmtree(tmpdir)
+        print(tmpdir)
+        #shutil.rmtree(tmpdir)
 
 def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None,\
                     IWs= ["IW1", "IW2", "IW3"], decompFeats= ["Alpha", "Entropy", "Anisotropy"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
@@ -1045,6 +1046,10 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
         
             slcAs_name= sensor +"_relOrb_"+ str(relOrb)+"_HA_"+unique_dates_info[i]+"_slcAs"
             slcAs_out= os.path.join(tmpdir, slcAs_name)
+            graph_dir = f'{tmpdir}/graphs'
+            isExist = os.path.exists(graph_dir)
+            if not isExist:
+                os.makedirs(graph_dir)
             ## create workflow for sliceAssembly if more than 1 file is available per date
             if len(fps_grp) > 1:
 
@@ -1056,6 +1061,19 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 readers = [read1.id]
 
                 workflow_slcAs.insert_node(read1)
+                
+                if shapefile:
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts[ib] =  [minb, maxb]
+
 
                 for r in range(1, len(fps_grp)):
                     readn = parse_node('Read')
@@ -1063,6 +1081,21 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     readn.parameters['formatName'] = formatName
                     workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
                     readers.append(readn.id)
+
+                    if shapefile:
+                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                        polygon = gpd.read_file(shapefile)
+                        inter = bursts.overlay(polygon, how='intersection')
+                        iw_list = inter['subswath'].unique()
+                        for ib in iw_list:
+                            iw_inter = inter[inter['subswath'] == ib.upper()]
+                            minb = iw_inter['burst'].min()
+                            maxb = iw_inter['burst'].max()
+                            if ib in iw_bursts:
+                                iw_bursts[ib][1]  =  iw_bursts[ib][1] + maxb
+                            else:
+                                iw_bursts[ib] =  [minb, maxb]
+                        IWs = list(iw_bursts.keys())
 
                 slcAs=parse_node("SliceAssembly")
                 slcAs.parameters["selectedPolarisations"]= pol
@@ -1075,10 +1108,8 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 write_slcAs.parameters["formatName"]= tpm_format
 
                 workflow_slcAs.insert_node(write_slcAs, before= slcAs.id)
-
-                workflow_slcAs.write("HA_slc_prep_graph")
-
-                gpt('HA_slc_prep_graph.xml', gpt_args= gpt_paras, tmpdir= tmpdir)
+                workflow_slcAs.write(f"{graph_dir}/HA_slc_prep_graph")
+                gpt(f"{graph_dir}/HA_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)
 
                 HA_proc_in= slcAs_out+".dim"
             ##pass file path if no sliceAssembly required
@@ -1106,9 +1137,10 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 ##TOPSAR split node
                 ts=parse_node("TOPSAR-Split")
                 ts.parameters["subswath"]= iw
-                if firstBurstIndex is not None and lastBurstIndex is not None:
-                    ts.parameters["firstBurstIndex"]= firstBurstIndex
-                    ts.parameters["lastBurstIndex"]= lastBurstIndex
+                
+                if iw_bursts[iw][0] is not None and iw_bursts[iw][1] is not None:
+                    ts.parameters["firstBurstIndex"]= iw_bursts[iw][0]
+                    ts.parameters["lastBurstIndex"]= iw_bursts[iw][1]
                 workflow.insert_node(ts, before=aof.id)
 
                 cal= parse_node("Calibration")
@@ -1220,13 +1252,47 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                         date_str+"_Orb_Cal_Deb_ML_Spk_TC"
                 ##create default output folder for each selected polarization
                 if out_dir is None:
-                    out_dir_fp= os.path.join("INT", dc_label)
+                    out_dir_fp= os.path.join("HA", dc_label)
                     if os.path.isdir(out_dir_fp) == False:
                         os.makedirs(os.path.join(os.getcwd(), out_dir_fp))
                 elif os.path.isdir(out_dir):
-                    out_dir_fp= out_dir
+                    out_dir_fp = out_dir
                 else:
-                    raise RuntimeError("Please provide a valid filepath") 
+                    raise RuntimeError("Please provide a valid filepath")
+
+                if shapefile:
+                    if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    #subset.parameters['region'] = [0, 0, 0, 0]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow_tpm.insert_node(subset, before=last_node)
+                    last_node = subset.id 
 
                 out_path= os.path.join(out_dir_fp, out_name)   
 
@@ -1236,9 +1302,8 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 workflow_tpm.insert_node(write_tpm, before= last_node)
 
                 ##write graph and execute it
-                workflow_tpm.write("HA_TPM_continued_proc_graph")
-
-                execute('HA_TPM_continued_proc_graph.xml', gpt_args= gpt_paras)
+                workflow_tpm.write(f"{graph_dir}/HA_TPM_continued_proc_graph")
+                execute(f"{graph_dir}/HA_TPM_continued_proc_graph.xml", gpt_args= gpt_paras)
         #exception for SNAP errors & creating error log    
         except RuntimeError as e:
             print(str(e))
