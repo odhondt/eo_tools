@@ -1089,6 +1089,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
+                        iw_bursts = dict()
                         for ib in iw_list:
                             iw_inter = inter[inter['subswath'] == ib.upper()]
                             minb = iw_inter['burst'].min()
@@ -1117,6 +1118,19 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             ##pass file path if no sliceAssembly required
             else:
                 HA_proc_in = fps_grp[0]
+                if shapefile:
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts[ib] =  [minb, maxb]
+                    IWs = list(iw_bursts.keys())
+
 
             for iw in IWs:
                 tpm_name= sensor +"_HA_relOrb_"+ str(relOrb) + "_"+\
@@ -1241,17 +1255,17 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 last_node= tc.id
 
                 ## generate str for final output file based on selected IWs
-                if len(IWs) == 1:
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+ IWs[0] + "_"+\
-                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                elif len(IWs)== 2:
-                    separator = "_"
-                    iw_str= separator.join(IWs)
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
-                        iw_str +"_" + date_str+"_Orb_Cal_Deb_ML_Spk_TC"
-                else:
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
-                        date_str+"_Orb_Cal_Deb_ML_Spk_TC"
+                #if len(IWs) == 1:
+                #out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+ IWs[0] + "_"+\
+                #        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
+                #elif len(IWs)== 2:
+                #    separator = "_"
+                #    iw_str= separator.join(IWs)
+                #    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
+                #        iw_str +"_" + date_str+"_Orb_Cal_Deb_ML_Spk_TC"
+                #else:
+                out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
+                    date_str+"_Orb_Cal_Deb_ML_Spk_TC"
                 ##create default output folder for each selected polarization
                 if out_dir is None:
                     out_dir_fp= os.path.join("HA", dc_label)
@@ -1868,7 +1882,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                                   ext_DEM_EGM= ext_dem_egm, BGC_demResamp= bgc_demresamp, TC_demResamp= tc_demresamp, cohWinRg= cohwinrg, cohWinAz=cohwinaz, osvPath= osvpath,\
                                   ml_RgLook= ml_rglook, ml_AzLook= ml_azlook, firstBurstIndex= firstburstindex, lastBurstIndex= lastburstindex, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
             if ha_proc == True:
-                S1_HA_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_ha, t_res= res_ha, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras,\
+                S1_HA_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_ha, shapefile=shapefile, t_res= res_ha, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras,\
                         IWs=iws, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter= ha_speckfilter, decomp_win_size= decomp_win_size, decompFeats=decompfeats,\
                         ml_RgLook= ml_rglook, ml_AzLook=ml_azlook,osvPath= osvpath, osvFail= osvfail,\
