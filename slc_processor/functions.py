@@ -614,6 +614,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         minb = iw_inter['burst'].min()
                         maxb = iw_inter['burst'].max()
                         iw_bursts[ib] =  [minb, maxb]
+                    print(iw_bursts)
 
 
                 for r in range(1, len(fps_grp)):
@@ -628,6 +629,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
+                        iw_bursts = dict()
                         for ib in iw_list:
                             iw_inter = inter[inter['subswath'] == ib.upper()]
                             minb = iw_inter['burst'].min()
@@ -1817,9 +1819,18 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
 
     with Archive(dbfile= database_path) as archive:
         archive.insert(scenes)
-        slc_lst = archive.select(vectorobject=site,
+        lst = archive.select(vectorobject=site,
                                    product='SLC', acquisition_mode='IW',
                                    mindate=mindate, maxdate=maxdate)
+    
+    slc_lst = []
+    for slc in lst:
+        bursts = get_burst_geometry(slc, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+        polygon = gpd.read_file(shapefile)
+        inter = bursts.overlay(polygon, how='intersection')
+        if not inter.empty:
+            slc_lst.append(slc)
+
     
     print(f'Found {str(len(slc_lst))} scenes')
     if isinstance(slc_lst, str):
