@@ -460,6 +460,85 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     speckFilter= "Boxcar", filterSizeX= 5, filterSizeY= 5, ml_RgLook= 4, ml_AzLook= 1, ref_plain= "gamma",\
                     l2dB_arg= True, firstBurstIndex= None, lastBurstIndex= None, osvPath= None, clean_tmpdir= True, osvFail= False):
     
+     """
+
+    function for processing backscatter intensities VV and VH from S-1 SLC files in SNAP
+
+    Parameters
+    ----------
+        infiles: list or str
+            filepaths of SLC zip files
+        out_dir: str or None
+            output folder if None a default folder structure is provided: "INT/decompFeat/"
+        tmpdir: str
+            temporary dir for intermediate processing steps, its automatically created at cwd if none is provided
+        t_res: int, float
+            resolution in meters of final product, default is 20
+        t_crs: int
+            EPSG code of target coordinate system, default is 4326
+        out_format: str
+            format of final output, formats supported by SNAP, default is GeoTiff
+        gpt_paras: none or list
+            a list of additional arguments to be passed to the gpt call
+        pol: str or list or "full"
+            polaristations to process, "full" processes all available polarizations, default is "full"
+        IWs: str or list
+            selected subswath for processing, default is all 3
+        extDEM: bool
+            set to true if external DEM should be used in processing
+        ext_DEM_noDatVal: int or float
+            dependent on external DEM, default False
+        ext_DEM_file: str
+            path to file of external DEM, must be a format that SNAP can handle
+        msk_NoDatVal: bool
+            if true No data values of DEM, especially at sea, are masked out
+        ext_DEM_EGM: bool
+            apply earth gravitational model to external DEM, default true
+        imgResamp: str
+            image resampling method, must be supported by SNAP
+        demResamp: str
+            DEM resampling method, must be supported by SNAP
+        speckFilter: str
+            type of speckle filtering approach, default is Boxcar
+        filterSizeX: int
+            window size of speckle filter in x, default is 5
+        filterSizeY: int
+            window size of speckle filter in y, default is 5
+        ml_RgLook: int
+            number of looks in range, default is 4
+        ml_AzLook: int
+            number of looks in azimuth, default is 1
+        firstBurstIndex: int or None
+            index of first burst for TOPSAR-split
+        lastBurstIndex: int or None
+            index of last burst for TOPSAR-split
+        l2dB: bool
+            option for conversion from linear to dB scaling of output, default true
+        clean_tmpdir, bool
+            delete tmpdir, default true
+        osvPath: None
+            specify path to locally stored OSVs, if none default OSV path of SNAP is set
+
+        Returns
+        -------
+        Raster files of selected output format for selected H-alpha features
+
+        Note
+        ----
+        Only set first and last burstindex if all files you are processing have the same number of bursts
+
+        Examples
+        --------
+        process backscatter intensities VV and VH for given SLC file
+
+        
+        >>> filename= 'S1A_IW_GRDH_1SDV_20180829T170656_20180829T170721_023464_028DE0_F7BD.zip'
+        >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
+        >>> pol= "full"
+        >>> S1_INT_proc(infiles= filename, gtp_paras= gpt_paras, pol= "full")
+
+    """
+    
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
     ##specify tmp output format
@@ -931,6 +1010,80 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     speckFilter= "Box Car Filter", ml_RgLook= 4, ml_AzLook= 1, osvPath=None,\
                     firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False):
     
+    """
+    function for processing H-alpha features (Alpha, Entropy, Anisotropy) from S-1 SLC files in SNAP
+
+    Parameters
+    ----------
+        infiles: list or str
+            filepaths of SLC zip files
+        out_dir: str or None
+            output folder if None a default folder structure is provided: "INT/decompFeat/"
+        tmpdir: str
+            temporary dir for intermediate processing steps, its automatically created at cwd if none is provided
+        t_res: int, float
+            resolution in meters of final product, default is 20
+        t_crs: int
+            EPSG code of target coordinate system, default is 4326
+        out_format: str
+            format of final output, formats supported by SNAP, default is GeoTiff
+        gpt_paras: none or list
+            a list of additional arguments to be passed to the gpt call
+        decompFeats: list of str
+            containing H/a decompostion features: Alpha, Entropy and Anisotropy
+        decomp_win_size: int
+            size of moving window in H/a decomposition in pixel, default is 5
+        IWs: str or list
+            selected subswath for processing, default is all 3
+        extDEM: bool
+            set to true if external DEM should be used in processing
+        ext_DEM_noDatVal: int or float
+            dependent on external DEM, default False
+        ext_DEM_file: str
+            path to file of external DEM, must be a format that SNAP can handle
+        msk_NoDatVal: bool
+            if true No data values of DEM, especially at sea, are masked out
+        ext_DEM_EGM: bool
+            apply earth gravitational model to external DEM, default true
+        imgResamp: str
+            image resampling method, must be supported by SNAP
+        demResamp: str
+            DEM resampling method, must be supported by SNAP
+        speckFilter: str
+            type of speckle filtering approach, default is Box Car Filter
+        ml_RgLook: int
+            number of looks in range, default is 4
+        ml_AzLook: int
+            number of looks in azimuth, default is 1
+        firstBurstIndex: int or None
+            index of first burst for TOPSAR-split
+        lastBurstIndex: int or None
+            index of last burst for TOPSAR-split
+        clean_tmpdir, bool
+            delete tmpdir, default true
+        osvPath: None
+            specify path to locally stored OSVs, if none default OSV path of SNAP is set
+
+        Returns
+        -------
+        Raster files of selected output format for selected H-alpha features
+
+        Note
+        ----
+        Only set first and last burstindex if all files you are processing have the same number of bursts
+
+        Examples
+        --------
+        process all H-alpha features for given SLC file
+
+        
+        >>> filename= 'S1A_IW_GRDH_1SDV_20180829T170656_20180829T170721_023464_028DE0_F7BD.zip'
+        >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
+        >>> decompFeats= ["Alpha", "Entropy", "Anisotropy"]
+        >>> S1_HA_proc(infiles= filename, gtp_paras= gpt_paras, decompFeats= decompFeats)
+
+    """
+    
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
     ##specify tmp output format
@@ -1351,6 +1504,76 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                    ext_DEM_EGM= True, BGC_demResamp= "BICUBIC_INTERPOLATION", TC_demResamp= "BILINEAR_INTERPOLATION", osvPath= None,\
                    cohWinRg= 11, cohWinAz= 3, ml_RgLook= 4, ml_AzLook= 1, firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False):
+    
+    """
+    function for processing InSAR coherences from S-1 SLC files in SNAP
+
+    Parameters
+    ----------
+        infiles: list or str
+            filepaths of SLC zip files
+        out_dir: str or None
+            output folder if None a default folder structure is provided: "COH/pol/"
+        tmpdir: str
+            temporary dir for intermediate processing steps, its automatically created at cwd if none is provided
+        t_res: int, float
+            resolution in meters of final product, default is 20
+        t_crs: int
+            EPSG code of target coordinate system, default is 4326
+        out_format: str
+            format of final output, formats supported by SNAP, default is GeoTiff
+        gpt_paras: none or list
+            a list of additional arguments to be passed to the gpt call
+        pol: str or list or "full"
+            polaristations to process, "full" processes all available polarizations, default is "full"
+        IWs: str or list
+            selected subswath for processing, default is all 3
+        extDEM: bool
+            set to true if external DEM should be used in processing
+        ext_DEM_noDatVal: int or float
+            dependent on external DEM, default False
+        ext_DEM_file: str
+            path to file of external DEM, must be a format that SNAP can handle
+        msk_NoDatVal: bool
+            if true No data values of DEM, especially at sea, are masked out
+        ext_DEM_EGM: bool
+            apply earth gravitational model to external DEM, default true
+        imgResamp: str
+            image resampling method, must be supported by SNAP
+        demResamp: str
+            DEM resampling method, must be supported by SNAP
+        BCG_demResamp= str
+            resampling algorithm of Back Geo-Coding
+        TC_demResamp= str
+            resampling algorithm of terrain correction
+        cohWinRg: int
+            size of moving window for coherence estimation in range, default is 11
+        cohWinAz: int
+            size of moving window for coherence estimation in azimuth, default is 3
+        ml_RgLook: int
+            number of looks in range, default is 4
+        ml_AzLook: int
+            number of looks in azimuth, default is 1
+        clean_tmpdir, bool
+            delete tmpdir, default true
+        osvPath: None
+            specify path to locally stored OSVs, if none default OSV path of SNAP is set
+
+        Returns
+        -------
+        Raster files of selected output format for selected H-alpha features
+
+        Examples
+        --------
+        process backscatter intensities VV and VH for given SLC file
+
+       
+        >>> filenames= ['S1B_IW_SLC__1SDV_20201229T170010_20201229T170037_024920_02F722_8B6C.zip.zip', 'S1B_IW_SLC__1SDV_20201217T170011_20201217T170038_024745_02F172_1D38.zip']
+        >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
+        >>> pol= "full"
+        >>> S1_InSAR_coh_proc(infiles= filenames, gtp_paras= gpt_paras, pol= "full")
+
+    """
     
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
