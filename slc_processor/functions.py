@@ -378,8 +378,8 @@ def load_metadata(zip_path, subswath, polarization):
     regex_filter = r's1(?:a|b)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml'
     metadata_file_list = []
     for item in archive_files:
-        #if 'calibration' in item:
-        #    continue
+        if 'calibration' in item:
+            continue
         match = re.search(regex_filter, item)
         if match:
             metadata_file_list.append(item)
@@ -455,15 +455,13 @@ def get_burst_geometry(path, target_subswaths, polarization):
     return(df_all)
 
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
-                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
+                    IWs= ["IW1", "IW2", "IW3"], burst_reduce=False, ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                     ext_DEM_EGM= True, imgResamp= "BICUBIC_INTERPOLATION", demResamp= "BILINEAR_INTERPOLATION",\
                     speckFilter= "Boxcar", filterSizeX= 5, filterSizeY= 5, ml_RgLook= 4, ml_AzLook= 1, ref_plain= "gamma",\
                     l2dB_arg= True, firstBurstIndex= None, lastBurstIndex= None, osvPath= None, clean_tmpdir= True, osvFail= False):
     
-     """
-
+    """[S1_INT_proc]
     function for processing backscatter intensities VV and VH from S-1 SLC files in SNAP
-
     Parameters
     ----------
         infiles: list or str
@@ -518,27 +516,22 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             delete tmpdir, default true
         osvPath: None
             specify path to locally stored OSVs, if none default OSV path of SNAP is set
-
         Returns
         -------
         Raster files of selected output format for selected H-alpha features
-
         Note
         ----
         Only set first and last burstindex if all files you are processing have the same number of bursts
-
         Examples
         --------
         process backscatter intensities VV and VH for given SLC file
-
         
         >>> filename= 'S1A_IW_GRDH_1SDV_20180829T170656_20180829T170721_023464_028DE0_F7BD.zip'
         >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
         >>> pol= "full"
         >>> S1_INT_proc(infiles= filename, gtp_paras= gpt_paras, pol= "full")
-
     """
-    
+
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
     ##specify tmp output format
@@ -672,16 +665,16 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         ##exception handling for SNAP errors
 
         try:
+            timea = datetime.datetime.now()
             ## create workflow for sliceAssembly if more than 1 file is available per date
+            
             if len(fps_grp) > 1:
-                workflow_slcAs = parse_recipe("blank")
-
+                workflow = parse_recipe("blank")
                 read1 = parse_node('Read')
                 read1.parameters['file'] = fps_grp[0]
                 read1.parameters['formatName'] = formatName
+                workflow.insert_node(read1)
                 readers = [read1.id]
-
-                workflow_slcAs.insert_node(read1)
                 if shapefile:
                     bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
                     polygon = gpd.read_file(shapefile)
@@ -693,22 +686,18 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         minb = iw_inter['burst'].min()
                         maxb = iw_inter['burst'].max()
                         iw_bursts[ib] =  [minb, maxb]
-                    print(iw_bursts)
-
 
                 for r in range(1, len(fps_grp)):
                     readn = parse_node('Read')
                     readn.parameters['file'] = fps_grp[r]
                     readn.parameters['formatName'] = formatName
-                    workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
+                    workflow.insert_node(readn, before= read1.id, resetSuccessorSource=False)
                     readers.append(readn.id)
-
-                    if shapefile:
+                    if burst_reduce:
                         bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
-                        iw_bursts = dict()
                         for ib in iw_list:
                             iw_inter = inter[inter['subswath'] == ib.upper()]
                             minb = iw_inter['burst'].min()
@@ -718,11 +707,10 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                             else:
                                 iw_bursts[ib] =  [minb, maxb]
                         IWs = list(iw_bursts.keys())
-
+                
                 slcAs=parse_node("SliceAssembly")
                 slcAs.parameters["selectedPolarisations"]= pol
-
-                workflow_slcAs.insert_node(slcAs, before= readers)
+                workflow.insert_node(slcAs, before= readers)
                 read1= slcAs
                 last_node= slcAs.id
 
@@ -730,14 +718,10 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 write_slcAs.parameters["file"]= slcAs_out
                 write_slcAs.parameters["formatName"]= tpm_format
 
-                workflow_slcAs.insert_node(write_slcAs, before= last_node)
-
-                workflow_slcAs.write(f"{graph_dir}/INT_slc_prep_graph")
-
-                gpt(f"{graph_dir}/INT_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)
-
+                workflow.insert_node(write_slcAs, before= last_node)
+                workflow.write(f"{graph_dir}/INT_slc_prep_graph")
+                gpt(f"{graph_dir}/INT_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)    
                 INT_proc_in= slcAs_out+".dim"
-            ##pass file path if no sliceAssembly required
             else:
                 INT_proc_in = fps_grp[0]
                 if shapefile:
@@ -751,46 +735,50 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                         minb = iw_inter['burst'].min()
                         maxb = iw_inter['burst'].max()
                         iw_bursts[ib] =  [minb, maxb]
+                    
                     IWs = list(iw_bursts.keys())
-
+                
+            scene = INT_proc_in.split('/')[-1]
+            print(f'Processing: {scene}')
             for p in pol:
+                print(f'Polariztaion: {p}')
                 for iw in IWs:
+                    print(f'IW : {iw}')
                     tpm_name= sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
                         unique_dates_info[i]+ "_"+iw+"_2TPM"
                     tpm_out= os.path.join(tmpdir, tpm_name)
-                    ##generate workflow for IW splits 
+                        ##generate workflow for IW splits 
                     workflow= parse_recipe("blank")
 
                     read= parse_node("Read")
                     read.parameters["file"]= INT_proc_in
-                    if len(fps_grp) == 1:
-                        read.parameters["formatName"]= formatName
                     workflow.insert_node(read)
+                    last_node = read.id
 
-                    ##TOPSAR split node
-                    ts=parse_node("TOPSAR-Split")
-                    ts.parameters["subswath"]= iw
-                    if iw_bursts[iw][0] is not None and iw_bursts[iw][1] is not None:
-                        ts.parameters["firstBurstIndex"]= iw_bursts[iw][0]
-                        ts.parameters["lastBurstIndex"]= iw_bursts[iw][1]
-                    workflow.insert_node(ts, before=read.id)
-
+                    ts1=parse_node("TOPSAR-Split")
+                    ts1.parameters["subswath"] = iw
+                    if shapefile:
+                        ts1.parameters["firstBurstIndex"]= iw_bursts[iw][0]
+                        ts1.parameters["lastBurstIndex"]= iw_bursts[iw][1] 
+                    workflow.insert_node(ts1, before=read.id)
+                    last_node = ts1.id
+                        
                     aof=parse_node("Apply-Orbit-File")
                     aof.parameters["orbitType"]= orbitType
                     aof.parameters["polyDegree"]= 3
                     aof.parameters["continueOnFail"]= osvFail
-                    workflow.insert_node(aof, before= ts.id)
+                    workflow.insert_node(aof, before= last_node)
 
                     cal= parse_node("Calibration")
-                    cal.parameters["selectedPolarisations"]= pol
+                    cal.parameters["selectedPolarisations"]= p
                     cal.parameters["createBetaBand"]= False
                     cal.parameters["outputBetaBand"]= True
                     cal.parameters["outputSigmaBand"]= False
-                    
+                        
                     workflow.insert_node(cal, before= aof.id)
 
                     tpd=parse_node("TOPSAR-Deburst")
-                    tpd.parameters["selectedPolarisations"]= pol
+                    tpd.parameters["selectedPolarisations"]= p
                     workflow.insert_node(tpd, before=cal.id)
 
                     write_tmp = parse_node("Write")
@@ -799,140 +787,53 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     workflow.insert_node(write_tmp, before=tpd.id)
 
                     workflow.write(f"{graph_dir}/Int_proc_IW_graph")
-
                     execute(f"{graph_dir}/Int_proc_IW_graph.xml", gpt_args= gpt_paras)    
-
+            
                 ##load temporary files
                 tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
                         unique_dates_info[i]+ "*_2TPM.dim")
                 ##specify sourceBands for reference lvl beta and gamma
                 if len(IWs)== 1:
-                    ref= dict()
-                    ref["beta"]= ["Beta0_"+IWs[0]+ "_" + p]
-                    ref["gamma"]= ["Gamma0_"+IWs[0]+ "_"+ p]
-                    ref["sigma"]= ["Sigma0_"+IWs[0]+ "_"+ p]
-                else:
+                   ref= dict()
+                   ref["beta"]= ["Beta0_"+IWs[0]+ "_" + p]
+                   ref["gamma"]= ["Gamma0_"+IWs[0]+ "_"+ p]
+                   ref["sigma"]= ["Sigma0_"+IWs[0]+ "_"+ p]
+                else:    
                     ref= dict()
                     ref["beta"]= ["Beta0_"+ p]
                     ref["gamma"]= ["Gamma0_"+ p]
                     ref["sigma"]= ["Sigma0_"+ p]
-                ##assign sourceBands of nodes depending on reference lvl
+                    ##assign sourceBands of nodes depending on reference lvl
                 if ref_plain == "gamma":
                     ref_pl_ml= ref["beta"]
                     ref_pl= ref["gamma"]
                 elif ref_plain == "sigma":
                     ref_pl_ml = ref["beta"]
                     ref_pl= ref["sigma"]
-                    
-                ## parse_workflow of INT processing
-                workflow_tpm = parse_recipe("blank")
+                        
+                    ## parse_workflow of INT processing
+                workflow = parse_recipe("blank")
 
                 read1 = parse_node('Read')
                 read1.parameters['file'] = tpm_in[0]
-                workflow_tpm.insert_node(read1)
+                workflow.insert_node(read1)
                 last_node= read1.id
-                ##merge IWs if multiple IWs were selected
+                #merge IWs if multiple IWs were selected
                 if len(tpm_in) > 1:
                     readers= [read1.id]
 
                     for t in range(1, len(tpm_in)):
+                        print(tpm_in)
                         readn = parse_node('Read')
                         readn.parameters['file'] = tpm_in[t]
-                        workflow_tpm.insert_node(readn, before= last_node, resetSuccessorSource=False)
+                        workflow.insert_node(readn, before= last_node, resetSuccessorSource=False)
                         readers.append(readn.id)
+
                     ##TOPSAR merge     
                     tpm=parse_node("TOPSAR-Merge")
                     tpm.parameters["selectedPolarisations"]=p
-                    workflow_tpm.insert_node(tpm, before=readers)
+                    workflow.insert_node(tpm, before=readers)
                     last_node= tpm.id
-
-                ##multi looking
-                ml= parse_node("Multilook")
-                ml.parameters["sourceBands"]= ref_pl_ml
-                ml.parameters["nRgLooks"]= ml_RgLook
-                ml.parameters["nAzLooks"]= ml_AzLook
-                ml.parameters["grSquarePixel"]= True
-                ml.parameters["outputIntensity"]= False
-                workflow_tpm.insert_node(ml,before= last_node) 
-                ##terrain flattening
-                tf= parse_node("Terrain-Flattening")
-                tf.parameters["sourceBands"]= ref_pl_ml
-                tf.parameters["demName"]= demName
-                tf.parameters["demResamplingMethod"]= demResamp
-                tf.parameters["externalDEMFile"]= ext_Dem_file
-                tf.parameters["externalDEMNoDataValue"]= ext_DEM_noDatVal
-                tf.parameters["externalDEMApplyEGM"]= True
-                tf.parameters["additionalOverlap"]= 0.1
-                tf.parameters["oversamplingMultiple"]= 1.0
-                if ref_plain == "sigma":
-                    tf.parameters["outputSigma0"]= True
-
-                workflow_tpm.insert_node(tf, before= ml.id)
-                #speckle filtering
-                sf= parse_node("Speckle-Filter")
-                sf.parameters["sourceBands"]=ref_pl
-                sf.parameters["filter"]= speckFilter
-                sf.parameters["filterSizeX"]= filterSizeX
-                sf.parameters["filterSizeY"]= filterSizeY
-
-                workflow_tpm.insert_node(sf, before= tf.id)
-                #terrain correction
-                tc= parse_node("Terrain-Correction")
-                tc.parameters["sourceBands"]= ref_pl
-                tc.parameters["demName"]= demName
-                tc.parameters["externalDEMFile"]= ext_Dem_file
-                tc.parameters["externalDEMNoDataValue"]= ext_DEM_noDatVal
-                tc.parameters["externalDEMApplyEGM"]= ext_DEM_EGM
-                tc.parameters["imgResamplingMethod"]= imgResamp
-                tc.parameters["demResamplingMethod"]= demResamp
-                tc.parameters["pixelSpacingInMeter"]= t_res
-                tc.parameters["mapProjection"]= t_crs
-                tc.parameters["saveSelectedSourceBand"]= True
-                #tc.parameters["outputComplex"]= False
-                tc.parameters["nodataValueAtSea"]= msk_noDatVal
-
-                workflow_tpm.insert_node(tc, before= sf.id)
-                last_node= tc.id
-
-                ## generate str for final output file based on selected IWs
-                if len(IWs) == 1:
-                    #out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+ IWs[0] + "_"+\
-                    #    date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+\
-                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                elif len(IWs)== 2:
-                    separator = "_"
-                    iw_str= separator.join(IWs)
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+\
-                        iw_str +"_" + date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                else:
-                    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+\
-                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                ##create default output folder for each selected polarization
-                if out_dir is None:
-                    out_dir_p= os.path.join("INT", p)
-                    if os.path.isdir(out_dir_p) == False:
-                        os.makedirs(os.path.join(os.getcwd(), out_dir_p))
-                else:
-                    filename = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+\
-                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                    out_folder = f'{out_dir}/{filename}'
-                    isExist = os.path.exists(out_folder)
-                    if not isExist:
-                        os.makedirs(out_folder)
-                    out_dir_p = f'{out_dir}/{filename}'
-
-                out_path= os.path.join(out_dir_p, out_name)   
-
-
-                ##conversion from linear to dB if selected
-                if l2dB_arg == True:
-                    l2DB= parse_node("LinearToFromdB")
-                    l2DB.parameters["sourceBands"]= ref_pl
-                    workflow_tpm.insert_node(l2DB, before= last_node)
-                    last_node= l2DB.id
-                    ##change output name to reflect dB conversion
-                    out_name= out_name+ "_dB"
 
                 if shapefile:
                     if isinstance(shapefile, dict):
@@ -965,43 +866,121 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     #subset.parameters['region'] = [0, 0, 0, 0]
                     subset.parameters['geoRegion'] = wkt
                     subset.parameters['copyMetadata'] = True
-                    workflow_tpm.insert_node(subset, before=last_node)
+                    workflow.insert_node(subset, before=last_node)
                     last_node = subset.id
+            
+                ##multi looking
+                ml= parse_node("Multilook")
+                ml.parameters["sourceBands"]= ref_pl_ml
+                ml.parameters["nRgLooks"]= ml_RgLook
+                ml.parameters["nAzLooks"]= ml_AzLook
+                ml.parameters["grSquarePixel"]= True
+                ml.parameters["outputIntensity"]= False
+                workflow.insert_node(ml,before= last_node) 
+                ##terrain flattening
+                tf= parse_node("Terrain-Flattening")
+                tf.parameters["sourceBands"]= ref_pl_ml
+                tf.parameters["demName"]= demName
+                tf.parameters["demResamplingMethod"]= demResamp
+                tf.parameters["externalDEMFile"]= ext_Dem_file
+                tf.parameters["externalDEMNoDataValue"]= ext_DEM_noDatVal
+                tf.parameters["externalDEMApplyEGM"]= True
+                tf.parameters["additionalOverlap"]= 0.1
+                tf.parameters["oversamplingMultiple"]= 1.0
+                if ref_plain == "sigma":
+                    tf.parameters["outputSigma0"]= True
+
+                workflow.insert_node(tf, before= ml.id)
+                #speckle filtering
+                sf= parse_node("Speckle-Filter")
+                sf.parameters["sourceBands"]=ref_pl
+                sf.parameters["filter"]= speckFilter
+                sf.parameters["filterSizeX"]= filterSizeX
+                sf.parameters["filterSizeY"]= filterSizeY
+
+                workflow.insert_node(sf, before= tf.id)
+                #terrain correction
+                tc= parse_node("Terrain-Correction")
+                tc.parameters["sourceBands"]= ref_pl
+                tc.parameters["demName"]= demName
+                tc.parameters["externalDEMFile"]= ext_Dem_file
+                tc.parameters["externalDEMNoDataValue"]= ext_DEM_noDatVal
+                tc.parameters["externalDEMApplyEGM"]= ext_DEM_EGM
+                tc.parameters["imgResamplingMethod"]= imgResamp
+                tc.parameters["demResamplingMethod"]= demResamp
+                tc.parameters["pixelSpacingInMeter"]= t_res
+                tc.parameters["mapProjection"]= t_crs
+                tc.parameters["saveSelectedSourceBand"]= True
+                #tc.parameters["outputComplex"]= False
+                tc.parameters["nodataValueAtSea"]= msk_noDatVal
+
+                workflow.insert_node(tc, before= sf.id)
+                last_node= tc.id
+                separator = "_"
+                iw_str= separator.join(IWs)
+                out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_"+\
+                        iw_str +"_" + date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
+                if out_dir is None:
+                    out_dir_p= os.path.join("INT", p)
+                    if os.path.isdir(out_dir_p) == False:
+                        os.makedirs(os.path.join(os.getcwd(), out_dir_p))
+                else:
+                    filename = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+\
+                        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
+                    out_folder = f'{out_dir}/{filename}'
+                    isExist = os.path.exists(out_folder)
+                    if not isExist:
+                        os.makedirs(out_folder)
+                    out_dir_p = f'{out_dir}/{filename}'
+
+                out_path= os.path.join(out_dir_p, out_name)   
+
+                ##conversion from linear to dB if selected
+                if l2dB_arg == True:
+                    l2DB= parse_node("LinearToFromdB")
+                    l2DB.parameters["sourceBands"]= ref_pl
+                    workflow.insert_node(l2DB, before= last_node)
+                    last_node= l2DB.id
+                    ##change output name to reflect dB conversion
+                    out_name= out_name+ "_dB"
 
                 write_tpm=parse_node("Write")
                 write_tpm.parameters["file"]= out_path
                 write_tpm.parameters["formatName"]= out_format
-                workflow_tpm.insert_node(write_tpm, before= last_node)
+                workflow.insert_node(write_tpm, before= last_node)
 
-                ##write graph and execute it
-                workflow_tpm.write(f"{graph_dir}/Int_TPM_continued_proc_graph")
+                    ##write graph and execute it
+                workflow.write(f"{graph_dir}/Int_TPM_continued_proc_graph")
 
                 execute(f"{graph_dir}/Int_TPM_continued_proc_graph.xml", gpt_args= gpt_paras)
-        #exception for SNAP errors & creating error log        
+            #exception for SNAP errors & creating error log        
         except RuntimeError as e:
             print(str(e))
             with open("S1_INT_proc_ERROR_"+date_str+".log", "w") as logf:
                 logf.write(str(e))
         ##clean tmp folder to avoid overwriting errors even if exception is valid
-            files = glob.glob(os.path.join(tmpdir, '*'))
+            files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
             for f in files:
                 if os.path.isfile(f) or os.path.islink(f):
                     os.unlink(f)
                 elif os.path.isdir(f):
                     shutil.rmtree(f)
-            
             continue
             
         ##clean tmp folder to avoid overwriting errors    
-        files = glob.glob(os.path.join(tmpdir, '*'))
+        files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
         for f in files:
             if os.path.isfile(f) or os.path.islink(f):
                 os.unlink(f)
             elif os.path.isdir(f):
                 shutil.rmtree(f)
+
+        timeb =  datetime.datetime.now()
+        proc_time = timeb - timea
+        print(f'Processing time: {proc_time}')
     ##delete tmp folder after processing
-    if clean_tmpdir == True:
-        print(tmpdir)
+#    if clean_tmpdir == True:
+#        print(tmpdir)
         #shutil.rmtree(tmpdir)
 
 def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None,\
@@ -1010,9 +989,8 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     speckFilter= "Box Car Filter", ml_RgLook= 4, ml_AzLook= 1, osvPath=None,\
                     firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False):
     
-    """
+    """[S1_HA_proc]
     function for processing H-alpha features (Alpha, Entropy, Anisotropy) from S-1 SLC files in SNAP
-
     Parameters
     ----------
         infiles: list or str
@@ -1063,27 +1041,22 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             delete tmpdir, default true
         osvPath: None
             specify path to locally stored OSVs, if none default OSV path of SNAP is set
-
         Returns
         -------
         Raster files of selected output format for selected H-alpha features
-
         Note
         ----
         Only set first and last burstindex if all files you are processing have the same number of bursts
-
         Examples
         --------
         process all H-alpha features for given SLC file
-
         
         >>> filename= 'S1A_IW_GRDH_1SDV_20180829T170656_20180829T170721_023464_028DE0_F7BD.zip'
         >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
         >>> decompFeats= ["Alpha", "Entropy", "Anisotropy"]
         >>> S1_HA_proc(infiles= filename, gtp_paras= gpt_paras, decompFeats= decompFeats)
-
     """
-    
+
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
     ##specify tmp output format
@@ -1198,7 +1171,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             orbitType = 'Sentinel Restituted (Auto Download)'
         ##exception handling of SNAP errors    
         try:
-        
+            timea = datetime.datetime.now()
             slcAs_name= sensor +"_relOrb_"+ str(relOrb)+"_HA_"+unique_dates_info[i]+"_slcAs"
             slcAs_out= os.path.join(tmpdir, slcAs_name)
             graph_dir = f'{tmpdir}/graphs'
@@ -1206,16 +1179,18 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             if not isExist:
                 os.makedirs(graph_dir)
             ## create workflow for sliceAssembly if more than 1 file is available per date
+            iw_bursts = None
+            
             if len(fps_grp) > 1:
 
-                workflow_slcAs = parse_recipe("blank")
+                workflow = parse_recipe("blank")
 
                 read1 = parse_node('Read')
                 read1.parameters['file'] = fps_grp[0]
                 read1.parameters['formatName'] = formatName
                 readers = [read1.id]
 
-                workflow_slcAs.insert_node(read1)
+                workflow.insert_node(read1)
                 
                 if shapefile:
                     bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
@@ -1234,7 +1209,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     readn = parse_node('Read')
                     readn.parameters['file'] = fps_grp[r]
                     readn.parameters['formatName'] = formatName
-                    workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
+                    workflow.insert_node(readn, before= read1.id, resetSuccessorSource=False)
                     readers.append(readn.id)
 
                     if shapefile:
@@ -1242,7 +1217,6 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
-                        iw_bursts = dict()
                         for ib in iw_list:
                             iw_inter = inter[inter['subswath'] == ib.upper()]
                             minb = iw_inter['burst'].min()
@@ -1256,15 +1230,15 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 slcAs=parse_node("SliceAssembly")
                 slcAs.parameters["selectedPolarisations"]= pol
 
-                workflow_slcAs.insert_node(slcAs, before= readers)
+                workflow.insert_node(slcAs, before= readers)
                 read1= slcAs
 
                 write_slcAs=parse_node("Write")
                 write_slcAs.parameters["file"]= slcAs_out
                 write_slcAs.parameters["formatName"]= tpm_format
 
-                workflow_slcAs.insert_node(write_slcAs, before= slcAs.id)
-                workflow_slcAs.write(f"{graph_dir}/HA_slc_prep_graph")
+                workflow.insert_node(write_slcAs, before= slcAs.id)
+                workflow.write(f"{graph_dir}/HA_slc_prep_graph")
                 gpt(f"{graph_dir}/HA_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)
 
                 HA_proc_in= slcAs_out+".dim"
@@ -1286,6 +1260,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
 
 
             for iw in IWs:
+                print(f'IW : {iw}')
                 tpm_name= sensor +"_HA_relOrb_"+ str(relOrb) + "_"+\
                     unique_dates_info[i]+ "_"+iw+"_2TPM"
                 tpm_out= os.path.join(tmpdir, tpm_name)
@@ -1294,8 +1269,6 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
 
                 read= parse_node("Read")
                 read.parameters["file"]= HA_proc_in
-                if len(fps_grp) == 1:
-                    read.parameters["formatName"]= formatName
                 workflow.insert_node(read)
 
                 aof=parse_node("Apply-Orbit-File")
@@ -1307,7 +1280,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 ts=parse_node("TOPSAR-Split")
                 ts.parameters["subswath"]= iw
                 
-                if iw_bursts[iw][0] is not None and iw_bursts[iw][1] is not None:
+                if iw_bursts is not None:
                     ts.parameters["firstBurstIndex"]= iw_bursts[iw][0]
                     ts.parameters["lastBurstIndex"]= iw_bursts[iw][1]
                 workflow.insert_node(ts, before=aof.id)
@@ -1359,6 +1332,41 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     tpm.parameters["selectedPolarisations"]=pol
                     workflow_tpm.insert_node(tpm, before=readers)
                     last_node= tpm.id
+
+                if shapefile:
+                    if isinstance(shapefile, dict):
+                        ext = shapefile
+                    else:
+                        if isinstance(shapefile, Vector):
+                            shp = shapefile.clone()
+                        elif isinstance(shapefile, str):
+                            shp = Vector(shapefile)
+                        else:
+                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
+                        # reproject the geometry to WGS 84 latlon
+                        shp.reproject(4326)
+                        ext = shp.extent
+                        shp.close()
+                    # add an extra buffer of 0.01 degrees
+                    buffer = 0.01
+                    ext['xmin'] -= buffer
+                    ext['ymin'] -= buffer
+                    ext['xmax'] += buffer
+                    ext['ymax'] += buffer
+                    with bbox(ext, 4326) as bounds:
+                        inter = intersect(info_ms.bbox(), bounds)
+                        if not inter:
+                            raise RuntimeError('no bounding box intersection between shapefile and scene')
+                        inter.close()
+                        wkt = bounds.convert2wkt()[0]
+
+                    subset = parse_node('Subset')
+                    #subset.parameters['region'] = [0, 0, 0, 0]
+                    subset.parameters['geoRegion'] = wkt
+                    subset.parameters['copyMetadata'] = True
+                    workflow_tpm.insert_node(subset, before=last_node)
+                    last_node = subset.id
+                
                 ##create C2 covariance matrix
                 polMat= parse_node("Polarimetric-Matrices")
                 polMat.parameters["matrix"]= "C2"
@@ -1407,18 +1415,9 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 workflow_tpm.insert_node(tc, before= last_node)
                 last_node= tc.id
 
-                ## generate str for final output file based on selected IWs
-                #if len(IWs) == 1:
-                #out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+ IWs[0] + "_"+\
-                #        date_str+"_Orb_Cal_Deb_ML_TF_Spk_TC"
-                #elif len(IWs)== 2:
-                #    separator = "_"
-                #    iw_str= separator.join(IWs)
-                #    out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
-                #        iw_str +"_" + date_str+"_Orb_Cal_Deb_ML_Spk_TC"
-                #else:
                 out_name= sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_"+ dc_label + "_"+\
                     date_str+"_Orb_Cal_Deb_ML_Spk_TC"
+                    
                 ##create default output folder for each selected polarization
                 if out_dir is None:
                     out_dir_fp= os.path.join("HA", dc_label)
@@ -1428,40 +1427,6 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     out_dir_fp = out_dir
                 else:
                     raise RuntimeError("Please provide a valid filepath")
-
-                if shapefile:
-                    if isinstance(shapefile, dict):
-                        ext = shapefile
-                    else:
-                        if isinstance(shapefile, Vector):
-                            shp = shapefile.clone()
-                        elif isinstance(shapefile, str):
-                            shp = Vector(shapefile)
-                        else:
-                            raise TypeError("argument 'shapefile' must be either a dictionary, a Vector object or a string.")
-                        # reproject the geometry to WGS 84 latlon
-                        shp.reproject(4326)
-                        ext = shp.extent
-                        shp.close()
-                    # add an extra buffer of 0.01 degrees
-                    buffer = 0.01
-                    ext['xmin'] -= buffer
-                    ext['ymin'] -= buffer
-                    ext['xmax'] += buffer
-                    ext['ymax'] += buffer
-                    with bbox(ext, 4326) as bounds:
-                        inter = intersect(info_ms.bbox(), bounds)
-                        if not inter:
-                            raise RuntimeError('no bounding box intersection between shapefile and scene')
-                        inter.close()
-                        wkt = bounds.convert2wkt()[0]
-
-                    subset = parse_node('Subset')
-                    #subset.parameters['region'] = [0, 0, 0, 0]
-                    subset.parameters['geoRegion'] = wkt
-                    subset.parameters['copyMetadata'] = True
-                    workflow_tpm.insert_node(subset, before=last_node)
-                    last_node = subset.id 
 
                 out_path= os.path.join(out_dir_fp, out_name)   
 
@@ -1473,6 +1438,11 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 ##write graph and execute it
                 workflow_tpm.write(f"{graph_dir}/HA_TPM_continued_proc_graph")
                 execute(f"{graph_dir}/HA_TPM_continued_proc_graph.xml", gpt_args= gpt_paras)
+
+            timeb =  datetime.datetime.now()
+            proc_time = timeb - timea
+            print(f'Processing time: {proc_time}')
+            
         #exception for SNAP errors & creating error log    
         except RuntimeError as e:
             print(str(e))
@@ -1480,7 +1450,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 logf.write(str(e))
             
             ##clean tmp folder to avoid overwriting errors even if exception is valid
-            files = glob.glob(os.path.join(tmpdir, '*'))
+            files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
             for f in files:
                 if os.path.isfile(f) or os.path.islink(f):
                     os.unlink(f)
@@ -1490,24 +1460,24 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             continue     
             
         ##clean tmp folder to avoid overwriting errors    
-        files = glob.glob(os.path.join(tmpdir, '*'))
+        files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
         for f in files:
             if os.path.isfile(f) or os.path.islink(f):
                 os.unlink(f)
             elif os.path.isdir(f):
                 shutil.rmtree(f)
+  
     ##delete tmp folder after processing
-    if clean_tmpdir == True:
-        shutil.rmtree(tmpdir)
+    #if clean_tmpdir == True:
+    #    shutil.rmtree(tmpdir)
 
-def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
+def S1_InSAR_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                    ext_DEM_EGM= True, BGC_demResamp= "BICUBIC_INTERPOLATION", TC_demResamp= "BILINEAR_INTERPOLATION", osvPath= None,\
                    cohWinRg= 11, cohWinAz= 3, ml_RgLook= 4, ml_AzLook= 1, firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False):
     
-    """
+    """[S1_InSAR_coh_proc]
     function for processing InSAR coherences from S-1 SLC files in SNAP
-
     Parameters
     ----------
         infiles: list or str
@@ -1558,23 +1528,19 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
             delete tmpdir, default true
         osvPath: None
             specify path to locally stored OSVs, if none default OSV path of SNAP is set
-
         Returns
         -------
         Raster files of selected output format for selected H-alpha features
-
         Examples
         --------
         process backscatter intensities VV and VH for given SLC file
-
        
         >>> filenames= ['S1B_IW_SLC__1SDV_20201229T170010_20201229T170037_024920_02F722_8B6C.zip.zip', 'S1B_IW_SLC__1SDV_20201217T170011_20201217T170038_024745_02F172_1D38.zip']
         >>> gpt_paras = ["-e", "-x", "-c","35G", "-q", "16", "-J-Xms25G", "-J-Xmx75G"]
         >>> pol= "full"
         >>> S1_InSAR_coh_proc(infiles= filenames, gtp_paras= gpt_paras, pol= "full")
-
     """
-    
+
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
     ##list of abbreviated month for creation of source Bands string
@@ -1677,6 +1643,8 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
     if len(unique_dates_info) == 1:
         raise RuntimeError("Please supply images from 2 different dates")
 
+    
+    timea = datetime.datetime.now()
     ##check for files of the same date and put them in separate lists
     pair_dates_idx= [] 
 
@@ -1725,12 +1693,44 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
         datetime2= info_lst[1].start
         ##exception handling against SNAP errors
         try:
-
+            date_uniq=[date1, date2]
+            ##manage numbers of scenes needed per time step to estimate coherence, initiate sliceAssembly if necessary
+            graph_dir = f'{tmpdir}/graphs'
+            isExist = os.path.exists(graph_dir)
+            if not isExist:
+                os.makedirs(graph_dir)
             date_uniq=[date1, date2]
             ##manage numbers of scenes needed per time step to estimate coherence, initiate sliceAssembly if necessary
             if len(fps1)== 1 and len(fps2) == 1:
                 slcAs_fps_slv= fps1[0]
+                if shapefile:
+                    bursts = get_burst_geometry(slcAs_fps_slv, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts_slv = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts_slv[ib] =  [minb, maxb]
+                    IWs_slv = list(iw_bursts_slv.keys())
+                
                 slcAs_fps_ms= fps2[0]
+                if shapefile:
+                    bursts = get_burst_geometry(slcAs_fps_ms, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    polygon = gpd.read_file(shapefile)
+                    inter = bursts.overlay(polygon, how='intersection')
+                    iw_list = inter['subswath'].unique()
+                    iw_bursts_ms = dict()
+                    for ib in iw_list:
+                        iw_inter = inter[inter['subswath'] == ib.upper()]
+                        minb = iw_inter['burst'].min()
+                        maxb = iw_inter['burst'].max()
+                        iw_bursts_ms[ib] =  [minb, maxb]
+                    IWs_ms = list(iw_bursts_ms.keys())
+
+                    IWs = list(set(IWs_ms + IWs_slv))
             else:
                 if len(fps1) == 1 and len(fps2) > 1: 
                     slcAs_fps_slv= fps1[0]
@@ -1748,25 +1748,50 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
                     if fp == 0:
                         slcAs_name= "S1_relOrb_"+ str(relOrbs[0])+"_COH_"+date_uniq[fp]+"_SLC_slv"
                         slcAs_out= os.path.join(tmpdir, slcAs_name)
-                    else:
-                        slcAs_name= "S1_relOrb_"+ str(relOrbs[0])+"_COH_"+date_uniq[fp]+"_SLC_ms"
-                        slcAs_out= os.path.join(tmpdir, slcAs_name)
 
-                    workflow_slcAs = parse_recipe("blank")
+                        workflow_slcAs = parse_recipe("blank")
 
-                    read1 = parse_node('Read')
-                    read1.parameters['file'] = fps_paired[fp][0]
-                    read1.parameters['formatName'] = formatName
-                    readers = [read1.id]
+                        read1 = parse_node('Read')
+                        read1.parameters['file'] = fps_paired[fp][0]
+                        read1.parameters['formatName'] = formatName
+                        readers = [read1.id]
 
-                    workflow_slcAs.insert_node(read1)
+                        workflow_slcAs.insert_node(read1)
+                
+                        if shapefile:
+                            bursts = get_burst_geometry(fps_paired[fp][0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                            polygon = gpd.read_file(shapefile)
+                            inter = bursts.overlay(polygon, how='intersection')
+                            iw_list = inter['subswath'].unique()
+                            iw_bursts = dict()
+                            for ib in iw_list:
+                                iw_inter = inter[inter['subswath'] == ib.upper()]
+                                minb = iw_inter['burst'].min()
+                                maxb = iw_inter['burst'].max()
+                                iw_bursts[ib] =  [minb, maxb]
 
-                    for r in range(1, len(fps_paired[fp])):
-                        readn = parse_node('Read')
-                        readn.parameters['file'] = fps_paired[fp][r]
-                        readn.parameters['formatName'] = formatName
-                        workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
-                        readers.append(readn.id)
+
+                        for r in range(1, len(fps_paired[fp])):
+                            readn = parse_node('Read')
+                            readn.parameters['file'] = fps_paired[fp][r]
+                            readn.parameters['formatName'] = formatName
+                            workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
+                            readers.append(readn.id)
+
+                            if shapefile:
+                                bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                                polygon = gpd.read_file(shapefile)
+                                inter = bursts.overlay(polygon, how='intersection')
+                                iw_list = inter['subswath'].unique()
+                                for ib in iw_list:
+                                    iw_inter = inter[inter['subswath'] == ib.upper()]
+                                    minb = iw_inter['burst'].min()
+                                    maxb = iw_inter['burst'].max()
+                                    if ib in iw_bursts:
+                                        iw_bursts[ib][1]  =  iw_bursts[ib][1] + maxb
+                                    else:
+                                        iw_bursts[ib] =  [minb, maxb]
+                            IWs = list(iw_bursts.keys())
 
                     slcAs=parse_node("SliceAssembly")
                     slcAs.parameters["selectedPolarisations"]= pol
@@ -1914,7 +1939,7 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
                     if os.path.isdir(out_dir_p) == False:
                         os.makedirs(os.path.join(os.getcwd(), out_dir_p))
                 elif os.path.isdir(out_dir):
-                    out_dir_fp= out_dir
+                    out_dir_p= out_dir
                 else:
                     raise RuntimeError("Please provide a valid filepath")
 
@@ -2015,13 +2040,18 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
                 workflow_tpm.write("Coh_TPM_continued_proc_graph")
 
                 execute('Coh_TPM_continued_proc_graph.xml', gpt_args= gpt_paras)
+
+            timeb =  datetime.datetime.now()
+            proc_time = timeb - timea
+            print(f'Processing time: {proc_time}')
+
         #exception for SNAP errors & creating error log     
         except RuntimeError as e:
             print(str(e))
             with open("S1_COH_proc_ERROR_"+datetime1+"_"+datetime2+".log", "w") as logf:
                 logf.write(str(e))
             ##clean tmp folder to avoid overwriting errors even if exception is valid
-            files = glob.glob(os.path.join(tmpdir, '*'))
+            files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
             for f in files:
                 if os.path.isfile(f) or os.path.islink(f):
                     os.unlink(f)
@@ -2031,7 +2061,7 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", tmpdir= None, t_res=20, t_crs
             continue
         
         ##clean tmp folder to avoid overwriting errors 
-        files = glob.glob(os.path.join(tmpdir, '*'))
+        files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
         for f in files:
             if os.path.isfile(f) or os.path.islink(f):
                 os.unlink(f)
@@ -2048,7 +2078,8 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                     cohwinrg= 11, cohwinaz= 3, speckfilter= "Boxcar", filtersizex= 5, filtersizey= 5, ml_rglook= 4, ml_azlook= 1,\
                     l2db_arg= True, firstburstindex= None, lastburstindex= None, ref_plain= "gamma",clean_tmpdir= True, osvfail= False, radnorm= False):
     
-    site = Vector(shapefile)
+    if shapefile:
+        site = Vector(shapefile)
     scenes = finder(data, [r'^S1[AB].*(SAFE|zip)$'],
                     regex=True, recursive=True, foldermode=1)
     
@@ -2056,18 +2087,21 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
 
     with Archive(dbfile= database_path) as archive:
         archive.insert(scenes)
-        lst = archive.select(vectorobject=site,
+        if shapefile:
+            lst = archive.select(vectorobject=site,
                                    product='SLC', acquisition_mode='IW',
                                    mindate=mindate, maxdate=maxdate)
-    
-    slc_lst = []
-    for slc in lst:
-        bursts = get_burst_geometry(slc, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
-        polygon = gpd.read_file(shapefile)
-        inter = bursts.overlay(polygon, how='intersection')
-        if not inter.empty:
-            slc_lst.append(slc)
-
+            slc_lst = []
+            for slc in lst:
+                bursts = get_burst_geometry(slc, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                polygon = gpd.read_file(shapefile)
+                inter = bursts.overlay(polygon, how='intersection')
+                if not inter.empty:
+                    slc_lst.append(slc)
+        else:
+            lst = archive.select(product='SLC', acquisition_mode='IW',
+                                   mindate=mindate, maxdate=maxdate)
+            slc_lst = lst
     
     print(f'Found {str(len(slc_lst))} scenes')
     if isinstance(slc_lst, str):
@@ -2094,13 +2128,13 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
         ##selected options for features to be processed
             if int_proc == True:
                 S1_INT_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_int, shapefile=shapefile, t_res= res_int, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras, pol=pol,\
-                        IWs=iws, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
+                        IWs=iws,burst_reduce=True, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter=speckfilter, osvPath= osvpath, ref_plain= ref_plain,\
                         filterSizeX= filtersizex, filterSizeY=filtersizey, ml_RgLook= ml_rglook, ml_AzLook=ml_azlook, l2dB_arg= l2db_arg,\
                         firstBurstIndex=firstburstindex, lastBurstIndex=lastburstindex, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
 
             if coh_proc == True:
-                S1_InSAR_coh_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_coh, t_res= res_coh, tmpdir=tmpdir, t_crs= t_crs,  out_format=out_format, gpt_paras=gpt_paras,\
+                S1_InSAR_coh_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_coh, shapefile=shapefile, t_res= res_coh, tmpdir=tmpdir, t_crs= t_crs,  out_format=out_format, gpt_paras=gpt_paras,\
                                   pol= pol, IWs= iws, ext_DEM= ext_dem, ext_DEM_noDatVal=ext_dem_nodatval, ext_Dem_file=ext_dem_file, msk_noDatVal=msk_nodatval,\
                                   ext_DEM_EGM= ext_dem_egm, BGC_demResamp= bgc_demresamp, TC_demResamp= tc_demresamp, cohWinRg= cohwinrg, cohWinAz=cohwinaz, osvPath= osvpath,\
                                   ml_RgLook= ml_rglook, ml_AzLook= ml_azlook, firstBurstIndex= firstburstindex, lastBurstIndex= lastburstindex, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
