@@ -8,6 +8,7 @@ The backscatter intensity images are geometrically and radiometrically terrain c
 There is also the possibility to process individual bursts and subswaths.  
 Currently, there are still issues with certain projections/ EPSG-codes that SNAP cannot handle properly.
 
+
 ![General Structure](Prepro_Struct_s1_proc.png)
 
 
