@@ -1401,13 +1401,10 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             with open("S1_HA_proc_ERROR_"+date_str+".log", "w") as logf:
                 logf.write(str(e))
             
-            ##clean tmp folder to avoid overwriting errors even if exception is valid
-            files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
-            for f in files:
-                if os.path.isfile(f) or os.path.islink(f):
-                    os.unlink(f)
-                elif os.path.isdir(f):
-                    shutil.rmtree(f)
+        clean_tmpdir= True
+        ##clean tmp folder to avoid overwriting errors even if exception is valid
+        if clean_tmpdir: 
+            shutil.rmtree(tmpdir)   
             
             continue     
             
