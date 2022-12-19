@@ -9,7 +9,7 @@ There is also the possibility to process individual bursts and subswaths.
 Currently, there are still issues with certain projections/ EPSG-codes that SNAP cannot handle properly.
 
 
-![General Structure](Prepro_Struct_s1_proc.png)
+![General Structure](images/Prepro_Struct_s1_proc.png)
 
 
 
