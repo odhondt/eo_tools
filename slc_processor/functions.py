@@ -29,6 +29,13 @@ from spatialist import gdalwarp
 # Functions
 #################################################################
 
+def remove(path):
+    """ param <path> could either be relative or absolute. """
+    if os.path.isfile(path) or os.path.islink(path):
+        os.remove(path)  # remove the file
+    elif os.path.isdir(path):
+        shutil.rmtree(path)  # remove dir and all contains
+
 def get_config(config_file, proc_section):
     if not os.path.isfile(config_file):
         raise FileNotFoundError("Config file {} does not exist.".format(config_file))
@@ -526,11 +533,6 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
     formatName= "SENTINEL-1"
     ##specify tmp output format
     tpm_format= "BEAM-DIMAP"
-    ## create temp dir for intermediate .dim files
-    if tmpdir is None:
-        tmpdir= os.path.join(os.getcwd(), "tmp_dim")
-        if os.path.isdir(tmpdir) == False:
-            os.mkdir(tmpdir)
     ##check if a single IW or consecutive IWs are selected
     if isinstance(IWs, str):
         IWs= [IWs]
@@ -652,7 +654,21 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         if not isExist:
             os.makedirs(graph_dir)
         
-        ##exception handling for SNAP errors
+        ##check if file already exists
+
+        out = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC"
+        if shapefile is not None:
+            aoiname = shapefile.split(".")[0].split('/')[-1]
+            out_folder = f'{out_dir}/{aoiname}/{out}'
+        else:
+            out_folder =  f'{out_dir}/{out}'
+
+        print(f'Outfolder: {out_folder}')
+        
+        isExist = os.path.exists(out_folder)
+        if isExist:
+            print(f'Skip: {out} already exists')
+            break
 
         try:
             timea = datetime.datetime.now()
@@ -945,14 +961,17 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
 
             #exception for SNAP errors & creating error log        
         except RuntimeError as e:
-            os.mkdir(f'{tmpdir}/error_logs')
+            isExist = os.path.exists(f'{tmpdir}/error_logs')
+            if not isExist:
+                os.makedirs(f'{tmpdir}/error_logs')
             with open(f'{tmpdir}/error_logs/S1_INT_proc_ERROR_{date_str}.log') as logf:
                 logf.write(str(e))
 
-        clean_tmpdir= True
         ##clean tmp folder to avoid overwriting errors even if exception is valid
         if clean_tmpdir: 
-            shutil.rmtree(tmpdir)       
+            files = glob.glob(f'{tmpdir}/S1*') + glob.glob(f'{tmpdir}/S1*')
+            for fi in files:
+                remove(fi)  
 
         timeb =  datetime.datetime.now()
         proc_time = timeb - timea
@@ -1035,13 +1054,6 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
 
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
-    ##specify tmp output format
-    tpm_format= "ZNAP"
-    ## create temp dir for intermediate .dim files
-    if tmpdir is None:
-        tmpdir= os.path.join(os.getcwd(), "tmp_dim")
-        if os.path.isdir(tmpdir) == False:
-            os.mkdir(tmpdir)
     ##check if a single IW or consecutive IWs are selected
     if isinstance(IWs, str):
         IWs= [IWs]
@@ -1401,24 +1413,11 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             with open("S1_HA_proc_ERROR_"+date_str+".log", "w") as logf:
                 logf.write(str(e))
             
-        clean_tmpdir= True
         ##clean tmp folder to avoid overwriting errors even if exception is valid
         if clean_tmpdir: 
-            shutil.rmtree(tmpdir)   
-            
-            continue     
-            
-        ##clean tmp folder to avoid overwriting errors    
-        files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
-        for f in files:
-            if os.path.isfile(f) or os.path.islink(f):
-                os.unlink(f)
-            elif os.path.isdir(f):
-                shutil.rmtree(f)
-  
-    ##delete tmp folder after processing
-    #if clean_tmpdir == True:
-    #    shutil.rmtree(tmpdir)
+            files = glob.glob(f'{tmpdir}/*.data') + glob.glob(f'{tmpdir}/*.dim')
+            for fi in files:
+                remove(fi)  
 
 def S1_InSAR_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
@@ -1496,11 +1495,6 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None,
     month_list= ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     ##specify tmp output format
     tpm_format= "BEAM-DIMAP"
-    ## create temp dir for intermediate .dim files
-    if tmpdir is None:
-        tmpdir= os.path.join(os.getcwd(), "tmp_dim")
-        if os.path.isdir(tmpdir) == False:
-            os.mkdir(tmpdir)
     ##queck if at least two files are loaded for coh estiamtion
     if len(infiles)==1:
         raise RuntimeError("At least 2 scenes needed for coherence estimation")
@@ -1966,25 +1960,11 @@ def S1_InSAR_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None,
             with open("S1_COH_proc_ERROR_"+datetime1+"_"+datetime2+".log", "w") as logf:
                 logf.write(str(e))
             ##clean tmp folder to avoid overwriting errors even if exception is valid
-            files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
-            for f in files:
-                if os.path.isfile(f) or os.path.islink(f):
-                    os.unlink(f)
-                elif os.path.isdir(f):
-                    shutil.rmtree(f)
-            
-            continue
-        
-        ##clean tmp folder to avoid overwriting errors 
-        files = glob.glob(os.path.join(tmpdir, '.*(dim|data)$'))
-        for f in files:
-            if os.path.isfile(f) or os.path.islink(f):
-                os.unlink(f)
-            elif os.path.isdir(f):
-                shutil.rmtree(f)
-    
-    if clean_tmpdir == True:
-        shutil.rmtree(tmpdir)
+         ##clean tmp folder to avoid overwriting errors even if exception is valid
+        if clean_tmpdir: 
+            files = glob.glob(f'{tmpdir}/*.data') + glob.glob(f'{tmpdir}/*.dim')
+            for fi in files:
+                remove(fi)  
 
 def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_proc = False, coh_proc= False, ha_proc= False, INT_Test= False, outdir_int= None, outdir_coh= None, outdir_ha= None, INT_test_dir= None, tmpdir= None, res_int= 20, res_coh= 20, res_ha= 20, t_crs= 4326, out_format= "GeoTIFF",\
                     gpt_paras= None, pol= 'full', iws= ["IW1", "IW2", "IW3"], ext_dem= False, ext_dem_nodatval= -9999, ext_dem_file= None, msk_nodatval= False, ext_dem_egm= True,\
@@ -1992,6 +1972,15 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                     imgresamp= "BICUBIC_INTERPOLATION", demresamp= "BILINEAR_INTERPOLATION", bgc_demresamp= "BICUBIC_INTERPOLATION", tc_demresamp= "BILINEAR_INTERPOLATION", \
                     cohwinrg= 11, cohwinaz= 3, speckfilter= "Boxcar", filtersizex= 5, filtersizey= 5, ml_rglook= 4, ml_azlook= 1,\
                     l2db_arg= True, firstburstindex= None, lastburstindex= None, ref_plain= "gamma",clean_tmpdir= True, osvfail= False, radnorm= False):
+    
+    if tmpdir is not None:
+        isExist = os.path.exists(tmpdir)
+        if not isExist:
+            os.makedirs(tmpdir)
+    else:
+        tmpdir= os.path.join(os.getcwd(), "tmp_dim")
+        os.mkdir(tmpdir)
+    
     
     if shapefile:
         site = Vector(shapefile)
@@ -2048,7 +2037,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter=speckfilter, osvPath= osvpath, ref_plain= ref_plain,\
                         filterSizeX= filtersizex, filterSizeY=filtersizey, ml_RgLook= ml_rglook, ml_AzLook=ml_azlook, l2dB_arg= l2db_arg,\
                         firstBurstIndex=firstburstindex, lastBurstIndex=lastburstindex, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
-
+            
             if coh_proc == True:
                 S1_InSAR_coh_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_coh, shapefile=shapefile, t_res= res_coh, tmpdir=tmpdir, t_crs= t_crs,  out_format=out_format, gpt_paras=gpt_paras,\
                                   pol= pol, IWs= iws, ext_DEM= ext_dem, ext_DEM_noDatVal=ext_dem_nodatval, ext_Dem_file=ext_dem_file, msk_noDatVal=msk_nodatval,\
@@ -2060,3 +2049,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter= ha_speckfilter, decomp_win_size= decomp_win_size, decompFeats=decompfeats,\
                         ml_RgLook= ml_rglook, ml_AzLook=ml_azlook,osvPath= osvpath, osvFail= osvfail,\
                         firstBurstIndex=firstburstindex, lastBurstIndex=lastburstindex, clean_tmpdir=clean_tmpdir)
+
+             ##clean tmp folder to avoid overwriting errors even if exception is valid
+        if clean_tmpdir: 
+            remove(tmpdir)  
