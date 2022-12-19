@@ -1,0 +1,13 @@
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.8
+  - gdal>=3.5.0
+  - pyroSAR
+  - spatialist
+  - pip
+  - pystac
+  - geopandas
+  - pandas
