@@ -1,13 +1,11 @@
-import os
 import logging
-from functions import S1_SLC_proc, asf_downloader, get_config
+from .download_ASF import asf_downloader
+from .s1_slc_proc import S1_SLC_proc
+from .auxils import get_config
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
-def process(config_file = 'config.ini'):
-    path_current_directory = os.path.dirname(__file__)
-    config_file = os.path.join(path_current_directory, config_file)
-
+def process(config_file):
     general = get_config(config_file, 'General')
     download = get_config(config_file, 'Download')
     if download['download'] == True:

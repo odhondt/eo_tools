@@ -11,10 +11,10 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from spatialist import gdalwarp
 
-from auxils import get_burst_geometry, remove, group_by_info
-from s1_coh_proc import S1_coh_proc
-from s1_h2a_proc import S1_HA_proc
-from s1_int_proc import S1_INT_proc
+from .auxils import get_burst_geometry, remove, group_by_info
+from .s1_coh_proc import S1_coh_proc
+from .s1_h2a_proc import S1_HA_proc
+from .s1_int_proc import S1_INT_proc
 
 
 def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_proc = False, coh_proc= False, ha_proc= False, INT_Test= False, outdir_int= None, outdir_coh= None, outdir_ha= None, INT_test_dir= None, tmpdir= None, res_int= 20, res_coh= 20, res_ha= 20, t_crs= 4326, out_format= "GeoTIFF",\
@@ -31,7 +31,6 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
     else:
         tmpdir= os.path.join(os.getcwd(), "tmp_dim")
         os.mkdir(tmpdir)
-    
     
     if shapefile:
         site = Vector(shapefile)

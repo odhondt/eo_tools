@@ -1,13 +1,15 @@
-name: base
+name: s1_proc
 channels:
   - conda-forge
   - defaults
 dependencies:
   - python>=3.8
-  - gdal>=3.5.0
+  - tqdm
+  - gdal
   - pyroSAR
   - spatialist
   - pip
   - pystac
   - geopandas
   - pandas
+  - asf_search

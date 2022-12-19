@@ -94,6 +94,11 @@ def get_config(config_file, proc_section):
                 v = True
             elif v.lower() == 'false':
                 v = False
+        if k == 'l2db_arg':
+            if v.lower() == 'true':
+                v = True
+            elif v.lower() == 'false':
+                v = False
         if k == 't_crs':
             v = int(v)
         if k == 'cohwinrg':
@@ -172,6 +177,7 @@ def get_config(config_file, proc_section):
             else:
                 v = v.split(',')
     return out_dict
+
 ##get datetime from strings such as filenames
 def _parse_datetime(s):
     """Custom converter for configparser:
