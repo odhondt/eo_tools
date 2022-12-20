@@ -4,6 +4,7 @@ import geopandas as gpd
 from shapely.geometry import box
 from tqdm import tqdm
 from multiprocessing import Pool
+from pathlib import Path
 
 
 
@@ -32,12 +33,15 @@ def asf_downloader(shapefile, download_dir, mindate, maxdate, platform = 'Sentin
     print(f'Total Images Found: {len(results)}')
     session = asf.ASFSession().auth_with_creds(username, password)
     
+    dd = Path(download_dir)
+    dd.mkdir(parents=True, exist_ok=True)
+
     print('Start download')
     if processes == 1:
         for product in tqdm(results):
-            product.download(path=download_dir, session=session)
+            product.download(path=dd.as_posix(), session=session)
     else:
-        args = [(product, download_dir, session) for product in results]
+        args = [(product, dd.as_posix(), session) for product in results]
         with Pool(processes) as pool:
              max = len(results)
              with tqdm(total=max) as pbar:
