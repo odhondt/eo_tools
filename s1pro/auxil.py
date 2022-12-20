@@ -73,11 +73,6 @@ def get_config(config_file, proc_section):
                 v = True
             elif v.lower() == 'false':
                 v = False
-        if k == 'radnorm':
-            if v.lower() == 'true':
-                v = True
-            elif v.lower() == 'false':
-                v = False
         if k == 'msk_nodatval':
             if v.lower() == 'true':
                 v = True
@@ -154,16 +149,6 @@ def get_config(config_file, proc_section):
                 v =  None
             else:
                 v = v
-        if k == 'firstburstindex':
-            if v == "None":
-                v =  None
-            else:
-                v = int(v)
-        if k == 'lastburstindex':
-            if v == "None":
-                v =  None
-            else:
-                v = int(v)
         if k == 'iws':
             v = v.split(',')
         out_dict[k] = v
