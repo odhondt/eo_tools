@@ -9,7 +9,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from auxils import get_burst_geometry, remove
+from .auxil import get_burst_geometry, remove
 
 def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\

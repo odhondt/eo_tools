@@ -1,7 +1,7 @@
 import logging
 from .download_ASF import asf_downloader
 from .s1_slc_proc import S1_SLC_proc
-from .auxils import get_config
+from .auxil import get_config
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
