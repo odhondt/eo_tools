@@ -11,7 +11,6 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import geopandas as gpd
 
-from spatialist import gdalwarp
 
 ##function to clean up temporary elements
 
@@ -177,7 +176,6 @@ def get_config(config_file, proc_section):
             else:
                 v = v.split(',')
     return out_dict
-
 ##get datetime from strings such as filenames
 def _parse_datetime(s):
     """Custom converter for configparser:

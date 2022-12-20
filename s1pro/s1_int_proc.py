@@ -1,6 +1,7 @@
 
 import pyroSAR
 from pyroSAR.snap.auxil import parse_recipe, parse_node, gpt, execute
+from pyroSAR import  identify_many
 from spatialist.ancillary import finder
 from spatialist import crsConvert, Vector, Raster
 import os
@@ -9,7 +10,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxils import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
@@ -289,6 +290,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 workflow.insert_node(write_slcAs, before= last_node)
                 workflow.write(f"{graph_dir}/INT_slc_prep_graph")
                 gpt(f"{graph_dir}/INT_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)    
+                
                 if tpm_format == "BEAM-DIMAP":
                     INT_proc_in= slcAs_out+".dim"
                 elif tpm_format == "ZNAP":
@@ -364,11 +366,12 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             
                 ##load temporary files
                 if tpm_format == "ZNAP":
-                    tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
-                            unique_dates_info[i]+ "*_2TPM.znap.zip")
+                    file_end = ".znap.zip"
                 elif tpm_format == "BEAM-DIMAP":
-                    tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
-                            unique_dates_info[i]+ "*_2TPM.dim")
+                    file_end = ".dim"
+                    
+                tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
+                            unique_dates_info[i]+ "*_2TPM"+file_end)
                 
                 ##specify sourceBands for reference lvl beta and gamma
                 if len(IWs)== 1:
@@ -475,16 +478,19 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     os.makedirs(out_folder)
                 
                 out_name = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC"
-                out_path= os.path.join(out_folder, out_name) 
-
+                
+                
                 ##conversion from linear to dB if selected
                 if l2dB_arg == True:
+                
                     l2DB= parse_node("LinearToFromdB")
                     l2DB.parameters["sourceBands"]= ref_pl
                     workflow.insert_node(l2DB, before= last_node)
                     last_node= l2DB.id
                     ##change output name to reflect dB conversion
                     out_name= out_name+ "_dB"
+                  
+                out_path= os.path.join(out_folder, out_name) 
 
                 write_tpm=parse_node("Write")
                 write_tpm.parameters["file"]= out_path
@@ -502,8 +508,6 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     isExist = os.path.exists(out_folder)
                     if not isExist:
                         os.makedirs(out_folder)
-                
-                    out_name = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_"+ p + "_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC.tif"
                     out_path_aoi= os.path.join(out_folder, out_name)
                     shp = Vector(shapefile)
                     shp.reproject(epsg)

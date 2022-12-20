@@ -9,7 +9,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxils import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
@@ -239,7 +239,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
             if len(fps1)== 1 and len(fps2) == 1:
                 slcAs_fps_slv= fps1[0]
                 if shapefile:
-                    bursts = get_burst_geometry(slcAs_fps_slv, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(slcAs_fps_slv, target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -253,7 +253,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                 
                 slcAs_fps_ms= fps2[0]
                 if shapefile:
-                    bursts = get_burst_geometry(slcAs_fps_ms, target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(slcAs_fps_ms, target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -280,53 +280,56 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                     idx_stop= len(fps_paired)
               ## initiate sliceAssembly where the time step consists of more than one scene  
                 for fp in range(idx_start, idx_stop):
+                    workflow_slcAs = parse_recipe("blank")
                     if fp == 0:
                         slcAs_name= "S1_relOrb_"+ str(relOrbs[0])+"_COH_"+date_uniq[fp]+"_SLC_slv"
-                        slcAs_out= os.path.join(tmpdir, slcAs_name)
+                        
+                    else:
+                        slcAs_name= "S1_relOrb_"+ str(relOrbs[0])+"_COH_"+date_uniq[fp]+"_SLC_ms"
+                    
+                    slcAs_out= os.path.join(tmpdir, slcAs_name)
 
-                        workflow_slcAs = parse_recipe("blank")
+                    read1 = parse_node('Read')
+                    read1.parameters['file'] = fps_paired[fp][0]
+                    read1.parameters['formatName'] = formatName
+                    readers = [read1.id]
 
-                        read1 = parse_node('Read')
-                        read1.parameters['file'] = fps_paired[fp][0]
-                        read1.parameters['formatName'] = formatName
-                        readers = [read1.id]
+                    workflow_slcAs.insert_node(read1)
+            
+                    if shapefile:
+                        bursts = get_burst_geometry(fps_paired[fp][0], target_subswaths= [ x.lower() for x in IWs], polarization = pol[0])
+                        polygon = gpd.read_file(shapefile)
+                        inter = bursts.overlay(polygon, how='intersection')
+                        iw_list = inter['subswath'].unique()
+                        iw_bursts = dict()
+                        for ib in iw_list:
+                            iw_inter = inter[inter['subswath'] == ib.upper()]
+                            minb = iw_inter['burst'].min()
+                            maxb = iw_inter['burst'].max()
+                            iw_bursts[ib] =  [minb, maxb]
 
-                        workflow_slcAs.insert_node(read1)
-                
+
+                    for r in range(1, len(fps_paired[fp])):
+                        readn = parse_node('Read')
+                        readn.parameters['file'] = fps_paired[fp][r]
+                        readn.parameters['formatName'] = formatName
+                        workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
+                        readers.append(readn.id)
+
                         if shapefile:
-                            bursts = get_burst_geometry(fps_paired[fp][0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                            bursts = get_burst_geometry(fps_paired[fp][r], target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                             polygon = gpd.read_file(shapefile)
                             inter = bursts.overlay(polygon, how='intersection')
                             iw_list = inter['subswath'].unique()
-                            iw_bursts = dict()
                             for ib in iw_list:
                                 iw_inter = inter[inter['subswath'] == ib.upper()]
                                 minb = iw_inter['burst'].min()
                                 maxb = iw_inter['burst'].max()
-                                iw_bursts[ib] =  [minb, maxb]
-
-
-                        for r in range(1, len(fps_paired[fp])):
-                            readn = parse_node('Read')
-                            readn.parameters['file'] = fps_paired[fp][r]
-                            readn.parameters['formatName'] = formatName
-                            workflow_slcAs.insert_node(readn, before= read1.id, resetSuccessorSource=False)
-                            readers.append(readn.id)
-
-                            if shapefile:
-                                bursts = get_burst_geometry(fps_paired[fp][r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
-                                polygon = gpd.read_file(shapefile)
-                                inter = bursts.overlay(polygon, how='intersection')
-                                iw_list = inter['subswath'].unique()
-                                for ib in iw_list:
-                                    iw_inter = inter[inter['subswath'] == ib.upper()]
-                                    minb = iw_inter['burst'].min()
-                                    maxb = iw_inter['burst'].max()
-                                    if ib in iw_bursts:
-                                        iw_bursts[ib][1]  =  iw_bursts[ib][1] + maxb
-                                    else:
-                                        iw_bursts[ib] =  [minb, maxb]
-                            IWs = list(iw_bursts.keys())
+                                if ib in iw_bursts:
+                                    iw_bursts[ib][1]  =  iw_bursts[ib][1] + maxb
+                                else:
+                                    iw_bursts[ib] =  [minb, maxb]
+                        IWs = list(iw_bursts.keys())
 
                     slcAs=parse_node("SliceAssembly")
                     slcAs.parameters["selectedPolarisations"]= pol
@@ -383,8 +386,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                     ts=parse_node("TOPSAR-Split")
                     ts.parameters["subswath"]= iw
                     ts.parameters["selectedPolarisations"]= p
-                    #ts.parameters["firstBurstIndex"]= burst_span1[0]
-                    #ts.parameters["lastBurstIndex"]= burst_span1[1]
+                    
 
                     workflow_coh.insert_node(ts, before= aof.id)
 
@@ -405,8 +407,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                     ts2=parse_node("TOPSAR-Split")
                     ts2.parameters["subswath"]= iw
                     ts2.parameters["selectedPolarisations"]= p
-                    #ts2.parameters["firstBurstIndex"]= burst_span2[0]
-                    #ts2.parameters["lastBurstIndex"]= burst_span2[1]
+                    
 
                     workflow_coh.insert_node(ts2, before= aof2.id)
 
