@@ -10,14 +10,14 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxil import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
                     IWs= ["IW1", "IW2", "IW3"], burst_reduce=False, ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                     ext_DEM_EGM= True, imgResamp= "BICUBIC_INTERPOLATION", demResamp= "BILINEAR_INTERPOLATION",\
                     speckFilter= "Boxcar", filterSizeX= 5, filterSizeY= 5, ml_RgLook= 4, ml_AzLook= 1, ref_plain= "gamma",\
-                    l2dB_arg= True, osvPath= None, clean_tmpdir= True, osvFail= False):
+                    l2dB_arg= True, osvPath= None, clean_tmpdir= True, osvFail= False, tpm_format = "BEAM-DIMAP"):
     
     """[S1_INT_proc]
     function for processing backscatter intensities VV and VH from S-1 SLC files in SNAP
@@ -89,8 +89,11 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
 
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
-    ##specify tmp output format
-    tpm_format= "BEAM-DIMAP"
+    ##specify file ending of tmp-files:
+    if tpm_format == "ZNAP":
+        file_end = ".znap.zip"
+    elif tpm_format == "BEAM-DIMAP":
+        file_end = ".dim"
     ##check if a single IW or consecutive IWs are selected
     if isinstance(IWs, str):
         IWs= [IWs]
@@ -242,7 +245,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                 workflow.insert_node(read1)
                 readers = [read1.id]
                 if shapefile:
-                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -262,7 +265,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     workflow.insert_node(readn, before= read1.id, resetSuccessorSource=False)
                     readers.append(readn.id)
                     if burst_reduce:
-                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
@@ -299,7 +302,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             else:
                 INT_proc_in = fps_grp[0]
                 if shapefile:
-                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = [ x.lower() for x in IWs], polarization = pol[0])
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -365,11 +368,8 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
                     execute(f"{graph_dir}/Int_proc_IW_graph.xml", gpt_args= gpt_paras)    
             
                 ##load temporary files
-                if tpm_format == "ZNAP":
-                    file_end = ".znap.zip"
-                elif tpm_format == "BEAM-DIMAP":
-                    file_end = ".dim"
-                    
+                
+
                 tpm_in= glob.glob(tmpdir+"/"+sensor+"_" + p +"_INT_relOrb_"+ str(relOrb) + "_"+\
                             unique_dates_info[i]+ "*_2TPM"+file_end)
                 

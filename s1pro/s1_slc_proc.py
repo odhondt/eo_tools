@@ -11,10 +11,10 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from spatialist import gdalwarp
 
-from .auxil import get_burst_geometry, remove, group_by_info
-from .s1_coh_proc import S1_coh_proc
-from .s1_h2a_proc import S1_HA_proc
-from .s1_int_proc import S1_INT_proc
+from auxils import get_burst_geometry, remove, group_by_info
+from s1_coh_proc import S1_coh_proc
+from s1_h2a_proc import S1_HA_proc
+from s1_int_proc import S1_INT_proc
 
 
 def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_proc = False, coh_proc= False, ha_proc= False, INT_Test= False, outdir_int= None, outdir_coh= None, outdir_ha= None, INT_test_dir= None, tmpdir= None, res_int= 20, res_coh= 20, res_ha= 20, t_crs= 4326, out_format= "GeoTIFF",\
@@ -22,7 +22,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                     decompfeats= ["Alpha", "Entropy", "Anisotropy"], ha_speckfilter= "Box Car Filter", decomp_win_size= 5, osvpath= None,\
                     imgresamp= "BICUBIC_INTERPOLATION", demresamp= "BILINEAR_INTERPOLATION", bgc_demresamp= "BICUBIC_INTERPOLATION", tc_demresamp= "BILINEAR_INTERPOLATION", \
                     cohwinrg= 11, cohwinaz= 3, speckfilter= "Boxcar", filtersizex= 5, filtersizey= 5, ml_rglook= 4, ml_azlook= 1,\
-                    l2db_arg= True, ref_plain= "gamma",clean_tmpdir= True, osvfail= False):
+                    l2db_arg= True, ref_plain= "gamma",clean_tmpdir= True, osvfail= False, tmp_format = "BEAM-DIMAP"):
     
     if tmpdir is not None:
         isExist = os.path.exists(tmpdir)
@@ -38,7 +38,7 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
     scenes = finder(data, [r'^S1[AB].*(SAFE|zip)$'],regex=True, recursive=True, foldermode=1)
     dbfile = f"{tmpdir}/scene.db"
 
-    
+
 
     with Archive(dbfile) as archive:
         archive.insert(scenes)
@@ -89,19 +89,19 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                         IWs=iws,burst_reduce=True, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter=speckfilter, osvPath= osvpath, ref_plain= ref_plain,\
                         filterSizeX= filtersizex, filterSizeY=filtersizey, ml_RgLook= ml_rglook, ml_AzLook=ml_azlook, l2dB_arg= l2db_arg,\
-                        clean_tmpdir=clean_tmpdir, osvFail= osvfail)
+                        clean_tmpdir=clean_tmpdir, osvFail= osvfail, tpm_format= tmp_format)
             
             if coh_proc == True:
                 S1_coh_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_coh, shapefile=shapefile, t_res= res_coh, tmpdir=tmpdir, t_crs= t_crs,  out_format=out_format, gpt_paras=gpt_paras,\
                                   pol= pol, IWs= iws, ext_DEM= ext_dem, ext_DEM_noDatVal=ext_dem_nodatval, ext_Dem_file=ext_dem_file, msk_noDatVal=msk_nodatval,\
                                   ext_DEM_EGM= ext_dem_egm, BGC_demResamp= bgc_demresamp, TC_demResamp= tc_demresamp, cohWinRg= cohwinrg, cohWinAz=cohwinaz, osvPath= osvpath,\
-                                  ml_RgLook= ml_rglook, ml_AzLook= ml_azlook, clean_tmpdir=clean_tmpdir, osvFail= osvfail)
+                                  ml_RgLook= ml_rglook, ml_AzLook= ml_azlook, clean_tmpdir=clean_tmpdir, osvFail= osvfail, tpm_format= tmp_format)
             if ha_proc == True:
                 S1_HA_proc(infiles= grp_by_relOrb[ro], out_dir= outdir_ha, shapefile=shapefile, t_res= res_ha, tmpdir= tmpdir, t_crs= t_crs, out_format=out_format, gpt_paras= gpt_paras,\
                         IWs=iws, ext_DEM=ext_dem, ext_DEM_noDatVal= ext_dem_nodatval, ext_Dem_file= ext_dem_file, msk_noDatVal= msk_nodatval, ext_DEM_EGM= ext_dem_egm,\
                         imgResamp= imgresamp, demResamp=demresamp, speckFilter= ha_speckfilter, decomp_win_size= decomp_win_size, decompFeats=decompfeats,\
                         ml_RgLook= ml_rglook, ml_AzLook=ml_azlook,osvPath= osvpath, osvFail= osvfail,\
-                        clean_tmpdir=clean_tmpdir)
+                        clean_tmpdir=clean_tmpdir, tpm_format= tmp_format)
 
              ##clean tmp folder to avoid overwriting errors even if exception is valid
         if clean_tmpdir: 
