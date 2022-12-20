@@ -117,28 +117,6 @@ def get_config(config_file, proc_section):
             v = int(v)
         if k == 'res_ha':
             v = int(v)
-        
-        
-        if k == 'outdir_int':
-            if v == "None":
-                v =  None
-            else:
-                v = v
-        if k == 'outdir_coh':
-            if v == "None":
-                v =  None
-            else:
-                v = v
-        if k == 'outdir_ha':
-            if v == "None":
-                v =  None
-            else:
-                v = v
-        if k == 'tmpdir':
-            if v == "None":
-                v =  None
-            else:
-                v = v
         if k == 'ext_dem_file':
             if v == "None":
                 v =  None

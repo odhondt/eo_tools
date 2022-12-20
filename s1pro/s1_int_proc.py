@@ -214,7 +214,12 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         
         ##check if file already exists
 
+        isExist = os.path.exists(out_dir)
+        if not isExist:
+            os.makedirs(out_dir)
+
         out = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC"
+        
         if shapefile is not None:
             aoiname = shapefile.split(".")[0].split('/')[-1]
             out_folder = f'{out_dir}/{aoiname}/{out}'

@@ -10,6 +10,7 @@ from shapely.geometry import box, Polygon
 from tqdm import tqdm
 from multiprocessing import Pool
 from spatialist import gdalwarp
+from pathlib import Path
 
 from .auxil import get_burst_geometry, remove, group_by_info
 from .s1_coh_proc import S1_coh_proc
@@ -25,23 +26,17 @@ def S1_SLC_proc(data, maxdate = None, mindate = None , shapefile = None, int_pro
                     l2db_arg= True, ref_plain= "gamma",clean_tmpdir= True, osvfail= False):
     
     if tmpdir is not None:
-        isExist = os.path.exists(tmpdir)
-        if not isExist:
-            os.makedirs(tmpdir)
+        td = Path(tmpdir)
     else:
-        tmpdir= os.path.join(os.getcwd(), "tmp_dim")
-        os.mkdir(tmpdir)
+        tmpdir = os.path.join(os.getcwd(), "tmp_dir")
+        td = Path(tmpdir)
+    td.mkdir(parents=True, exist_ok=True)
     
     
     if shapefile:
         site = Vector(shapefile)
     scenes = finder(data, [r'^S1[AB].*(SAFE|zip)$'],regex=True, recursive=True, foldermode=1)
     dbfile = f"{tmpdir}/scene.db"
-
-    
-
-    with Archive(dbfile) as archive:
-        archive.insert(scenes)
         
     with Archive(dbfile) as archive:
         archive.insert(scenes)
