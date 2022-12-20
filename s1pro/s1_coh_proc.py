@@ -9,12 +9,13 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxil import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                    ext_DEM_EGM= True, BGC_demResamp= "BICUBIC_INTERPOLATION", TC_demResamp= "BILINEAR_INTERPOLATION", osvPath= None,\
-                   cohWinRg= 11, cohWinAz= 3, ml_RgLook= 4, ml_AzLook= 1, firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False):
+                   cohWinRg= 11, cohWinAz= 3, ml_RgLook= 4, ml_AzLook= 1, firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False,
+                   tpm_format = "BEAM-DIMAP"):
     
     """[S1_InSAR_coh_proc]
     function for processing InSAR coherences from S-1 SLC files in SNAP
@@ -83,10 +84,13 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
+    ##specifiy ending of tmp-files
+    if tpm_format == "ZNAP":
+        file_end = ".znap.zip"
+    elif tpm_format == "BEAM-DIMAP":
+        file_end = ".dim"
     ##list of abbreviated month for creation of source Bands string
     month_list= ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    ##specify tmp output format
-    tpm_format= "BEAM-DIMAP"
     ##queck if at least two files are loaded for coh estiamtion
     if len(infiles)==1:
         raise RuntimeError("At least 2 scenes needed for coherence estimation")
@@ -349,12 +353,12 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                 ###import sliceAssemblies according to how many files per time step are needed   
                 if len(fps1) > 1 and len(fps2) == 1:
-                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv.dim"))
+                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv"+file_end))
                 elif len(fps1) == 1 and len(fps2) > 1:
-                    slcAs_fps_ms= glob.glob(os.path.join(tmpdir, "*"+"_SLC_ms.dim"))
+                    slcAs_fps_ms= glob.glob(os.path.join(tmpdir, "*"+"_SLC_ms" + file_end))
                 elif len(fps1) > 1 and len(fps2) > 1: 
-                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv.dim"))
-                    slcAs_fps_ms= glob.glob(tmpdir+"/"+"*"+"_SLC_ms.dim")
+                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv"+ file_end))
+                    slcAs_fps_ms= glob.glob(tmpdir+"/"+"*"+"_SLC_ms"+ file_end)
 
             ##start coherence estimation for each IW
             for p in pol:
@@ -446,7 +450,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                     workflow_coh.write("Coh_tmp_prep_graph")
                     execute('Coh_tmp_prep_graph.xml', gpt_args= gpt_paras)
 
-                tmp_fps= glob.glob(tmpdir+"/"+"S1_relOrb_"+ str(relOrbs[0])+"*"+p +"_"+ date2+"_"+ date1+"_TPD.dim")
+                tmp_fps= glob.glob(tmpdir+"/"+"S1_relOrb_"+ str(relOrbs[0])+"*"+p +"_"+ date2+"_"+ date1+"_TPD"+ file_end)
 
                 if len(IWs) == 1:
                     tpm_source= "coh_"+ IWs[0]+ "_"+ p+ "_"+ dates[1] +"_"+ dates[0]

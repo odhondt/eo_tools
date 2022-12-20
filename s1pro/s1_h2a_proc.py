@@ -9,7 +9,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxil import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None,\
                     IWs= ["IW1", "IW2", "IW3"], decompFeats= ["Alpha", "Entropy", "Anisotropy"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
@@ -209,7 +209,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 workflow.insert_node(read1)
                 
                 if shapefile:
-                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths= [ x.lower() for x in IWs], polarization = 'vv')
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -229,7 +229,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                     readers.append(readn.id)
 
                     if shapefile:
-                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                        bursts = get_burst_geometry(fps_grp[r], target_subswaths = [ x.lower() for x in IWs], polarization = "vv")
                         polygon = gpd.read_file(shapefile)
                         inter = bursts.overlay(polygon, how='intersection')
                         iw_list = inter['subswath'].unique()
@@ -262,7 +262,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             else:
                 HA_proc_in = fps_grp[0]
                 if shapefile:
-                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = ['iw1', 'iw2', 'iw3'], polarization = 'vv')
+                    bursts = get_burst_geometry(fps_grp[0], target_subswaths = [ x.lower() for x in IWs], polarization = "vv")
                     polygon = gpd.read_file(shapefile)
                     inter = bursts.overlay(polygon, how='intersection')
                     iw_list = inter['subswath'].unique()
@@ -403,7 +403,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 workflow_tpm.insert_node(tc, before= last_node)
                 last_node= tc.id
 
-                out = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC"
+                out = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_HA_" + date_str + "_Orb_Cal_Deb_ML_Spk_TC"
                 if shapefile is not None:
                     out_folder = f'{tmpdir}/{out}'
                 else:
