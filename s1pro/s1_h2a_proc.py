@@ -257,7 +257,7 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
                 workflow.write(f"{graph_dir}/HA_slc_prep_graph")
                 gpt(f"{graph_dir}/HA_slc_prep_graph.xml", gpt_args= gpt_paras, tmpdir = tmpdir)
 
-                HA_proc_in= slcAs_out+".znap.zip"
+                HA_proc_in= slcAs_out+ file_end
             ##pass file path if no sliceAssembly required
             else:
                 HA_proc_in = fps_grp[0]
