@@ -9,7 +9,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxils import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None,\
                     IWs= ["IW1", "IW2", "IW3"], decompFeats= ["Alpha", "Entropy", "Anisotropy"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
@@ -65,6 +65,8 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             delete tmpdir, default true
         osvPath: None
             specify path to locally stored OSVs, if none default OSV path of SNAP is set
+        tpm_format: str
+            specify the SNAP format for temporary files: "BEAM-DIMAP" or "ZNAP". "BEAM-DIMAP" default.
         Returns
         -------
         Raster files of selected output format for selected H-alpha features
@@ -83,6 +85,11 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
 
     ##define formatName for reading zip-files
     formatName= "SENTINEL-1"
+    ##specify ending of tmp-files
+    if tpm_format == "ZNAP":
+        file_end = ".znap.zip"
+    elif tpm_format == "BEAM-DIMAP":
+        file_end = ".dim"
     ##check if a single IW or consecutive IWs are selected
     if isinstance(IWs, str):
         IWs= [IWs]
@@ -94,7 +101,6 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
     if isinstance(infiles, str):
         info= pyroSAR.identify(infiles)
         fps_lst=[info.scene]
-        info_ms= info
         info= [info]
     elif isinstance(infiles, list):
         info= pyroSAR.identify_many(infiles, sortkey='start')
@@ -449,8 +455,10 @@ def S1_HA_proc(infiles, out_dir= None, tmpdir= None, shapefile = None, t_res=20,
             
         #exception for SNAP errors & creating error log    
         except RuntimeError as e:
-            print(str(e))
-            with open("S1_HA_proc_ERROR_"+date_str+".log", "w") as logf:
+            isExist = os.path.exists(f'{tmpdir}/error_logs')
+            if not isExist:
+                os.makedirs(f'{tmpdir}/error_logs')
+            with open(f'{tmpdir}/error_logs/S1_HA_proc_ERROR_{date_str}.log', 'w') as logf:
                 logf.write(str(e))
             
         ##clean tmp folder to avoid overwriting errors even if exception is valid

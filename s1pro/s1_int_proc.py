@@ -10,7 +10,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from .auxils import get_burst_geometry, remove
+from auxils import get_burst_geometry, remove
 
 
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\
@@ -71,6 +71,8 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             delete tmpdir, default true
         osvPath: None
             specify path to locally stored OSVs, if none default OSV path of SNAP is set
+        tpm_format: str
+            specify the SNAP format for temporary files: "BEAM-DIMAP" or "ZNAP". "BEAM-DIMAP" default.
         Returns
         -------
         Raster files of selected output format for selected H-alpha features
@@ -217,12 +219,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
         
         ##check if file already exists
 
-        isExist = os.path.exists(out_dir)
-        if not isExist:
-            os.makedirs(out_dir)
-
         out = sensor+"_"+ orbit+ "_relOrb_"+ str(relOrb) + "_INT_" + date_str + "_Orb_Cal_Deb_ML_TF_Spk_TC"
-        
         if shapefile is not None:
             aoiname = shapefile.split(".")[0].split('/')[-1]
             out_folder = f'{out_dir}/{aoiname}/{out}'
@@ -530,7 +527,7 @@ def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, 
             isExist = os.path.exists(f'{tmpdir}/error_logs')
             if not isExist:
                 os.makedirs(f'{tmpdir}/error_logs')
-            with open(f'{tmpdir}/error_logs/S1_INT_proc_ERROR_{date_str}.log') as logf:
+            with open(f'{tmpdir}/error_logs/S1_INT_proc_ERROR_{date_str}.log', 'w') as logf:
                 logf.write(str(e))
 
         ##clean tmp folder to avoid overwriting errors even if exception is valid
