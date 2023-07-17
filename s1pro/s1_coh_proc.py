@@ -355,12 +355,17 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                 ###import sliceAssemblies according to how many files per time step are needed   
                 if len(fps1) > 1 and len(fps2) == 1:
-                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv"+file_end))
+                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+date1+"_SLC_slv"+file_end))
                 elif len(fps1) == 1 and len(fps2) > 1:
-                    slcAs_fps_ms= glob.glob(os.path.join(tmpdir, "*"+"_SLC_ms" + file_end))
+                    slcAs_fps_ms= glob.glob(os.path.join(tmpdir, "*"+date2+"_SLC_ms" + file_end))
                 elif len(fps1) > 1 and len(fps2) > 1: 
-                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+"_SLC_slv"+ file_end))
-                    slcAs_fps_ms= glob.glob(tmpdir+"/"+"*"+"_SLC_ms"+ file_end)
+                    slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+date1+"_SLC_slv"+ file_end))
+                    slcAs_fps_ms= glob.glob(tmpdir+"/"+"*"+date2+"_SLC_ms"+ file_end)
+
+                if len(slcAs_fps_slv) > 1:
+                    slcAs_fps_slv = slcAs_fps_slv[0]
+                if len(slcAs_fps_ms) > 1:
+                    slcAs_fps_ms = slcAs_fps_ms[0]
 
             ##start coherence estimation for each IW
             for p in pol:
