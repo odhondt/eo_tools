@@ -8,6 +8,7 @@ import glob
 import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
+import pathlib
 
 from auxils import get_burst_geometry, remove
 
@@ -313,8 +314,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                             minb = iw_inter['burst'].min()
                             maxb = iw_inter['burst'].max()
                             iw_bursts[ib] =  [minb, maxb]
-
-
+                    
                     for r in range(1, len(fps_paired[fp])):
                         readn = parse_node('Read')
                         readn.parameters['file'] = fps_paired[fp][r]
@@ -362,10 +362,10 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                     slcAs_fps_slv= glob.glob(os.path.join(tmpdir, "*"+date1+"_SLC_slv"+ file_end))
                     slcAs_fps_ms= glob.glob(tmpdir+"/"+"*"+date2+"_SLC_ms"+ file_end)
 
-                if len(slcAs_fps_slv) > 1:
-                    slcAs_fps_slv = slcAs_fps_slv[0]
-                if len(slcAs_fps_ms) > 1:
-                    slcAs_fps_ms = slcAs_fps_ms[0]
+                #if len(slcAs_fps_slv) > 1:
+                    #slcAs_fps_slv = slcAs_fps_slv[0]
+                #if len(slcAs_fps_ms) > 1:
+                    #slcAs_fps_ms = slcAs_fps_ms[0]
 
             ##start coherence estimation for each IW
             for p in pol:
@@ -382,7 +382,13 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                     read1= parse_node("Read")
                     read1.parameters["file"]= slcAs_fps_ms
-                    if len(fps2) == 1:
+                    
+                    if isinstance(slcAs_fps_ms,list):
+                        query_fps_ms = slcAs_fps_ms[0]
+                    else:
+                        query_fps_ms = slcAs_fps_ms
+
+                    if pathlib.Path(query_fps_ms).suffix != file_end:
                         read1.parameters["formatName"]= formatName
 
                     workflow_coh.insert_node(read1)
@@ -401,9 +407,15 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                     workflow_coh.insert_node(ts, before= aof.id)
 
+                    if isinstance(slcAs_fps_slv,list):
+                        query_fps_slv = slcAs_fps_slv[0]
+                    else:
+                        query_fps_slv = slcAs_fps_slv
+
                     read2 = parse_node('Read')
                     read2.parameters['file'] = slcAs_fps_slv
-                    if len(fps1) == 1:
+                    
+                    if pathlib.Path(query_fps_slv).suffix != file_end:
                         read2.parameters['formatName'] = formatName
 
                     workflow_coh.insert_node(read2)
@@ -536,7 +548,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                 ##write graph and execute graph
                 workflow_tpm.write("Coh_TPM_continued_proc_graph")
-
+                #breakpoint()    
                 execute('Coh_TPM_continued_proc_graph.xml', gpt_args= gpt_paras)
 
                 if shapefile is not None:
@@ -567,7 +579,7 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
             isExist = os.path.exists(f'{tmpdir}/error_logs')
             if not isExist:
                 os.makedirs(f'{tmpdir}/error_logs')
-            with open(f'{tmpdir}/error_logs/S1_INT_proc_ERROR_{datetime2+ "_"+ datetime1}.log', 'w') as logf:
+            with open(f'{tmpdir}/error_logs/S1_COH_proc_ERROR_{datetime2+ "_"+ datetime1}.log', 'w') as logf:
                 logf.write(str(e))
             ##clean tmp folder to avoid overwriting errors even if exception is valid
          ##clean tmp folder to avoid overwriting errors even if exception is valid
