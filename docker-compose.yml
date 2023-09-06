@@ -7,6 +7,8 @@ services:
       build: 
         context: .
         dockerfile: Dockerfile
+      environment:
+        PYTHONPATH: /eo_tools
       volumes:
         - ${HOME}/eo_tools:/eo_tools
         # - .:/workspace

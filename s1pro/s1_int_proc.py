@@ -10,7 +10,7 @@ import datetime
 import geopandas as gpd
 from spatialist import gdalwarp
 
-from auxils import get_burst_geometry, remove
+from .auxils import get_burst_geometry, remove
 
 
 def S1_INT_proc(infiles, out_dir= None, tmpdir= None, shapefile=None, t_res=20, t_crs=32633,  out_format= "GeoTIFF", gpt_paras= None, pol= 'full',\

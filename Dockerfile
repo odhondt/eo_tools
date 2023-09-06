@@ -25,13 +25,3 @@ RUN micromamba create -f  environment.yaml
 RUN echo "micromamba activate s1_proc" >> ~/.bashrc
 
 RUN micromamba activate s1_proc
-
-WORKDIR /app/
-COPY . /app/
-RUN source ~/.bashrc && python3 -m pip install .
-
-# RUN conda install -p /root/micromamba/envs/s1_proc ipykernel --update-deps --force-reinstall
-
-# COPY docker/entrypoint.sh entrypoint.sh
-# RUN chmod +x entrypoint.sh
-# ENTRYPOINT ["/app/entrypoint.sh"]
