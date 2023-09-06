@@ -30,7 +30,8 @@ WORKDIR /app/
 COPY . /app/
 RUN source ~/.bashrc && python3 -m pip install .
 
+# RUN conda install -p /root/micromamba/envs/s1_proc ipykernel --update-deps --force-reinstall
 
-COPY docker/entrypoint.sh entrypoint.sh
-RUN chmod +x entrypoint.sh
-ENTRYPOINT ["/app/entrypoint.sh"]
+# COPY docker/entrypoint.sh entrypoint.sh
+# RUN chmod +x entrypoint.sh
+# ENTRYPOINT ["/app/entrypoint.sh"]

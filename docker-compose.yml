@@ -1,0 +1,21 @@
+---
+version: "3.7"
+
+services:
+
+  eo_tools:
+      build: 
+        context: .
+        dockerfile: Dockerfile
+      volumes:
+        - ${HOME}/eo_tools:/eo_tools
+        # - .:/workspace
+        # - /home/olivier/code/sareo/python:/sareo/python/
+        # - /home/olivier/code/sareo/notebooks:/sareo/notebooks
+        - ${HOME}/data:/data
+        # Overrides default command so things don't shut down after the process ends.
+      command: /bin/sh -c "while sleep 1000; do :; done"  
+
+      # Runs app on the same network as the service container, allows "forwardPorts" in devcontainer.json function.
+      # network_mode: service:another-service
+      # restart: unless-stopped

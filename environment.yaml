@@ -13,3 +13,4 @@ dependencies:
   - geopandas
   - pandas
   - asf_search
+  - ipykernel

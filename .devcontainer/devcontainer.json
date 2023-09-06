@@ -1,0 +1,11 @@
+{
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "eo_tools",
+    "workspaceFolder": "/eo_tools",
+
+    "customizations": {
+        "vscode": {
+          "extensions": ["ms-python.python", "ms-python.vscode-pylance", "ms-toolsai.jupyter"]
+        }
+      }
+}
