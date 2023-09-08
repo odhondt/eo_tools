@@ -1,11 +1,13 @@
 name: s1_proc
 channels:
   - conda-forge
+  - terradue
   - defaults
 dependencies:
   - python>=3.8
   - tqdm
   - gdal
+  - rasterio
   - pyroSAR
   - spatialist
   - pip
@@ -14,3 +16,7 @@ dependencies:
   - pandas
   - asf_search
   - ipykernel
+  - black
+  - rio-cogeo
+  - snapista
+  - scikit-image
