@@ -1,5 +1,6 @@
 import pyroSAR
 from pyroSAR.snap.auxil import parse_recipe, parse_node, gpt, execute
+from pyroSAR.snap.auxil import groupbyWorkers
 from pyroSAR import  identify_many
 from spatialist.ancillary import finder
 from spatialist import crsConvert, Vector, Raster
@@ -467,6 +468,9 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
 
                     workflow_coh.insert_node(write_coh, before= tpd.id)
                     workflow_coh.write("Coh_tmp_prep_graph")
+                    
+                    # groups = groupbyWorkers('Coh_tmp_prep_graph.xml', n=2)
+                    # gpt('Coh_tmp_prep_graph.xml', groups=groups, tmpdir='/data/tmp/')
                     execute('Coh_tmp_prep_graph.xml', gpt_args= gpt_paras)
 
                 tmp_fps= glob.glob(tmpdir+"/"+"S1_relOrb_"+ str(relOrbs[0])+"*"+p +"_"+ date2+"_"+ date1+"_TPD"+ file_end)
@@ -549,6 +553,9 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                 ##write graph and execute graph
                 workflow_tpm.write("Coh_TPM_continued_proc_graph")
                 #breakpoint()    
+
+                # groups = groupbyWorkers('Coh_TPM_continued_proc_graph.xml', n=2)
+                # gpt('Coh_TPM_continued_proc_graph.xml', groups=groups, tmpdir='/data/tmp/')
                 execute('Coh_TPM_continued_proc_graph.xml', gpt_args= gpt_paras)
 
                 if shapefile is not None:
