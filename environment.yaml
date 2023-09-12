@@ -1,7 +1,7 @@
 name: s1_proc
 channels:
   - conda-forge
-  - terradue
+  # - terradue
   - defaults
 dependencies:
   - python>=3.8
@@ -18,5 +18,5 @@ dependencies:
   - ipykernel
   - black
   - rio-cogeo
-  - snapista
+  # - snapista
   - scikit-image
