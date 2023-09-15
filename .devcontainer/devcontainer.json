@@ -1,18 +1,23 @@
 {
-    "dockerComposeFile": "../docker-compose.yml",
-    "service": "eo_tools",
-    "workspaceFolder": "/eo_tools",
-
-    "customizations": {
-        "vscode": {
-          "extensions": [
-            "ms-python.python",
-            "ms-python.vscode-pylance",
-            "ms-python.autopep8",
-            "ms-python.black-formatter",
-            "ms-toolsai.jupyter",
-            "njpwerner.autodocstring"
-        ]
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "eo_tools",
+  "workspaceFolder": "/eo_tools",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        // "ms-python.autopep8",
+        "ms-toolsai.jupyter",
+        "njpwerner.autodocstring"
+      ],
+      "settings": {
+        "git.ignoreLimitWarning": true,
+        "[python]": {
+          "editor.formatOnSave": true
         }
+        
       }
+    }
+  }
 }
