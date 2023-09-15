@@ -4,17 +4,20 @@
 - [ ] look for scenes intersecting an AOI between 2 dates
 - [ ] group scenes by orbit and footprint (coherence will be only computed for fully overlapping scenes)
 
-## start from a predefined graph
 
 ## processing
-- [ ] check if parameters for coregistration are correct (dem, interpolation...)
-- [ ] check if full footprint correspond (not only orbits)
-- [ ] allow processing burst subsets
-- [ ] change operation order (split before apply orbit)
+- [ ] use a pre-defined graph (one subswath and polarization)
+- [ ] simple version: takes master and slave assuming they are from the same orbit / slice
+- [ ] polarization list
+- [ ] return one file per polarization
+- [ ] more complex version: takes a dataframe of filenames and use the groups for coherence / ifgs
+- [x] allow processing burst subsets
+- [x] change operation order (split before apply orbit)
 - [ ] add interferogam option
-- [ ] allow groupByWorkers processing
-- [ ] geocode independently all IW, stitch in the end with rasterio
+- [x] allow groupByWorkers processing
+- [x] geocode independently all IW, stitch in the end with rasterio
+- [ ] improved coregistration (ESD, etc)
 
 ## display
 
-- [ ] plot raster on top of folium map
+- [ ] plot raster on top of folium map, use tile server
