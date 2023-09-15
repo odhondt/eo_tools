@@ -141,7 +141,7 @@
         					<imgResamplingMethod>BILINEAR_INTERPOLATION</imgResamplingMethod>					
         					<pixelSpacingInMeter>20</pixelSpacingInMeter>					
         					<pixelSpacingInDegree>0</pixelSpacingInDegree>					
-        					<mapProjection>32633</mapProjection>					
+        					<mapProjection>GEOGCS["WGS84(DD)",DATUM["WGS84",SPHEROID["WGS84", 6378137.0, 298.257223563]],PRIMEM["Greenwich", 0.0],UNIT["degree", 0.017453292519943295],AXIS["Geodetic longitude", EAST],AXIS["Geodetic latitude", NORTH]]</mapProjection>					
         					<alignToStandardGrid>false</alignToStandardGrid>					
         					<standardGridOriginX>0</standardGridOriginX>					
         					<standardGridOriginY>0</standardGridOriginY>					
