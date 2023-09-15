@@ -537,7 +537,8 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                 tc.parameters["demResamplingMethod"]= TC_demResamp
                 tc.parameters["imgResamplingMethod"]= TC_demResamp
                 tc.parameters["pixelSpacingInMeter"]= t_res
-                tc.parameters["mapProjection"]= t_crs
+                tc.parameters["mapProjection"]= epsg
+                # tc.parameters["mapProjection"]= t_crs
                 tc.parameters["saveSelectedSourceBand"]= True
                 tc.parameters["outputComplex"]= False
                 tc.parameters["nodataValueAtSea"]= msk_noDatVal
