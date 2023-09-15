@@ -5,7 +5,14 @@
 
     "customizations": {
         "vscode": {
-          "extensions": ["ms-python.python", "ms-python.vscode-pylance", "ms-toolsai.jupyter"]
+          "extensions": [
+            "ms-python.python",
+            "ms-python.vscode-pylance",
+            "ms-python.autopep8",
+            "ms-python.black-formatter",
+            "ms-toolsai.jupyter",
+            "njpwerner.autodocstring"
+        ]
         }
       }
 }
