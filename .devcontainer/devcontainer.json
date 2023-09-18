@@ -4,19 +4,24 @@
   "workspaceFolder": "/eo_tools",
   "customizations": {
     "vscode": {
-      "extensions": [
-        "ms-python.python",
-        "ms-python.vscode-pylance",
-        // "ms-python.autopep8",
-        "ms-toolsai.jupyter",
-        "njpwerner.autodocstring"
-      ],
-      "settings": {
-        "git.ignoreLimitWarning": true,
-        "[python]": {
-          "editor.formatOnSave": true
-        }
-        
+        "extensions": [
+          "ms-python.python",
+          // "ms-python.vscode-pylance",
+          // "ms-python.pylint",
+          // "ms-python.flake8",
+          "ms-python.isort",
+          // "ms-python.autopep8",
+          "ms-python.black-formatter",
+          "ms-toolsai.jupyter",
+          "njpwerner.autodocstring"
+        ],
+        "settings": {
+          "git.ignoreLimitWarning": true,
+          // "python.formatting.provider": "none",
+          "[python]": {
+            "editor.defaultFormatter": "ms-python.black-formatter",
+            "editor.formatOnSave": true
+          }
       }
     }
   }
