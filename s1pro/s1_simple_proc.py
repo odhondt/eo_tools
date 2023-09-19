@@ -1,7 +1,7 @@
 from pyroSAR.snap.auxil import Workflow, gpt, groupbyWorkers
 from pyroSAR import identify
 
-# import geopandas as gpd
+import os
 import rasterio as rio
 import numpy as np
 from rasterio import merge, mask
@@ -13,7 +13,17 @@ from s1pro.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
 
-def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
+
+def S1_simple_proc(
+    file_mst,
+    file_slv,
+    out_dir,
+    tmp_dir,
+    shp=None,
+    pol="full",
+    clear_tmp_files=True,
+    erosion_width=15,
+):
     graph_path = "../graph/TOPSAR_coh_geocode_IW_to_geotiff.xml"
 
     # retrieve burst geometries
@@ -29,12 +39,12 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
     gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
 
     # identify corresponding subswaths
-    sel_subsw_mst = gdf_burst_mst["subswath"].unique()
-    sel_subsw_slv = gdf_burst_slv["subswath"].unique()
-    unique_subswaths = sel_subsw_mst.append(sel_subsw_slv).unique()
+    sel_subsw_mst = gdf_burst_mst["subswath"]
+    sel_subsw_slv = gdf_burst_slv["subswath"]
+    unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
 
-    # check that polarization is correct 
-    info_mst = identify(file_mst, sortkey="start")
+    # check that polarization is correct
+    info_mst = identify(file_mst)
     if isinstance(pol, str):
         if pol == "full":
             pol = info_mst.polarizations
@@ -53,20 +63,20 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
     info_slv = identify(file_slv)
     meta_mst = info_mst.scanMetadata()
     meta_slv = info_slv.scanMetadata()
-    slnum = meta_mst['sliceNumber']
-    orbnum = meta_mst['orbitNumber_rel']
-    if meta_slv['sliceNumber'] != slnum:
-        raise ValueError('Images from two different slices')
-    if meta_slv['orbitNumber_rel'] != orbnum:
-        raise ValueError('Images from two different orbits')
-    datestr_mst = meta_mst['start']
-    datestr_slv = meta_slv['start']
+    slnum = meta_mst["sliceNumber"]
+    orbnum = meta_mst["orbitNumber_rel"]
+    if meta_slv["sliceNumber"] != slnum:
+        raise ValueError("Images from two different slices")
+    if meta_slv["orbitNumber_rel"] != orbnum:
+        raise ValueError("Images from two different orbits")
+    datestr_mst = meta_mst["start"]
+    datestr_slv = meta_slv["start"]
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
     date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
-    calendar_mst = f'{date_mst.day}{calendar.month_abbr[date_mst.month]}{date_mst.year}'
-    calendar_slv = f'{date_slv.day}{calendar.month_abbr[date_slv.month]}{date_slv.year}'
+    calendar_mst = f"{date_mst.day}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
+    calendar_slv = f"{date_slv.day}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
 
-    out_names = []
+    tmp_names = []
     for p in pol:
         for subswath in unique_subswaths:
             # setting graph parameters
@@ -78,9 +88,8 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
             wfl["TOPSAR-Split"].parameters["subswath"] = subswath
             wfl["TOPSAR-Split(2)"].parameters["subswath"] = subswath
 
-            wfl["TOPSAR-Split"].parameters["selectedPolarisation"] = p
-            wfl["TOPSAR-Split(2)"].parameters["selectedPolarisation"] = p
-            
+            wfl["TOPSAR-Split"].parameters["selectedPolarisations"] = p
+            wfl["TOPSAR-Split(2)"].parameters["selectedPolarisations"] = p
 
             bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
                 "burst"
@@ -97,21 +106,22 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
             burst_slv_max = bursts_slv.max()
             wfl["TOPSAR-Split(2)"].parameters["firstBurstIndex"] = burst_slv_min
             wfl["TOPSAR-Split(2)"].parameters["lastBurstIndex"] = burst_slv_max
+            wfl["TOPSAR-Deburst"].parameters["selectedPolarisations"] = p
 
-            out_name = f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}_slnum_{slnum}"
-            out_names.append(out_name)
-            wfl["Write"].parameters["file"] = f"{out_dir}/{out_name}_geo.tif"
-            wfl.write("/tmp/graph.xml")
-            grp = groupbyWorkers("/tmp/graph.xml", n=1)
-            gpt("/tmp/graph.xml", groups=grp, tmpdir="/data/tmp/")
+            tmp_name = f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
+            tmp_names.append(tmp_name)
+            wfl["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_geo.tif"
+            wfl.write(f"{tmp_dir}/graph_coh.xml")
+            grp = groupbyWorkers(f"{tmp_dir}/graph_coh.xml", n=1)
+            gpt(f"{tmp_dir}/graph_coh.xml", groups=grp, tmpdir=tmp_dir)
 
             print(f"Removing dark edges after terrain correction")
-            with rio.open(f"{out_dir}/{out_name}_geo.tif", "r") as src:
+            with rio.open(f"{tmp_dir}/{tmp_name}_geo.tif", "r") as src:
                 prof = src.profile.copy()
                 prof.update({"driver": "GTiff", "nodata": 0})
-                struct = np.ones((15, 15))
+                struct = np.ones((erosion_width, erosion_width))
                 with rio.open(
-                    f"{out_dir}/{out_name}_geo_border.tif", "w", **prof
+                    f"{tmp_dir}/{tmp_name}_geo_border.tif", "w", **prof
                 ) as dst:
                     for i in range(1, prof["count"] + 1):
                         band_src = src.read(i)
@@ -120,51 +130,69 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
                         band_dst = band_src * msk_dst
                         dst.write(band_dst, i)
 
-    print("Merging and cropping selected subswaths")
-    to_merge = [
-        rio.open(f"{out_dir}/{out_name}_geo_border.tif") for out_name in out_names
-    ]
-    arr_merge, trans_merge = merge.merge(to_merge)
-    with rio.open(f"{out_dir}/{out_names[0]}_geo_border.tif") as src:
-        prof = src.profile.copy()
-    prof.update(
-        {
-            "height": arr_merge.shape[1],
-            "width": arr_merge.shape[2],
-            "transform": trans_merge,
-            "nodata": 0,
-        }
-    )
+        print("Merging and cropping current subswath")
+        to_merge = [
+            rio.open(f"{tmp_dir}/{tmp_name}_geo_border.tif") for tmp_name in tmp_names
+        ]
+        arr_merge, trans_merge = merge.merge(to_merge)
+        with rio.open(f"{tmp_dir}/{tmp_names[0]}_geo_border.tif") as src:
+            prof = src.profile.copy()
+        prof.update(
+            {
+                "height": arr_merge.shape[1],
+                "width": arr_merge.shape[2],
+                "transform": trans_merge,
+                "nodata": 0,
+            }
+        )
 
-    # crop without writing intermediate file
-    with MemoryFile() as memfile:
-        with memfile.open(**prof) as mem:
-            # Populate the input file with numpy array
-            mem.write(arr_merge)
-            arr_crop, trans_crop = mask.mask(mem, [shp], crop=True)
-            prof_crop = mem.profile.copy()
-            prof_crop.update(
-                {
-                    "transform": trans_crop,
-                    "width": arr_crop.shape[2],
-                    "height": arr_crop.shape[1],
-                }
+        # crop without writing intermediate file
+        if shp is not None:
+            with MemoryFile() as memfile:
+                with memfile.open(**prof) as mem:
+                    # Populate the input file with numpy array
+                    mem.write(arr_merge)
+                    arr_crop, trans_crop = mask.mask(mem, [shp], crop=True)
+                    prof_out = mem.profile.copy()
+                    prof_out.update(
+                        {
+                            "transform": trans_crop,
+                            "width": arr_crop.shape[2],
+                            "height": arr_crop.shape[1],
+                        }
+                    )
+        else:
+            prof_out = prof
+
+        # write as COG
+        if shp is not None:
+            out_name = (
+                f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
             )
-
-    # write as COG
-    out_merged_name = f"coh_{pol}_{calendar_mst}_{calendar_slv}_slnum_{slnum}_merged_crop"
-    with MemoryFile() as memfile:
-        with memfile.open(**prof_crop) as mem:
-            mem.write(arr_crop)
-            cog_prof = cog_profiles.get("deflate")
-            cog_translate(
-                mem,
-                f"{out_dir}/{out_merged_name}.tif",
-                cog_prof,
-                in_memory=True,
-                quiet=True,
+        else:
+            out_name = (
+                f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
             )
+        with MemoryFile() as memfile:
+            with memfile.open(**prof_out) as mem:
+                if shp is not None:
+                    mem.write(arr_crop)
+                else:
+                    mem.write(arr_merge)
+                cog_prof = cog_profiles.get("deflate")
+                cog_translate(
+                    mem,
+                    f"{out_dir}/{out_name}.tif",
+                    cog_prof,
+                    in_memory=True,
+                    quiet=True,
+                )
 
+        if clear_tmp_files: 
+            for tmp_name in tmp_names:
+                os.remove(f"{tmp_dir}/{tmp_name}_geo.tif") 
+                os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif") 
+                os.remove(f"{tmp_dir}/graph_coh.xml") 
 
 # TODO:
 # - optional crop
@@ -175,3 +203,4 @@ def s1_insar_proc(file_mst, file_slv, out_dir, tmp_dir, shp=None, pol="full"):
 # - interferogram
 # - add some parameters
 # - precise orbits option
+# - ESD (optional)
