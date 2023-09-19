@@ -166,13 +166,9 @@ def S1_simple_proc(
 
         # write as COG
         if shp is not None:
-            out_name = (
-                f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
-            )
+            out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
         else:
-            out_name = (
-                f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
-            )
+            out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
         with MemoryFile() as memfile:
             with memfile.open(**prof_out) as mem:
                 if shp is not None:
@@ -188,11 +184,12 @@ def S1_simple_proc(
                     quiet=True,
                 )
 
-        if clear_tmp_files: 
+        if clear_tmp_files:
             for tmp_name in tmp_names:
-                os.remove(f"{tmp_dir}/{tmp_name}_geo.tif") 
-                os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif") 
-                os.remove(f"{tmp_dir}/graph_coh.xml") 
+                os.remove(f"{tmp_dir}/{tmp_name}_geo.tif")
+                os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif")
+                os.remove(f"{tmp_dir}/graph_coh.xml")
+
 
 # TODO:
 # - optional crop
