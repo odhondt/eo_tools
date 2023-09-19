@@ -35,8 +35,9 @@ def S1_simple_proc(
     )
 
     # find what subswaths and bursts intersect AOI
-    gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
-    gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
+    if shp is not None:
+        gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
+        gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
 
     # identify corresponding subswaths
     sel_subsw_mst = gdf_burst_mst["subswath"]
@@ -60,6 +61,7 @@ def S1_simple_proc(
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
+    # do a check on orbits and slice
     info_slv = identify(file_slv)
     meta_mst = info_mst.scanMetadata()
     meta_slv = info_slv.scanMetadata()
@@ -69,6 +71,8 @@ def S1_simple_proc(
         raise ValueError("Images from two different slices")
     if meta_slv["orbitNumber_rel"] != orbnum:
         raise ValueError("Images from two different orbits")
+
+    # parse dates
     datestr_mst = meta_mst["start"]
     datestr_slv = meta_slv["start"]
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
@@ -76,8 +80,18 @@ def S1_simple_proc(
     calendar_mst = f"{date_mst.day}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
     calendar_slv = f"{date_slv.day}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
 
-    tmp_names = []
+    # check availability of orbit state vector file
+    orbit_type = "Sentinel Precise (Auto Download)"
+    match = info_mst.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
+    match2 = info_slv.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
+    if match is None or match2 is None:
+        print("Precise orbits not available, using restituted")
+        info_mst.getOSV(osvType="RES")  # , osvdir=osvPath)
+        info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
+        orbit_type = "Sentinel Restituted (Auto Download)"
+
     for p in pol:
+        tmp_names = []
         for subswath in unique_subswaths:
             # setting graph parameters
             wfl = Workflow(graph_path)
@@ -106,6 +120,10 @@ def S1_simple_proc(
             burst_slv_max = bursts_slv.max()
             wfl["TOPSAR-Split(2)"].parameters["firstBurstIndex"] = burst_slv_min
             wfl["TOPSAR-Split(2)"].parameters["lastBurstIndex"] = burst_slv_max
+
+            wfl["Apply-Orbit-File"].parameters["orbitType"] = orbit_type
+            wfl["Apply-Orbit-File(2)"].parameters["orbitType"] = orbit_type
+
             wfl["TOPSAR-Deburst"].parameters["selectedPolarisations"] = p
 
             tmp_name = f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
@@ -185,19 +203,18 @@ def S1_simple_proc(
                 )
 
         if clear_tmp_files:
+            os.remove(f"{tmp_dir}/graph_coh.xml")
             for tmp_name in tmp_names:
                 os.remove(f"{tmp_dir}/{tmp_name}_geo.tif")
                 os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif")
-                os.remove(f"{tmp_dir}/graph_coh.xml")
 
 
 # TODO:
-# - optional crop
-# - remove temp files
-# - name files with dates (check if band name is in first geotiff)
 # - gpt options (?)
 # - subswaths as a parameter
 # - interferogram
+# - write intensities (optional)
 # - add some parameters
-# - precise orbits option
 # - ESD (optional)
+# - break into functions to be reused by other processors if possible
+# - slice assembly (post-process with rio)
