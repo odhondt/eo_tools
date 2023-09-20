@@ -13,6 +13,8 @@ from s1pro.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
 
+# import logging
+
 
 def S1_simple_proc(
     file_mst,
@@ -23,8 +25,15 @@ def S1_simple_proc(
     pol="full",
     clear_tmp_files=True,
     erosion_width=15,
+    apply_ESD=False,
 ):
-    graph_path = "../graph/TOPSAR_coh_geocode_IW_to_geotiff.xml"
+    # detailed debug info
+    # logging.basicConfig(level=logging.DEBUG)
+
+    if apply_ESD:
+        graph_path = "../graph/TOPSAR_esd_coh_geocode_IW_to_geotiff.xml"
+    else:
+        graph_path = "../graph/TOPSAR_coh_geocode_IW_to_geotiff.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
