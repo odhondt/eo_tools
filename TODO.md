@@ -16,8 +16,33 @@
 - [ ] add interferogam option
 - [x] allow groupByWorkers processing
 - [x] geocode independently all IW, stitch in the end with rasterio
-- [ ] improved coregistration (ESD, etc)
+- [x] improved coregistration (ESD, etc)
 - [ ] make graph more generic by adding placeholder
+
+Split graphs into smaller chunks.  
+
+Current graph:  
+Read > TOPS Split > Orbit > Calibration > Back-Geocode > Interferogram > Deburst > MLT > TC > Write
+
+Proposed new graphs 
+Read > TOPS Split > Orbit > Calibration > Back-Geocode > Deburst > Write
+Read > Coherence > Optional Goldstein > (Deburst) > Write
+Read > Interferogram > Optional Goldstein > (Deburst) > Write
+Read > Intensity (BandMath?) > (Deburst) > Write
+Read > MLT > TC > Write
+
+According to Step forum: https://forum.step.esa.int/t/topsar-deburst-sequence/20486 debursting can be performed prior to interferogram
+
+In the end we should be able to get 3-4 GeoTIFF images, with only 1 band and COG 
+- Intensity MST
+- Intensity SLV
+- Coherence MST-SLV
+- Phase MST-SLV
+This corresponds to the geocoded elements of a InSAR pseudo-covariance matrix (except for the boxcar of coherence)
+Incoherent CD can be applied to intensities, all these channels can be used as an input to a classifier
+
+
+- [ ] make classes for different steps
 
 ## display
 

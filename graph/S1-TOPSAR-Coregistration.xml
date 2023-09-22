@@ -4,20 +4,20 @@
     <operator>Read</operator>
     <sources/>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>/data/S1/S1A_IW_SLC__1SDV_20230814T180526_20230814T180553_049875_05FFB4_7D92.zip</file>
+        <file>InputMaster</file>
     </parameters>
   </node>
   <node id="Read(2)">
     <operator>Read</operator>
     <sources/>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>/data/S1/S1A_IW_SLC__1SDV_20230814T180526_20230814T180553_049875_05FFB4_7D92.zip</file>
+        <file>InputSlave</file>
     </parameters>
   </node>
   <node id="TOPSAR-Split">
     <operator>TOPSAR-Split</operator>
     <sources>
-      <sourceProduct refid="Read"/>
+        <sourceProduct refid="Read"/>
     </sources>
         <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <subswath>IW2</subswath>
@@ -33,40 +33,78 @@
       <sourceProduct refid="Read(2)"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <subswath>IW2</subswath>
-        <selectedPolarisations>VV</selectedPolarisations>					
-      <firstBurstIndex>1</firstBurstIndex>
-      <lastBurstIndex>9</lastBurstIndex>
-      <wktAoi/>
+        <subswath>IW2</subswath>
+            <selectedPolarisations>VV</selectedPolarisations>					
+            <firstBurstIndex>1</firstBurstIndex>
+        <lastBurstIndex>9</lastBurstIndex>
+        <wktAoi/>
     </parameters>
   </node>
   <node id="Apply-Orbit-File">
     <operator>Apply-Orbit-File</operator>
     <sources>
-      <sourceProduct refid="TOPSAR-Split"/>
+        <sourceProduct refid="TOPSAR-Split"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <orbitType>Sentinel Precise (Auto Download)</orbitType>
-      <polyDegree>3</polyDegree>
-      <continueOnFail>true</continueOnFail>
+        <orbitType>Sentinel Precise (Auto Download)</orbitType>
+        <polyDegree>3</polyDegree>
+        <continueOnFail>true</continueOnFail>
     </parameters>
   </node>
   <node id="Apply-Orbit-File(2)">
     <operator>Apply-Orbit-File</operator>
     <sources>
-      <sourceProduct refid="TOPSAR-Split(2)"/>
+        <sourceProduct refid="TOPSAR-Split(2)"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <orbitType>Sentinel Precise (Auto Download)</orbitType>
-      <polyDegree>3</polyDegree>
-      <continueOnFail>true</continueOnFail>
+        <orbitType>Sentinel Precise (Auto Download)</orbitType>
+        <polyDegree>3</polyDegree>
+        <continueOnFail>true</continueOnFail>
+    </parameters>
+  </node>
+   <node id="Calibration">
+    <operator>Calibration</operator>
+    <sources>
+      <sourceProduct refid="Apply-Orbit-File"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+        <sourceBands/>
+        <auxFile>Latest Auxiliary File</auxFile>
+        <externalAuxFile/>
+        <outputImageInComplex>true</outputImageInComplex>
+        <outputImageScaleInDb>false</outputImageScaleInDb>
+        <createGammaBand>false</createGammaBand>
+        <createBetaBand>false</createBetaBand>
+        <selectedPolarisations/>
+        <outputSigmaBand>true</outputSigmaBand>
+        <outputGammaBand>false</outputGammaBand>
+        <outputBetaBand>false</outputBetaBand>
+    </parameters>
+  </node>
+      <node id="Calibration(2)">
+    <operator>Calibration</operator>
+    <sources>
+        <sourceProduct refid="Apply-Orbit-File(2)"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+        <sourceBands/>
+        <auxFile>Latest Auxiliary File</auxFile>
+        <externalAuxFile/>
+        <outputImageInComplex>true</outputImageInComplex>
+        <outputImageScaleInDb>false</outputImageScaleInDb>
+        <createGammaBand>false</createGammaBand>
+        <createBetaBand>false</createBetaBand>
+        <selectedPolarisations/>
+        <outputSigmaBand>true</outputSigmaBand>
+        <outputGammaBand>false</outputGammaBand>
+        <outputBetaBand>false</outputBetaBand>
     </parameters>
   </node>
   <node id="Back-Geocoding">
     <operator>Back-Geocoding</operator>
     <sources>
-      <sourceProduct refid="Apply-Orbit-File"/>
-      <sourceProduct.1 refid="Apply-Orbit-File(2)"/>
+        <sourceProduct refid="Calibration"/>
+        <sourceProduct.1 refid="Calibration(2)"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <demName>SRTM 1Sec HGT</demName>					
@@ -80,35 +118,10 @@
         <disableReramp>false</disableReramp>	
     </parameters>
   </node>
-
-    <node id="Coherence">			
-            <operator>Coherence</operator>			
-            <sources>					
-                        <sourceProduct refid="Back-Geocoding"/>					
-            </sources>			
-            <parameters class="com.bc.ceres.binding.dom.XppDomElement">					
-                        <cohWinAz>3</cohWinAz>					
-                        <cohWinRg>11</cohWinRg>					
-                        <subtractFlatEarthPhase>true</subtractFlatEarthPhase>					
-                        <srpPolynomialDegree>5</srpPolynomialDegree>					
-                        <srpNumberPoints>501</srpNumberPoints>					
-                        <orbitDegree>3</orbitDegree>					
-                        <squarePixel>true</squarePixel>					
-                        <subtractTopographicPhase>true</subtractTopographicPhase>					
-                        <demName>SRTM 1Sec HGT</demName>					
-                        <externalDEMFile/>					
-                        <externalDEMNoDataValue>-9999</externalDEMNoDataValue>					
-                        <externalDEMApplyEGM>true</externalDEMApplyEGM>					
-                        <tileExtensionPercent>100</tileExtensionPercent>					
-                        <singleMaster>true</singleMaster>					
-            </parameters>			
-    </node>	
-
-
   <node id="TOPSAR-Deburst">
     <operator>TOPSAR-Deburst</operator>
     <sources>
-      <sourceProduct refid="Coherence"/>
+        <sourceProduct refid="Back-Geocoding"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <selectedPolarisations>VV</selectedPolarisations>					
@@ -117,11 +130,11 @@
   <node id="Write">
     <operator>Write</operator>
     <sources>
-      <sourceProduct refid="TOPSAR-Deburst"/>
+        <sourceProduct refid="TOPSAR-Deburst"/>
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>/data/S1/S1A_IW_SLC__1SDV_20230814T180526_20230814T180553_049875_05FFB4_7D92_Orb_Stack_Ifg_Deb.tif</file>
-      <formatName>GeoTIFF-BigTIFF</formatName>
+        <file>Output</file>
+        <formatName>GeoTIFF-BigTIFF</formatName>
     </parameters>
   </node>
   <applicationData id="Presentation">
