@@ -16,6 +16,10 @@ import calendar
 
 from .auxils import remove
 
+import logging
+
+log = logging.getLogger(__name__)
+
 # import logging
 
 
@@ -312,6 +316,8 @@ def S1_insar_proc(
         tmp_names = []
         for subswath in unique_subswaths:
 
+            log.info(f"Processing subswath {subswath} in {p} polarization.")
+
             tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
             tmp_names.append(tmp_name)
 
@@ -321,7 +327,6 @@ def S1_insar_proc(
                 wfl_coreg["Read"].parameters["file"] = file_mst
                 wfl_coreg["Read(2)"].parameters["file"] = file_slv
 
-                print(f"Processing subswath {subswath} in {p} polarization.")
                 wfl_coreg["TOPSAR-Split"].parameters["subswath"] = subswath
                 wfl_coreg["TOPSAR-Split(2)"].parameters["subswath"] = subswath
 
@@ -386,10 +391,11 @@ def S1_insar_proc(
                 grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
                 gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
 
-            print(f"Removing dark edges after terrain correction")
+            log.info(f"Removing dark edges after terrain correction")
             with rio.open(f"{tmp_dir}/{tmp_name}_tc.tif", "r") as src:
                 prof = src.profile.copy()
                 prof.update({"driver": "GTiff", "nodata": 0})
+                print(prof)
                 struct = np.ones((erosion_width, erosion_width))
                 with rio.open(
                     f"{tmp_dir}/{tmp_name}_tc_border.tif", "w", **prof
@@ -401,12 +407,11 @@ def S1_insar_proc(
                         band_dst = band_src * msk_dst
                         dst.write(band_dst, i)
 
-        print("Merging and cropping subswath {subswath}")
+        log.info(f"Merging and cropping subswath {subswath}")
         to_merge = [
             rio.open(f"{tmp_dir}/{tmp_name}_tc_border.tif") for tmp_name in tmp_names
         ]
         arr_merge, trans_merge = merge.merge(to_merge)
-        print(f"array shape {arr_merge.shape}")
         with rio.open(f"{tmp_dir}/{tmp_names[0]}_tc_border.tif") as src:
             prof = src.profile.copy()
         prof.update(
@@ -448,7 +453,7 @@ def S1_insar_proc(
                 out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
         
         # write COG file
-        with rio.open(f"{tmp_dir}/{out_name}", "w", **prof_out) as dst:
+        with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
             for i in range(0, prof_out["count"]):
                 if shp is not None:
                     dst.write(arr_crop[i], i + 1)
@@ -459,7 +464,7 @@ def S1_insar_proc(
                 dst,
                 f"{out_dir}/{out_name}.tif",
                 cog_prof,
-                in_memory=True,
+                # in_memory=True,
                 quiet=True,
             )
 
@@ -479,10 +484,10 @@ def S1_insar_proc(
 
 
 # TODO:
-# - gpt options (?)
-# - subswaths as a parameter
 # - write intensities (optional)
 # - add some parameters
+# - gpt options (?)
+# - subswaths as a parameter
 # - ESD (optional)
 # - break into functions to be reused by other processors if possible
 # - slice assembly (post-process with rio)

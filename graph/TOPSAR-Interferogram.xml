@@ -38,7 +38,10 @@
     </sources>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <file>OutputInterferogram</file>
-        <formatName>GeoTIFF-BigTIFF</formatName>
+        <formatName>BEAM-DIMAP</formatName>					
+        <deleteOutputOnFailure>true</deleteOutputOnFailure>					
+        <writeEntireTileRows>false</writeEntireTileRows>					
+        <clearCacheAfterRowWrite>false</clearCacheAfterRowWrite>
     </parameters>
   </node>
   <applicationData id="Presentation">
