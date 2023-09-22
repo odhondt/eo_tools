@@ -5,6 +5,8 @@
     <sources/>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
       <file>RasterInput</file>
+      <useAdvancedOptions>false</useAdvancedOptions>					
+      <copyMetadata>true</copyMetadata>	
     </parameters>
   </node>
 

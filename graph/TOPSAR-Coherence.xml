@@ -5,6 +5,8 @@
         <sources/>
         <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <file>InputMasterSlave</file>
+        <useAdvancedOptions>false</useAdvancedOptions>					
+        <copyMetadata>true</copyMetadata>		
     </parameters>
     </node>
     <node id="Coherence">			
@@ -36,7 +38,10 @@
         </sources>
         <parameters class="com.bc.ceres.binding.dom.XppDomElement">
             <file>OutputCoherence</file>
-            <formatName>GeoTIFF-BigTIFF</formatName>
+            <formatName>BEAM-DIMAP</formatName>					
+            <deleteOutputOnFailure>true</deleteOutputOnFailure>					
+            <writeEntireTileRows>false</writeEntireTileRows>					
+            <clearCacheAfterRowWrite>false</clearCacheAfterRowWrite>
         </parameters>
     </node>
     <applicationData id="Presentation">

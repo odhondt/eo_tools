@@ -2,6 +2,7 @@ from pyroSAR.snap.auxil import Workflow, gpt, groupbyWorkers
 from pyroSAR import identify
 
 import os
+import glob
 import rasterio as rio
 import numpy as np
 from rasterio import merge, mask
@@ -13,7 +14,10 @@ from s1pro.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
 
+from .auxils import remove
+
 # import logging
+
 
 def S1_simple_proc(
     file_mst,
@@ -216,6 +220,7 @@ def S1_simple_proc(
                 os.remove(f"{tmp_dir}/{tmp_name}_geo.tif")
                 os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif")
 
+
 def S1_insar_proc(
     file_mst,
     file_slv,
@@ -223,18 +228,21 @@ def S1_insar_proc(
     tmp_dir,
     shp=None,
     pol="full",
+    coh_only = False,
     clear_tmp_files=True,
     erosion_width=15,
-    apply_ESD=False,
+    # apply_ESD=False -- maybe for later
 ):
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
 
-    if apply_ESD:
-        raise NotImplementedError("method not implemented")
-    else:
-        graph_path = "../graph/TOPSAR_ifg_geocode_IW_to_geotiff.xml"
-        # graph_path = "../graph/TOPSAR_ifg_geocode_IW_to_geotiff_test_phase.xml"
+    # if apply_ESD:
+    #     raise NotImplementedError("method not implemented")
+    # else:
+    graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
+    graph_coh_path = "../graph/TOPSAR-Coherence.xml"
+    graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
+    graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
@@ -303,53 +311,88 @@ def S1_insar_proc(
     for p in pol:
         tmp_names = []
         for subswath in unique_subswaths:
-            # setting graph parameters
-            wfl = Workflow(graph_path)
-            wfl["Read"].parameters["file"] = file_mst
-            wfl["Read(2)"].parameters["file"] = file_slv
 
-            print(f"Processing subswath {subswath} in {p} polarization.")
-            wfl["TOPSAR-Split"].parameters["subswath"] = subswath
-            wfl["TOPSAR-Split(2)"].parameters["subswath"] = subswath
-
-            wfl["TOPSAR-Split"].parameters["selectedPolarisations"] = p
-            wfl["TOPSAR-Split(2)"].parameters["selectedPolarisations"] = p
-
-            bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
-                "burst"
-            ].values
-            burst_mst_min = bursts_mst.min()
-            burst_mst_max = bursts_mst.max()
-            wfl["TOPSAR-Split"].parameters["firstBurstIndex"] = burst_mst_min
-            wfl["TOPSAR-Split"].parameters["lastBurstIndex"] = burst_mst_max
-
-            bursts_slv = gdf_burst_slv[gdf_burst_slv["subswath"] == subswath][
-                "burst"
-            ].values
-            burst_slv_min = bursts_slv.min()
-            burst_slv_max = bursts_slv.max()
-            wfl["TOPSAR-Split(2)"].parameters["firstBurstIndex"] = burst_slv_min
-            wfl["TOPSAR-Split(2)"].parameters["lastBurstIndex"] = burst_slv_max
-
-            wfl["Apply-Orbit-File"].parameters["orbitType"] = orbit_type
-            wfl["Apply-Orbit-File(2)"].parameters["orbitType"] = orbit_type
-
-            wfl["TOPSAR-Deburst"].parameters["selectedPolarisations"] = p
-
-            tmp_name = f"ifg_{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
-            # tmp_name = f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
+            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
             tmp_names.append(tmp_name)
-            wfl["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_geo.tif"
-            wfl.write(f"{tmp_dir}/graph_coh.xml")
-            grp = groupbyWorkers(f"{tmp_dir}/graph_coh.xml", n=1)
-            gpt(f"{tmp_dir}/graph_coh.xml", groups=grp, tmpdir=tmp_dir)
+
+            if not os.path.exists(f"{tmp_dir}/{tmp_name}_coreg.dim"): 
+                # TOPS coregistration
+                wfl_coreg = Workflow(graph_coreg_path)
+                wfl_coreg["Read"].parameters["file"] = file_mst
+                wfl_coreg["Read(2)"].parameters["file"] = file_slv
+
+                print(f"Processing subswath {subswath} in {p} polarization.")
+                wfl_coreg["TOPSAR-Split"].parameters["subswath"] = subswath
+                wfl_coreg["TOPSAR-Split(2)"].parameters["subswath"] = subswath
+
+                wfl_coreg["TOPSAR-Split"].parameters["selectedPolarisations"] = p
+                wfl_coreg["TOPSAR-Split(2)"].parameters["selectedPolarisations"] = p
+
+                bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
+                    "burst"
+                ].values
+                burst_mst_min = bursts_mst.min()
+                burst_mst_max = bursts_mst.max()
+                wfl_coreg["TOPSAR-Split"].parameters["firstBurstIndex"] = burst_mst_min
+                wfl_coreg["TOPSAR-Split"].parameters["lastBurstIndex"] = burst_mst_max
+
+                bursts_slv = gdf_burst_slv[gdf_burst_slv["subswath"] == subswath][
+                    "burst"
+                ].values
+                burst_slv_min = bursts_slv.min()
+                burst_slv_max = bursts_slv.max()
+                wfl_coreg["TOPSAR-Split(2)"].parameters["firstBurstIndex"] = burst_slv_min
+                wfl_coreg["TOPSAR-Split(2)"].parameters["lastBurstIndex"] = burst_slv_max
+
+                wfl_coreg["Apply-Orbit-File"].parameters["orbitType"] = orbit_type
+                wfl_coreg["Apply-Orbit-File(2)"].parameters["orbitType"] = orbit_type
+
+                wfl_coreg["TOPSAR-Deburst"].parameters["selectedPolarisations"] = p
+
+                wfl_coreg["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg"
+                wfl_coreg.write(f"{tmp_dir}/graph_coreg.xml")
+                grp = groupbyWorkers(f"{tmp_dir}/graph_coreg.xml", n=1)
+                gpt(f"{tmp_dir}/graph_coreg.xml", groups=grp, tmpdir=tmp_dir)
+
+            # Coherence computation
+            if coh_only:
+                if not os.path.exists(f"{tmp_dir}/{tmp_name}_coh.dim"): 
+                    wfl_coh = Workflow(graph_coh_path)
+                    wfl_coh["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                    wfl_coh["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coh"
+                    wfl_coh.write(f"{tmp_dir}/graph_coh.xml")
+                    gpt(f"{tmp_dir}/graph_coh.xml", tmpdir=tmp_dir)
+            else:
+                if not os.path.exists(f"{tmp_dir}/{tmp_name}_ifg.dim"): 
+                    wfl_ifg = Workflow(graph_ifg_path)
+                    wfl_ifg["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                    wfl_ifg["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_ifg"
+                    wfl_ifg.write(f"{tmp_dir}/graph_ifg.xml")
+                    gpt(f"{tmp_dir}/graph_ifg.xml", tmpdir=tmp_dir)
+
+
+            # Terrain correction
+            if not os.path.exists(f"{tmp_dir}/{tmp_name}_tc.tif"): 
+                wfl_tc = Workflow(graph_tc_path)
+                if coh_only:
+                    wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coh.dim"
+                    wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
+                else:
+                    wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_ifg.dim"
+                    wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "true"
+                    
+                wfl_tc["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_tc.tif"
+                wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
+                grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
+                gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
+
             print(f"Removing dark edges after terrain correction")
-            with rio.open(f"{tmp_dir}/{tmp_name}_geo.tif", "r") as src:
+            with rio.open(f"{tmp_dir}/{tmp_name}_tc.tif", "r") as src:
                 prof = src.profile.copy()
                 prof.update({"driver": "GTiff", "nodata": 0})
                 struct = np.ones((erosion_width, erosion_width))
                 with rio.open(
-                    f"{tmp_dir}/{tmp_name}_geo_border.tif", "w", **prof
+                    f"{tmp_dir}/{tmp_name}_tc_border.tif", "w", **prof
                 ) as dst:
                     for i in range(1, prof["count"] + 1):
                         band_src = src.read(i)
@@ -358,13 +401,13 @@ def S1_insar_proc(
                         band_dst = band_src * msk_dst
                         dst.write(band_dst, i)
 
-        print("Merging and cropping current subswath")
+        print("Merging and cropping subswath {subswath}")
         to_merge = [
-            rio.open(f"{tmp_dir}/{tmp_name}_geo_border.tif") for tmp_name in tmp_names
+            rio.open(f"{tmp_dir}/{tmp_name}_tc_border.tif") for tmp_name in tmp_names
         ]
         arr_merge, trans_merge = merge.merge(to_merge)
         print(f"array shape {arr_merge.shape}")
-        with rio.open(f"{tmp_dir}/{tmp_names[0]}_geo_border.tif") as src:
+        with rio.open(f"{tmp_dir}/{tmp_names[0]}_tc_border.tif") as src:
             prof = src.profile.copy()
         prof.update(
             {
@@ -391,33 +434,48 @@ def S1_insar_proc(
                         }
                     )
         else:
-            prof_out = prof
+            prof_out = prof.copy()
 
         if shp is not None:
-            # out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
-            out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+            if coh_only:
+                out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+            else:
+                out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
         else:
-            out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
-        with rio.open(out_name, "w",**prof_out) as dst:
-            for i in range(1, prof_out["count"] + 1):
+            if coh_only:
+                out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
+            else:
+                out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
+        
+        # write COG file
+        with rio.open(f"{tmp_dir}/{out_name}", "w", **prof_out) as dst:
+            for i in range(0, prof_out["count"]):
                 if shp is not None:
-                    dst.write(arr_crop[i])
+                    dst.write(arr_crop[i], i + 1)
                 else:
-                    dst.write(arr_merge[i])
-            # cog_prof = cog_profiles.get("deflate")
-            # cog_translate(
-            #     mem,
-            #     f"{out_dir}/{out_name}.tif",
-            #     cog_prof,
-            #     in_memory=True,
-            #     quiet=True,
-            # )
+                    dst.write(arr_merge[i], i + 1)
+            cog_prof = cog_profiles.get("deflate")
+            cog_translate(
+                dst,
+                f"{out_dir}/{out_name}.tif",
+                cog_prof,
+                in_memory=True,
+                quiet=True,
+            )
 
         if clear_tmp_files:
+            os.remove(f"{tmp_dir}/graph_coreg.xml")
             os.remove(f"{tmp_dir}/graph_coh.xml")
+            os.remove(f"{tmp_dir}/graph_ifg.xml")
+            os.remove(f"{tmp_dir}/graph_tc.xml")
+            files = glob.glob(f'{tmp_dir}/*.data') + glob.glob(f'{tmp_dir}/*.dim')
+            for fi in files:
+                remove(fi)  
+
+
             for tmp_name in tmp_names:
-                os.remove(f"{tmp_dir}/{tmp_name}_geo.tif")
-                os.remove(f"{tmp_dir}/{tmp_name}_geo_border.tif")
+                os.remove(f"{tmp_dir}/{tmp_name}_tc.tif")
+                os.remove(f"{tmp_dir}/{tmp_name}_tc_border.tif")
 
 
 # TODO:
@@ -428,6 +486,7 @@ def S1_insar_proc(
 # - ESD (optional)
 # - break into functions to be reused by other processors if possible
 # - slice assembly (post-process with rio)
-# - separate phase and magnitude, write as 2 geotiffs
-# - coherence as optional for insar processor
+# - separate phase and coherence, write as 2 geotiffs
 # - goldstein filter (optional)
+# - processing options: intensity, coherence, phase (True or false for each)
+# - use logging instead of print
