@@ -181,7 +181,11 @@ def S1_insar_proc(
                     gpt(f"{tmp_dir}/graph_ifg.xml", tmpdir=tmp_dir)
 
             # Terrain correction
-            if not os.path.exists(f"{tmp_dir}/{tmp_name}_tc.tif"):
+            if coh_only:
+                tc_path = f"{tmp_dir}/{tmp_name}_coh_tc.tif"
+            else:
+                tc_path = f"{tmp_dir}/{tmp_name}_ifg_tc.tif"
+            if not os.path.exists(tc_path):
                 log.info("Terrain correction (geocoding)")
                 wfl_tc = Workflow(graph_tc_path)
                 if coh_only:
@@ -206,19 +210,18 @@ def S1_insar_proc(
                 file_to_open = f"{tmp_dir}/{tmp_name}_coh_tc"
             else:
                 file_to_open = f"{tmp_dir}/{tmp_name}_ifg_tc"
-            with rio.open(f"{file_to_open}.tif", "r") as src:
-                prof = src.profile.copy()
-                prof.update({"driver": "GTiff", "nodata": 0})
-                print(prof)
-                struct = np.ones((erosion_width, erosion_width))
-                with rio.open(f"{file_to_open}_border.tif", "w", **prof) as dst:
-                    for i in range(1, prof["count"] + 1):
-                        band_src = src.read(i)
-                        msk_src = band_src != 0
-                        msk_dst = binary_erosion(msk_src, struct)
-                        band_dst = band_src * msk_dst
-                        dst.write(band_dst, i)
 
+            rio.shutil.copy(f"{file_to_open}.tif", f"{file_to_open}_border.tif")
+            with rio.open(f"{file_to_open}_border.tif", "r+") as src:
+                prof = src.profile
+                prof.update({"driver": "GTiff", "nodata": 0})
+                struct = np.ones((erosion_width, erosion_width))
+                for i in range(1, prof["count"] + 1):
+                    band_src = src.read(i)
+                    msk_src = band_src != 0
+                    msk_dst = binary_erosion(msk_src, struct)
+                    band_dst = band_src * msk_dst
+                    src.write(band_dst, i)
         log.info(f"Merging and cropping subswath {subswath}")
         if coh_only:
             to_merge = [
@@ -231,7 +234,7 @@ def S1_insar_proc(
                 for tmp_name in tmp_names
             ]
         arr_merge, trans_merge = merge.merge(to_merge)
-        with rio.open(to_merge[0]) as src:
+        with rio.open(f"{file_to_open}_border.tif") as src:
             prof = src.profile.copy()
             prof.update(
                 {
@@ -255,6 +258,7 @@ def S1_insar_proc(
                             "transform": trans_crop,
                             "width": arr_crop.shape[2],
                             "height": arr_crop.shape[1],
+                            "photometric": "RGB",  # keeps same setting as tiff from SNAP
                         }
                     )
         else:
@@ -273,6 +277,8 @@ def S1_insar_proc(
 
         log.info("write COG file")
         with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+            # print(dst.profile)
+            # print(dst.block_shapes)
             for i in range(0, prof_out["count"]):
                 if shp is not None:
                     dst.write(arr_crop[i], i + 1)
@@ -286,7 +292,6 @@ def S1_insar_proc(
                 # in_memory=True,
                 quiet=True,
             )
-
         if clear_tmp_files:
             os.remove(f"{tmp_dir}/graph_coreg.xml")
             os.remove(f"{tmp_dir}/graph_coh.xml")
