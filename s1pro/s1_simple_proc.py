@@ -108,6 +108,11 @@ def S1_insar_proc(
         info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
         orbit_type = "Sentinel Restituted (Auto Download)"
 
+    if coh_only:
+        substr = "coh"
+    else:
+        substr = "ifg"
+
     for p in pol:
         tmp_names = []
         for subswath in unique_subswaths:
@@ -160,56 +165,34 @@ def S1_insar_proc(
 
             # Coherence computation
             if coh_only:
-                if not os.path.exists(f"{tmp_dir}/{tmp_name}_coh.dim"):
-                    log.info("Coherence estimation")
-                    wfl_coh = Workflow(graph_coh_path)
-                    wfl_coh["Read"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_coreg.dim"
-                    wfl_coh["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coh"
-                    wfl_coh.write(f"{tmp_dir}/graph_coh.xml")
-                    gpt(f"{tmp_dir}/graph_coh.xml", tmpdir=tmp_dir)
+                wfl_insar = Workflow(graph_coh_path)
             else:
-                if not os.path.exists(f"{tmp_dir}/{tmp_name}_ifg.dim"):
-                    log.info("Interferogram estimation")
-                    wfl_ifg = Workflow(graph_ifg_path)
-                    wfl_ifg["Read"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_coreg.dim"
-                    wfl_ifg["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_ifg"
-                    wfl_ifg.write(f"{tmp_dir}/graph_ifg.xml")
-                    gpt(f"{tmp_dir}/graph_ifg.xml", tmpdir=tmp_dir)
+                wfl_insar = Workflow(graph_ifg_path)
+            if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}.dim"):
+                log.info("Coherence estimation")
+                wfl_insar["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                wfl_insar["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_{substr}"
+                wfl_insar.write(f"{tmp_dir}/graph_{substr}.xml")
+                gpt(f"{tmp_dir}/graph_{substr}.xml", tmpdir=tmp_dir)
 
             # Terrain correction
-            if coh_only:
-                tc_path = f"{tmp_dir}/{tmp_name}_coh_tc.tif"
-            else:
-                tc_path = f"{tmp_dir}/{tmp_name}_ifg_tc.tif"
+            tc_path = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
             if not os.path.exists(tc_path):
                 log.info("Terrain correction (geocoding)")
                 wfl_tc = Workflow(graph_tc_path)
-                if coh_only:
-                    wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coh.dim"
-                    wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
-                    wfl_tc["Write"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_coh_tc.tif"
-                else:
-                    wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_ifg.dim"
+                wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+                wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
+                wfl_tc["Write"].parameters[
+                    "file"
+                ] = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
+                if not coh_only:
                     wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "true"
-                    wfl_tc["Write"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_ifg_tc.tif"
-
                 wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
                 grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
                 gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
 
             log.info(f"Removing dark edges after terrain correction")
-            if coh_only:
-                file_to_open = f"{tmp_dir}/{tmp_name}_coh_tc"
-            else:
-                file_to_open = f"{tmp_dir}/{tmp_name}_ifg_tc"
+            file_to_open = f"{tmp_dir}/{tmp_name}_{substr}_tc"
 
             rio.shutil.copy(f"{file_to_open}.tif", f"{file_to_open}_border.tif")
             with rio.open(f"{file_to_open}_border.tif", "r+") as src:
@@ -223,16 +206,11 @@ def S1_insar_proc(
                     band_dst = band_src * msk_dst
                     src.write(band_dst, i)
         log.info(f"Merging and cropping subswath {subswath}")
-        if coh_only:
-            to_merge = [
-                rio.open(f"{tmp_dir}/{tmp_name}_coh_tc_border.tif")
-                for tmp_name in tmp_names
-            ]
-        else:
-            to_merge = [
-                rio.open(f"{tmp_dir}/{tmp_name}_ifg_tc_border.tif")
-                for tmp_name in tmp_names
-            ]
+        to_merge = [
+            rio.open(f"{tmp_dir}/{tmp_name}_{substr}_tc_border.tif")
+            for tmp_name in tmp_names
+        ]
+
         arr_merge, trans_merge = merge.merge(to_merge)
         with rio.open(f"{file_to_open}_border.tif") as src:
             prof = src.profile.copy()
@@ -265,15 +243,9 @@ def S1_insar_proc(
             prof_out = prof.copy()
 
         if shp is not None:
-            if coh_only:
-                out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
-            else:
-                out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+            out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
         else:
-            if coh_only:
-                out_name = f"coh_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
-            else:
-                out_name = f"ifg_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
+            out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
 
         log.info("write COG file")
         with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
@@ -294,16 +266,15 @@ def S1_insar_proc(
             )
         if clear_tmp_files:
             os.remove(f"{tmp_dir}/graph_coreg.xml")
-            os.remove(f"{tmp_dir}/graph_coh.xml")
-            os.remove(f"{tmp_dir}/graph_ifg.xml")
+            os.remove(f"{tmp_dir}/graph_{substr}.xml")
             os.remove(f"{tmp_dir}/graph_tc.xml")
             files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
             for fi in files:
                 remove(fi)
 
             for tmp_name in tmp_names:
-                os.remove(f"{tmp_dir}/{tmp_name}_tc.tif")
-                os.remove(f"{tmp_dir}/{tmp_name}_tc_border.tif")
+                os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
+                os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_border.tif")
 
 
 # TODO:
