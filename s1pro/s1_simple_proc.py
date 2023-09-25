@@ -204,7 +204,7 @@ def S1_insar_proc(
                     wfl_int["BandSelect"].parameters["sourceBands"] = [
                         f"i_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
                         f"q_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
-                        f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}"
+                        f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
                     ]
 
                 math = wfl_int["BandMaths"]
@@ -284,54 +284,94 @@ def S1_insar_proc(
                     mem.write(arr_merge)
                     arr_crop, trans_crop = mask.mask(mem, [shp], crop=True)
                     prof_out = mem.profile.copy()
+                    n_out = prof_out["count"]
                     prof_out.update(
                         {
                             "transform": trans_crop,
                             "width": arr_crop.shape[2],
                             "height": arr_crop.shape[1],
+                            "count": 1
                             # "photometric": "RGB",  # keeps same setting as tiff from SNAP
                         }
                     )
         else:
             prof_out = prof.copy()
-
-        if shp is not None:
-            out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
-        else:
-            out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
-
-        log.info("write COG files")
-        with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-            for i in range(0, prof_out["count"]):
-                if shp is not None:
-                    dst.write(arr_crop[i], i + 1)
-                else:
-                    dst.write(arr_merge[i], i + 1)
-            cog_prof = cog_profiles.get("deflate")
-            cog_translate(
-                dst,
-                f"{out_dir}/{out_name}.tif",
-                cog_prof,
-                quiet=True,
+            n_out = prof_out["count"]
+            prof_out.update(
+                {
+                    "count": 1
+                    # "photometric": "RGB",  # keeps same setting as tiff from SNAP
+                }
             )
 
+        # if shp is not None:
+        #     out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+        # else:
+        #     out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
 
-            # if not coh_only and intensity:
-            #     cog_substrings = ['phi', 'coh', 'mst_int', 'slv_int']
-            # for i in range(0, prof_out["count"]):
-            #     out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
-            #     with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-            #         if shp is not None:
-            #             dst.write(arr_crop[i], i + 1)
-            #         else:
-            #             dst.write(arr_merge[i], i + 1)
-            #     cog_prof = cog_profiles.get("deflate")
-            #     cog_translate(
-            #         dst,
-            #         f"{out_dir}/{out_name}.tif",
-            #         cog_prof,
-            #         quiet=True,
-            #     )
+        log.info("write COG files")
+        cog_prof = cog_profiles.get("deflate")
+        # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+        #     for i in range(0, prof_out["count"]):
+        #         if shp is not None:
+        #             dst.write(arr_crop[i], i + 1)
+        #         else:
+        #             dst.write(arr_merge[i], i + 1)
+        #     cog_prof = cog_profiles.get("deflate")
+        #     cog_translate(
+        #         dst,
+        #         f"{out_dir}/{out_name}.tif",
+        #         cog_prof,
+        #         quiet=True,
+        #     )
+
+        if not coh_only and intensity:
+            cog_substrings = ["phi", "coh", "mst_int", "slv_int"]
+            offidx = 2
+        elif coh_only and intensity:
+            cog_substrings = ["coh", "mst_int", "slv_int"]
+            offidx = 0
+        elif not coh_only and not intensity:
+            cog_substrings = ["phi", "coh"]
+            offidx = 2
+        elif coh_only and not intensity:
+            cog_substrings = ["coh"]
+            offidx = 0
+
+        if shp is not None:
+            arr_out = arr_crop.copy()
+        else:
+            arr_out = arr_merge.copy()
+
+        for sub in cog_substrings:
+            if sub == "phi":
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                    dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
+                    cog_translate(
+                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
+                    )
+            if sub == "coh":
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                    dst.write(arr_out[offidx], 1)
+                    cog_translate(
+                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
+                    )
+            if sub == "mst_int":
+                out_name = f"int_{p}_{calendar_mst}_slice{slnum}_crop"
+                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                    dst.write(arr_out[1 + offidx], 1)
+                    cog_translate(
+                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
+                    )
+            if sub == "slv_int":
+                out_name = f"int_{p}_{calendar_slv}_slice{slnum}_crop"
+                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                    dst.write(arr_out[2 + offidx], 1)
+                    cog_translate(
+                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
+                    )
 
         if clear_tmp_files:
             os.remove(f"{tmp_dir}/graph_coreg.xml")
