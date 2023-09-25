@@ -1,0 +1,126 @@
+<graph id="Graph">
+    <version>1.0</version>
+    <node id="Read">
+      <operator>Read</operator>
+      <sources/>
+      <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+        <file>InputCoreg</file>
+        <useAdvancedOptions>false</useAdvancedOptions>					
+        <copyMetadata>true</copyMetadata>		
+      </parameters>
+    </node>
+    <node id="Read(2)">
+      <operator>Read</operator>
+      <sources/>
+      <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+        <file>InputInSAR</file>
+        <useAdvancedOptions>false</useAdvancedOptions>					
+        <copyMetadata>true</copyMetadata>		
+      </parameters>
+    </node>
+    <node id="BandSelect">
+      <operator>BandSelect</operator>
+      <sources>
+        <source>Read(2)</source>
+      </sources>
+      <parameters>
+        <sourceBands>AllButVirtual</sourceBands>
+      </parameters>
+    </node>
+    <node id="BandMaths">
+        <operator>BandMaths</operator>
+        <sources>
+            <sourceProduct refid="Read"/>
+        </sources>
+        <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+            <targetBands>
+                <targetBand>
+                  <name>IntensityMaster</name>
+                  <type>float32</type>
+                  <expression>sq(i_band_mst) + sq(q_band_mst)</expression>
+                  <description/>
+                  <unit/>
+                  <noDataValue>0.0</noDataValue>
+                </targetBand>
+            </targetBands>
+            <variables/>
+        </parameters>
+  </node>
+<node id="BandMaths(2)">
+    <operator>BandMaths</operator>
+    <sources>
+        <sourceProduct refid="Read"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+        <targetBands>
+            <targetBand>
+            <name>IntensitySlave</name>
+            <type>float32</type>
+            <expression>sq(i_band_slv) + sq(q_band_slv)</expression>
+            <description/>
+            <unit/>
+            <noDataValue>0.0</noDataValue>
+            </targetBand>
+        </targetBands>
+        <variables/>
+    </parameters>
+  </node>
+
+  <node id="BandMerge">
+    <operator>BandMerge</operator>
+    <sources>
+      <sourceProduct refid="BandSelect"/>
+      <sourceProduct.1 refid="BandMaths"/>
+      <sourceProduct.2 refid="BandMaths(2)"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <geographicError>1.0E-5</geographicError>
+    </parameters>
+  </node>
+    <node id="Write">
+        <operator>Write</operator>
+        <sources>
+            <sourceProduct refid="BandMerge"/>
+        </sources>
+        <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+            <file>OutputIntensity</file>
+            <formatName>BEAM-DIMAP</formatName>					
+            <deleteOutputOnFailure>true</deleteOutputOnFailure>					
+            <writeEntireTileRows>false</writeEntireTileRows>					
+            <clearCacheAfterRowWrite>false</clearCacheAfterRowWrite>
+        </parameters>
+    </node>
+    <applicationData id="Presentation">
+        <Description/>
+        <node id="Read">
+        <displayPosition x="25.0" y="13.0"/>
+        </node>
+        <node id="Read(2)">
+        <displayPosition x="28.0" y="229.0"/>
+        </node>
+        <node id="TOPSAR-Split">
+        <displayPosition x="16.0" y="50.0"/>
+        </node>
+        <node id="TOPSAR-Split(2)">
+        <displayPosition x="11.0" y="194.0"/>
+        </node>
+        <node id="Apply-Orbit-File">
+        <displayPosition x="12.0" y="84.0"/>
+        </node>
+        <node id="Apply-Orbit-File(2)">
+        <displayPosition x="6.0" y="160.0"/>
+        </node>
+        <node id="Back-Geocoding">
+        <displayPosition x="116.0" y="123.0"/>
+        </node>
+        <node id="Interferogram">
+        <displayPosition x="233.0" y="123.0"/>
+        </node>
+        <node id="TOPSAR-Deburst">
+        <displayPosition x="339.0" y="124.0"/>
+        </node>
+        <node id="Write">
+        <displayPosition x="456.0" y="125.0"/>
+        </node>
+    </applicationData>
+    </graph>

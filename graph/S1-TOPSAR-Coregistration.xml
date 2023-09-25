@@ -5,6 +5,7 @@
     <sources/>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <file>InputMaster</file>
+        <copyMetadata>true</copyMetadata>
     </parameters>
   </node>
   <node id="Read(2)">
@@ -12,6 +13,7 @@
     <sources/>
     <parameters class="com.bc.ceres.binding.dom.XppDomElement">
         <file>InputSlave</file>
+        <copyMetadata>true</copyMetadata>
     </parameters>
   </node>
   <node id="TOPSAR-Split">

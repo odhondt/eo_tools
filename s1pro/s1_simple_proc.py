@@ -3,6 +3,7 @@ from pyroSAR import identify
 
 import os
 import glob
+from pathlib import Path
 import rasterio as rio
 import numpy as np
 from rasterio import merge, mask
@@ -29,6 +30,7 @@ def S1_insar_proc(
     shp=None,
     pol="full",
     coh_only=False,
+    intensity=True,
     clear_tmp_files=True,
     erosion_width=15,
     # apply_ESD=False -- maybe for later
@@ -40,6 +42,7 @@ def S1_insar_proc(
     #     raise NotImplementedError("method not implemented")
     # else:
     graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
+    graph_int_path = "../graph/MasterSlaveIntensity.xml"
     graph_coh_path = "../graph/TOPSAR-Coherence.xml"
     graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
     graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
@@ -175,12 +178,62 @@ def S1_insar_proc(
                 wfl_insar.write(f"{tmp_dir}/graph_{substr}.xml")
                 gpt(f"{tmp_dir}/graph_{substr}.xml", tmpdir=tmp_dir)
 
+            # Intensities
+            if intensity:
+                wfl_int = Workflow(graph_int_path)
+                log.info("Computing intensities")
+                path_coreg = f"{tmp_dir}/{tmp_name}_coreg.data/"
+                img_files = Path(path_coreg).glob("*.img")
+                basenames = list(set([f.stem[2:] for f in img_files]))
+                if len(basenames) == 2:
+                    name1 = basenames[0]
+                    name2 = basenames[1]
+                else:
+                    raise ValueError("Intensity: need exactly 2 bands.")
+                wfl_int["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                wfl_int["Read(2)"].parameters[
+                    "file"
+                ] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+
+                # required to avoid merging virtual bands
+                if coh_only:
+                    wfl_int["BandSelect"].parameters["sourceBands"] = [
+                        f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}"
+                    ]
+                else:
+                    wfl_int["BandSelect"].parameters["sourceBands"] = [
+                        f"i_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
+                        f"q_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
+                        f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}"
+                    ]
+
+                math = wfl_int["BandMaths"]
+                exp = math.parameters["targetBands"][0]
+                exp["name"] = f"Intensity_{name1}"
+                exp["expression"] = f"sq(i_{name1}) + sq(q_{name1})"
+                math2 = wfl_int["BandMaths(2)"]
+                exp2 = math2.parameters["targetBands"][0]
+                exp2["name"] = f"Intensity_{name2}"
+                exp2["expression"] = f"sq(i_{name2}) + sq(q_{name2})"
+                wfl_int["Write"].parameters[
+                    "file"
+                ] = f"{tmp_dir}/{tmp_name}_{substr}_int"
+                wfl_int.write(f"{tmp_dir}/graph_int.xml")
+                gpt(f"{tmp_dir}/graph_int.xml", tmpdir=tmp_dir)
+
             # Terrain correction
             tc_path = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
             if not os.path.exists(tc_path):
                 log.info("Terrain correction (geocoding)")
                 wfl_tc = Workflow(graph_tc_path)
-                wfl_tc["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+                if intensity:
+                    wfl_tc["Read"].parameters[
+                        "file"
+                    ] = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
+                else:
+                    wfl_tc["Read"].parameters[
+                        "file"
+                    ] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
                 wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
                 wfl_tc["Write"].parameters[
                     "file"
@@ -205,12 +258,12 @@ def S1_insar_proc(
                     msk_dst = binary_erosion(msk_src, struct)
                     band_dst = band_src * msk_dst
                     src.write(band_dst, i)
-        log.info(f"Merging and cropping subswath {subswath}")
+
+        log.info(f"Merging and cropping subswaths {unique_subswaths}")
         to_merge = [
             rio.open(f"{tmp_dir}/{tmp_name}_{substr}_tc_border.tif")
             for tmp_name in tmp_names
         ]
-
         arr_merge, trans_merge = merge.merge(to_merge)
         with rio.open(f"{file_to_open}_border.tif") as src:
             prof = src.profile.copy()
@@ -236,7 +289,7 @@ def S1_insar_proc(
                             "transform": trans_crop,
                             "width": arr_crop.shape[2],
                             "height": arr_crop.shape[1],
-                            "photometric": "RGB",  # keeps same setting as tiff from SNAP
+                            # "photometric": "RGB",  # keeps same setting as tiff from SNAP
                         }
                     )
         else:
@@ -247,10 +300,8 @@ def S1_insar_proc(
         else:
             out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}"
 
-        log.info("write COG file")
+        log.info("write COG files")
         with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-            # print(dst.profile)
-            # print(dst.block_shapes)
             for i in range(0, prof_out["count"]):
                 if shp is not None:
                     dst.write(arr_crop[i], i + 1)
@@ -261,11 +312,31 @@ def S1_insar_proc(
                 dst,
                 f"{out_dir}/{out_name}.tif",
                 cog_prof,
-                # in_memory=True,
                 quiet=True,
             )
+
+
+            # if not coh_only and intensity:
+            #     cog_substrings = ['phi', 'coh', 'mst_int', 'slv_int']
+            # for i in range(0, prof_out["count"]):
+            #     out_name = f"{substr}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}_crop"
+            #     with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+            #         if shp is not None:
+            #             dst.write(arr_crop[i], i + 1)
+            #         else:
+            #             dst.write(arr_merge[i], i + 1)
+            #     cog_prof = cog_profiles.get("deflate")
+            #     cog_translate(
+            #         dst,
+            #         f"{out_dir}/{out_name}.tif",
+            #         cog_prof,
+            #         quiet=True,
+            #     )
+
         if clear_tmp_files:
             os.remove(f"{tmp_dir}/graph_coreg.xml")
+            if intensity:
+                os.remove(f"{tmp_dir}/graph_int.xml")
             os.remove(f"{tmp_dir}/graph_{substr}.xml")
             os.remove(f"{tmp_dir}/graph_tc.xml")
             files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
