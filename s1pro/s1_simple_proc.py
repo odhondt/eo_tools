@@ -33,6 +33,7 @@ def S1_insar_proc(
     intensity=True,
     clear_tmp_files=True,
     erosion_width=15,
+    resume=False
     # apply_ESD=False -- maybe for later
 ):
     # detailed debug info
@@ -41,11 +42,7 @@ def S1_insar_proc(
     # if apply_ESD:
     #     raise NotImplementedError("method not implemented")
     # else:
-    # graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
     graph_int_path = "../graph/MasterSlaveIntensity.xml"
-    graph_coh_path = "../graph/TOPSAR-Coherence.xml"
-    graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
-    # graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
@@ -136,7 +133,7 @@ def S1_insar_proc(
             tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
             tmp_names.append(tmp_name)
 
-            if not os.path.exists(f"{tmp_dir}/{tmp_name}_coreg.dim"):
+            if not os.path.exists(f"{tmp_dir}/{tmp_name}_coreg.dim") and resume:
                 log.info("TOPS coregistration")
                 TOPS_coregistration(
                     file_mst=file_mst,
@@ -153,21 +150,20 @@ def S1_insar_proc(
                 )
 
             # InSAR processing
-            if coh_only:
-                wfl_insar = Workflow(graph_coh_path)
-            else:
-                wfl_insar = Workflow(graph_ifg_path)
-            if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}.dim"):
+            if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}.dim") and resume:
                 log.info("InSAR processing")
-                wfl_insar["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
-                wfl_insar["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_{substr}"
-                wfl_insar.write(f"{tmp_dir}/graph_{substr}.xml")
-                gpt(f"{tmp_dir}/graph_{substr}.xml", tmpdir=tmp_dir)
+                insar_processing(
+                    file_in=f"{tmp_dir}/{tmp_name}_coreg.dim",
+                    file_out=f"{tmp_dir}/{tmp_name}_{substr}",
+                    tmp_dir=tmp_dir,
+                    coh_only=coh_only,
+                )
 
-            # Intensities
             if intensity:
-                if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}_int.dim"):
-                    wfl_int = Workflow(graph_int_path)
+                if (
+                    not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}_int.dim")
+                    and resume
+                ):
                     log.info("Computing intensities")
                     path_coreg = f"{tmp_dir}/{tmp_name}_coreg.data/"
                     img_files = Path(path_coreg).glob("*.img")
@@ -177,6 +173,7 @@ def S1_insar_proc(
                         name2 = basenames[1]
                     else:
                         raise ValueError("Intensity: exactly 2 bands needed.")
+                    wfl_int = Workflow(graph_int_path)
                     wfl_int["Read"].parameters[
                         "file"
                     ] = f"{tmp_dir}/{tmp_name}_coreg.dim"
@@ -212,7 +209,7 @@ def S1_insar_proc(
 
             # Terrain correction
             tc_path = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
-            if not os.path.exists(tc_path):
+            if not os.path.exists(tc_path) and resume:
                 log.info("Terrain correction (geocoding)")
                 output_complex = not coh_only
                 if intensity:
@@ -398,8 +395,17 @@ def TOPS_coregistration(
     gpt(f"{tmp_dir}/graph_coreg.xml", groups=grp, tmpdir=tmp_dir)
 
 
-def insar_processing():
-    pass
+def insar_processing(file_in, file_out, tmp_dir, coh_only=False):
+    graph_coh_path = "../graph/TOPSAR-Coherence.xml"
+    graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
+    if coh_only:
+        wfl_insar = Workflow(graph_coh_path)
+    else:
+        wfl_insar = Workflow(graph_ifg_path)
+    wfl_insar["Read"].parameters["file"] = file_in
+    wfl_insar["Write"].parameters["file"] = file_out
+    wfl_insar.write(f"{tmp_dir}/graph_insar.xml")
+    gpt(f"{tmp_dir}/graph_insar.xml", tmpdir=tmp_dir)
 
 
 def merge_intensity():
