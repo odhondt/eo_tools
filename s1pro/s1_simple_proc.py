@@ -45,7 +45,7 @@ def S1_insar_proc(
     graph_int_path = "../graph/MasterSlaveIntensity.xml"
     graph_coh_path = "../graph/TOPSAR-Coherence.xml"
     graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
-    graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
+    # graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
@@ -152,13 +152,13 @@ def S1_insar_proc(
                     burst_slv_max=burst_slv_max,
                 )
 
-            # Coherence computation
+            # InSAR processing
             if coh_only:
                 wfl_insar = Workflow(graph_coh_path)
             else:
                 wfl_insar = Workflow(graph_ifg_path)
             if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}.dim"):
-                log.info("Coherence estimation")
+                log.info("InSAR processing")
                 wfl_insar["Read"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg.dim"
                 wfl_insar["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_{substr}"
                 wfl_insar.write(f"{tmp_dir}/graph_{substr}.xml")
@@ -176,7 +176,7 @@ def S1_insar_proc(
                         name1 = basenames[0]
                         name2 = basenames[1]
                     else:
-                        raise ValueError("Intensity: need exactly 2 bands.")
+                        raise ValueError("Intensity: exactly 2 bands needed.")
                     wfl_int["Read"].parameters[
                         "file"
                     ] = f"{tmp_dir}/{tmp_name}_coreg.dim"
@@ -214,24 +214,18 @@ def S1_insar_proc(
             tc_path = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
             if not os.path.exists(tc_path):
                 log.info("Terrain correction (geocoding)")
-                wfl_tc = Workflow(graph_tc_path)
+                output_complex = not coh_only
                 if intensity:
-                    wfl_tc["Read"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
+                    file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 else:
-                    wfl_tc["Read"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
-                wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
-                wfl_tc["Write"].parameters[
-                    "file"
-                ] = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
-                if not coh_only:
-                    wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "true"
-                wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
-                grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
-                gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
+                    file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+                file_out_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
+                geocoding(
+                    file_in=file_in_tc,
+                    file_out=file_out_tc,
+                    tmp_dir=tmp_dir,
+                    output_complex=output_complex,
+                )
 
             log.info(f"Removing dark edges after terrain correction")
             file_to_open = f"{tmp_dir}/{tmp_name}_{substr}_tc"
@@ -315,14 +309,18 @@ def S1_insar_proc(
 
         for sub in cog_substrings:
             if sub == "phi":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
+                out_name = (
+                    f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
+                )
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
                     cog_translate(
                         dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
                     )
             if sub == "coh":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
+                out_name = (
+                    f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
+                )
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(arr_out[offidx], 1)
                     cog_translate(
@@ -398,6 +396,29 @@ def TOPS_coregistration(
     wfl_coreg.write(f"{tmp_dir}/graph_coreg.xml")
     grp = groupbyWorkers(f"{tmp_dir}/graph_coreg.xml", n=1)
     gpt(f"{tmp_dir}/graph_coreg.xml", groups=grp, tmpdir=tmp_dir)
+
+
+def insar_processing():
+    pass
+
+
+def merge_intensity():
+    pass
+
+
+def geocoding(file_in, file_out, tmp_dir, output_complex=False):
+    graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
+    wfl_tc = Workflow(graph_tc_path)
+
+    wfl_tc["Read"].parameters["file"] = file_in
+    wfl_tc["Write"].parameters["file"] = file_out
+    if output_complex:
+        wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "true"
+    else:
+        wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "false"
+    wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
+    grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
+    gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
 
 
 # TODO:
