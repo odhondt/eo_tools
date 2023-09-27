@@ -150,7 +150,6 @@ def S1_insar_proc(
                     burst_slv_max=burst_slv_max,
                 )
 
-            # InSAR processing
             path_insar = f"{tmp_dir}/{tmp_name}_{substr}.dim"
             if not (os.path.exists(path_insar) and resume):
                 log.info("-- InSAR processing")
@@ -187,7 +186,6 @@ def S1_insar_proc(
                         calendar_slv=calendar_slv,
                     )
 
-            # Terrain correction
             path_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
             if not os.path.exists(path_tc):  # and resume:
                 log.info("-- Terrain correction (geocoding)")
@@ -248,18 +246,12 @@ def S1_insar_proc(
                             "transform": trans_crop,
                             "width": arr_crop.shape[2],
                             "height": arr_crop.shape[1],
-                            "count": 1
-                            # "photometric": "RGB",  # keeps same setting as tiff from SNAP
+                            "count": 1,
                         }
                     )
         else:
             prof_out = prof.copy()
-            prof_out.update(
-                {
-                    "count": 1
-                    # "photometric": "RGB",  # keeps same setting as tiff from SNAP
-                }
-            )
+            prof_out.update({"count": 1})
 
         log.info("---- Writing COG files")
         cog_prof = cog_profiles.get("deflate")
@@ -449,13 +441,3 @@ def geocoding(file_in, file_out, tmp_dir, output_complex=False):
     wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
     grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
     gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
-
-
-# TODO:
-# - add some parameters
-# - subswaths as a parameter
-# - ESD (optional)
-# - slice assembly (post-process with rio)
-# - goldstein filter (optional)
-# - gpt options (?)
-# - write class (?)
