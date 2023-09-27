@@ -13,7 +13,7 @@ import pathlib
 
 from .auxils import get_burst_geometry, remove
 
-def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=32633,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
+def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res=20, t_crs=4326,  out_format= "GeoTIFF",gpt_paras= None, pol= 'full',\
                    IWs= ["IW1", "IW2", "IW3"], ext_DEM= False, ext_DEM_noDatVal= -9999, ext_Dem_file= None, msk_noDatVal= False,\
                    ext_DEM_EGM= True, BGC_demResamp= "BICUBIC_INTERPOLATION", TC_demResamp= "BILINEAR_INTERPOLATION", osvPath= None,\
                    cohWinRg= 11, cohWinAz= 3, ml_RgLook= 4, ml_AzLook= 1, firstBurstIndex= None, lastBurstIndex= None, clean_tmpdir= True, osvFail= False,
@@ -537,7 +537,8 @@ def S1_coh_proc(infiles, out_dir= "default", shapefile=None, tmpdir= None, t_res
                 tc.parameters["demResamplingMethod"]= TC_demResamp
                 tc.parameters["imgResamplingMethod"]= TC_demResamp
                 tc.parameters["pixelSpacingInMeter"]= t_res
-                tc.parameters["mapProjection"]= t_crs
+                tc.parameters["mapProjection"]= epsg
+                # tc.parameters["mapProjection"]= t_crs
                 tc.parameters["saveSelectedSourceBand"]= True
                 tc.parameters["outputComplex"]= False
                 tc.parameters["nodataValueAtSea"]= msk_noDatVal

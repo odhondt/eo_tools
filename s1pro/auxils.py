@@ -259,7 +259,14 @@ def parse_subswath_geometry(coord_list, total_num_bursts):
 ## get geometry of individual bursts
 def get_burst_geometry(path, target_subswaths, polarization):
     df_all = gpd.GeoDataFrame(columns=['subswath', 'burst', 'geometry'], crs='EPSG:4326')
-    for subswath in target_subswaths:
+    if not isinstance(target_subswaths, list):
+        target_subswaths_ = [target_subswaths]
+    else:
+        target_subswaths_ = target_subswaths
+
+    for subswath in target_subswaths_:
+        if subswath not in ['IW1', 'IW2', 'IW3']:
+            raise ValueError("Invalid subswath name (options are: IW1, IW2 or IW3)")
         meta = load_metadata(zip_path = path, subswath = subswath, polarization = polarization)
         total_num_bursts, coord_list = parse_location_grid(meta)
         subswath_geom = parse_subswath_geometry(coord_list, total_num_bursts)

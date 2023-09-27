@@ -1,0 +1,108 @@
+<graph id="Graph">
+  <version>1.0</version>
+  <node id="Read">
+    <operator>Read</operator>
+    <sources/>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <file>RasterInput</file>
+      <useAdvancedOptions>false</useAdvancedOptions>					
+      <copyMetadata>true</copyMetadata>	
+    </parameters>
+  </node>
+
+  <node id="Multilook">			
+    <operator>Multilook</operator>			
+    <sources>					
+      <sourceProduct refid="Read"/>					
+    </sources>			
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">					
+      <nRgLooks>4</nRgLooks>					
+      <nAzLooks>1</nAzLooks>					
+      <outputIntensity>false</outputIntensity>					
+      <grSquarePixel>true</grSquarePixel>					
+    </parameters>			
+  </node>	
+
+  <node id="Terrain-Correction">			
+    <operator>Terrain-Correction</operator>			
+    <sources>					
+      <sourceProduct refid="Multilook"/>					
+    </sources>			
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">					
+        <!-- <sourceBands>coh_VV_26Aug2023_14Aug2023</sourceBands>					 -->
+        <demName>SRTM 1Sec HGT</demName>					
+        <externalDEMFile/>					
+        <externalDEMNoDataValue>-9999</externalDEMNoDataValue>					
+        <externalDEMApplyEGM>true</externalDEMApplyEGM>					
+        <demResamplingMethod>BICUBIC_INTERPOLATION</demResamplingMethod>					
+        <imgResamplingMethod>BISINC_5_POINT_INTERPOLATION</imgResamplingMethod>					
+        <pixelSpacingInMeter>20</pixelSpacingInMeter>					
+        <pixelSpacingInDegree>0</pixelSpacingInDegree>					
+        <mapProjection>GEOGCS["WGS84(DD)",DATUM["WGS84",SPHEROID["WGS84", 6378137.0, 298.257223563]],PRIMEM["Greenwich", 0.0],UNIT["degree", 0.017453292519943295],AXIS["Geodetic longitude", EAST],AXIS["Geodetic latitude", NORTH]]</mapProjection>					
+        <alignToStandardGrid>false</alignToStandardGrid>					
+        <standardGridOriginX>0</standardGridOriginX>					
+        <standardGridOriginY>0</standardGridOriginY>					
+        <nodataValueAtSea>false</nodataValueAtSea>					
+        <saveDEM>false</saveDEM>					
+        <saveLatLon>false</saveLatLon>					
+        <saveIncidenceAngleFromEllipsoid>false</saveIncidenceAngleFromEllipsoid>					
+        <saveLocalIncidenceAngle>false</saveLocalIncidenceAngle>					
+        <saveProjectedLocalIncidenceAngle>false</saveProjectedLocalIncidenceAngle>					
+        <saveSelectedSourceBand>true</saveSelectedSourceBand>					
+        <saveLayoverShadowMask>false</saveLayoverShadowMask>					
+        <outputComplex>true</outputComplex>					
+        <applyRadiometricNormalization>false</applyRadiometricNormalization>					
+        <saveSigmaNought>false</saveSigmaNought>					
+        <saveGammaNought>false</saveGammaNought>					
+        <saveBetaNought>false</saveBetaNought>					
+        <incidenceAngleForSigma0>Use projected local incidence angle from DEM</incidenceAngleForSigma0>					
+        <incidenceAngleForGamma0>Use projected local incidence angle from DEM</incidenceAngleForGamma0>					
+        <auxFile>Latest Auxiliary File</auxFile>					
+        <externalAuxFile/>					
+    </parameters>
+  </node>
+
+  <node id="Write">
+    <operator>Write</operator>
+    <sources>
+      <sourceProduct refid="Terrain-Correction"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <file>RasterOutput</file>
+      <formatName>GeoTIFF-BigTIFF</formatName>
+    </parameters>
+  </node>
+  <applicationData id="Presentation">
+    <Description/>
+    <node id="Read">
+      <displayPosition x="25.0" y="13.0"/>
+    </node>
+    <node id="Read(2)">
+      <displayPosition x="28.0" y="229.0"/>
+    </node>
+    <node id="TOPSAR-Split">
+      <displayPosition x="16.0" y="50.0"/>
+    </node>
+    <node id="TOPSAR-Split(2)">
+      <displayPosition x="11.0" y="194.0"/>
+    </node>
+    <node id="Apply-Orbit-File">
+      <displayPosition x="12.0" y="84.0"/>
+    </node>
+    <node id="Apply-Orbit-File(2)">
+      <displayPosition x="6.0" y="160.0"/>
+    </node>
+    <node id="Back-Geocoding">
+      <displayPosition x="116.0" y="123.0"/>
+    </node>
+    <node id="Interferogram">
+      <displayPosition x="233.0" y="123.0"/>
+    </node>
+    <node id="TOPSAR-Deburst">
+      <displayPosition x="339.0" y="124.0"/>
+    </node>
+    <node id="Write">
+      <displayPosition x="456.0" y="125.0"/>
+    </node>
+  </applicationData>
+</graph>
