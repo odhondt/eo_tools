@@ -36,15 +36,16 @@ def process_InSAR(
     resume=False
     # apply_ESD=False -- maybe for later
 ):
-    """Performs InSAR processing of a Sentinel-1 pair of products.
+    """Performs InSAR processing of a Sentinel-1 pair of products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
+    Cropping an AOI is optional.
 
     Args:
         file_mst (str): Master image (Sentinel-1 product)
-        file_slv (str): Slave image
+        file_slv (str): Slave image (Sentinel-1 product)
         out_dir (str): Output directory
         tmp_dir (str): Temporary directory to store intermediate results
-        shp (object, optional): Shapely geometry describing an area of interest as a polygon. If None, the whole product is processed. Defaults to None.
-        pol (str, optional): Polarimetric channels to process (Either 'VH','VV or 'full'). Defaults to "full".
+        shp (object, optional): Shapely geometry describing an area of interest as a polygon. If set to None, the whole product is processed. Defaults to None.
+        pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
         coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
         intensity (bool, optional): Adds image intensities. Defaults to True.
         clear_tmp_files (bool, optional): Removes temporary files. Defaults to True.
@@ -354,7 +355,7 @@ def TOPS_coregistration(
     burst_slv_min=1,
     burst_slv_max=9,
 ):
-    """Helper function to compute TOPS_coregistration"""
+    """Helper function to compute TOPS coregistration"""
     graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
     wfl_coreg = Workflow(graph_coreg_path)
     wfl_coreg["Read"].parameters["file"] = file_mst
