@@ -37,7 +37,7 @@ def process_InSAR(
     # apply_ESD=False -- maybe for later
 ):
     """Performs InSAR processing of a Sentinel-1 pair of products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
-    Cropping an AOI is optional.
+    AOI crop is optional.
 
     Args:
         file_mst (str): Master image (Sentinel-1 product)
