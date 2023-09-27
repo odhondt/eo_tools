@@ -36,13 +36,23 @@ def process_InSAR(
     resume=False
     # apply_ESD=False -- maybe for later
 ):
+    """Performs InSAR processing of a Sentinel-1 pair of products.
+
+    Args:
+        file_mst (str): Master image (Sentinel-1 product)
+        file_slv (str): Slave image
+        out_dir (str): Output directory
+        tmp_dir (str): Temporary directory to store intermediate results
+        shp (object, optional): Shapely geometry describing an area of interest as a polygon. If None, the whole product is processed. Defaults to None.
+        pol (str, optional): Polarimetric channels to process (Either 'VH','VV or 'full'). Defaults to "full".
+        coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
+        intensity (bool, optional): Adds image intensities. Defaults to True.
+        clear_tmp_files (bool, optional): Removes temporary files. Defaults to True.
+        erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
+        resume (bool, optional): Allows to resume the processing when interrupted. Defaults to False.
+    """
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
-
-    # if apply_ESD:
-    #     raise NotImplementedError("method not implemented")
-    # else:
-    # graph_int_path = "../graph/MasterSlaveIntensity.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
@@ -344,6 +354,7 @@ def TOPS_coregistration(
     burst_slv_min=1,
     burst_slv_max=9,
 ):
+    """Helper function to compute TOPS_coregistration"""
     graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
     wfl_coreg = Workflow(graph_coreg_path)
     wfl_coreg["Read"].parameters["file"] = file_mst
@@ -373,8 +384,9 @@ def TOPS_coregistration(
 
 
 def insar_processing(file_in, file_out, tmp_dir, coh_only=False):
-    graph_coh_path = "../graph/TOPSAR-Coherence.xml"
-    graph_ifg_path = "../graph/TOPSAR-Interferogram.xml"
+    """Helper function to compute InSAR phase and / or coherence"""
+    graph_coh_path = "../graph/S1-TOPSAR-Coherence.xml"
+    graph_ifg_path = "../graph/S1-TOPSAR-Interferogram.xml"
     if coh_only:
         wfl_insar = Workflow(graph_coh_path)
     else:
@@ -400,7 +412,8 @@ def _merge_intensity(
     calendar_mst,
     calendar_slv,
 ):
-    graph_int_path = "../graph/MasterSlaveIntensity.xml"
+    """Helper function to compute intensities of coregistered master and slave and merge it with InSAR outputs"""
+    graph_int_path = "../graph/S1-MasterSlaveIntensity.xml"
     wfl_int = Workflow(graph_int_path)
     wfl_int["Read"].parameters["file"] = file_coreg
     wfl_int["Read(2)"].parameters["file"] = file_insar
@@ -431,7 +444,8 @@ def _merge_intensity(
 
 
 def geocoding(file_in, file_out, tmp_dir, output_complex=False):
-    graph_tc_path = "../graph/TOPSAR-RD-TerrainCorrection.xml"
+    """Helper function to geocode the outputs (performs Range Doppler Terrain Correction)"""
+    graph_tc_path = "../graph/S1-TOPSAR-RD-TerrainCorrection.xml"
     wfl_tc = Workflow(graph_tc_path)
 
     wfl_tc["Read"].parameters["file"] = file_in
