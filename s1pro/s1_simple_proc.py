@@ -162,11 +162,10 @@ def S1_insar_proc(
                 )
 
             if intensity:
-                path_int = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                path_int = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 if not (os.path.exists(path_int) and resume):
                     log.info("-- Computing & merging intensities")
-                    path_coreg = f"{tmp_dir}/{tmp_name}_coreg.data/"
-                    img_files = Path(path_coreg).glob("*.img")
+                    img_files = Path(f"{tmp_dir}/{tmp_name}_coreg.data").glob("*.img")
                     basenames = list(set([f.stem[2:] for f in img_files]))
                     if len(basenames) == 2:
                         name1 = basenames[0]
