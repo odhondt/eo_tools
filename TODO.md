@@ -2,7 +2,7 @@
 
 ## search
 - [ ] look for scenes intersecting an AOI between 2 dates
-- [ ] group scenes by orbit and footprint (coherence will be only computed for fully overlapping scenes)
+- [ ] group scenes by orbit and footprint (InSAR processing will be only performed for fully overlapping scenes)
 
 
 ## processing
@@ -29,3 +29,4 @@
 ## display
 
 - [ ] plot raster on top of folium map, use tile server
+- [ ] make HSV composites with phase / coherence / intensity

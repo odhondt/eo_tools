@@ -36,14 +36,14 @@ def process_InSAR(
     resume=False
     # apply_ESD=False -- maybe for later
 ):
-    """Performs InSAR processing of a pair of Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
+    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
 
     Args:
-        file_mst (str): Master image (Sentinel-1 product)
-        file_slv (str): Slave image (Sentinel-1 product)
+        file_mst (str): Master image (SLC Sentinel-1 product)
+        file_slv (str): Slave image (SLC Sentinel-1 product)
         out_dir (str): Output directory
-        tmp_dir (str): Temporary directory to store intermediate results
+        tmp_dir (str): Temporary directory to store intermediate files
         shp (object, optional): Shapely geometry describing an area of interest as a polygon. If set to None, the whole product is processed. Defaults to None.
         pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
         coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
@@ -325,22 +325,24 @@ def process_InSAR(
                     f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 )
 
-        if clear_tmp_files:
-            raise NotImplementedError(
-                "This feature will be implemented in a future version."
-            )
-            # os.remove(f"{tmp_dir}/graph_coreg.xml")
-            # if intensity:
-            #     os.remove(f"{tmp_dir}/graph_int.xml")
-            # os.remove(f"{tmp_dir}/graph_insar.xml")
-            # os.remove(f"{tmp_dir}/graph_tc.xml")
-            # files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
-            # for fi in files:
-            #     remove(fi)
+    if clear_tmp_files:
+        # raise NotImplementedError(
+        log.info(
+            "clear_tmp_files: This feature will be implemented in a future version."
+        )
+        # )
+        # os.remove(f"{tmp_dir}/graph_coreg.xml")
+        # if intensity:
+        #     os.remove(f"{tmp_dir}/graph_int.xml")
+        # os.remove(f"{tmp_dir}/graph_insar.xml")
+        # os.remove(f"{tmp_dir}/graph_tc.xml")
+        # files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
+        # for fi in files:
+        #     remove(fi)
 
-            # for tmp_name in tmp_names:
-            #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
-            #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_edge.tif")
+        # for tmp_name in tmp_names:
+        #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
+        #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_edge.tif")
 
 
 def TOPS_coregistration(
