@@ -42,7 +42,7 @@ def S1_insar_proc(
     # if apply_ESD:
     #     raise NotImplementedError("method not implemented")
     # else:
-    graph_int_path = "../graph/MasterSlaveIntensity.xml"
+    # graph_int_path = "../graph/MasterSlaveIntensity.xml"
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
@@ -116,7 +116,7 @@ def S1_insar_proc(
     for p in pol:
         tmp_names = []
         for subswath in unique_subswaths:
-            log.info(f"Processing subswath {subswath} in {p} polarization.")
+            log.info(f"---- Processing subswath {subswath} in {p} polarization.")
 
             # identify bursts to process
             bursts_slv = gdf_burst_slv[gdf_burst_slv["subswath"] == subswath][
@@ -133,12 +133,13 @@ def S1_insar_proc(
             tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
             tmp_names.append(tmp_name)
 
-            if not os.path.exists(f"{tmp_dir}/{tmp_name}_coreg.dim") and resume:
-                log.info("TOPS coregistration")
+            path_coreg = f"{tmp_dir}/{tmp_name}_coreg.dim"
+            if not (os.path.exists(path_coreg) and resume):
+                log.info("-- TOPS coregistration")
                 TOPS_coregistration(
                     file_mst=file_mst,
                     file_slv=file_slv,
-                    file_out=f"{tmp_dir}/{tmp_name}_coreg",
+                    file_out=path_coreg,
                     tmp_dir=tmp_dir,
                     subswath=subswath,
                     pol=p,
@@ -150,21 +151,20 @@ def S1_insar_proc(
                 )
 
             # InSAR processing
-            if not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}.dim") and resume:
-                log.info("InSAR processing")
+            path_insar = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+            if not (os.path.exists(path_insar) and resume):
+                log.info("-- InSAR processing")
                 insar_processing(
-                    file_in=f"{tmp_dir}/{tmp_name}_coreg.dim",
-                    file_out=f"{tmp_dir}/{tmp_name}_{substr}",
+                    file_in=path_coreg,
+                    file_out=path_insar,
                     tmp_dir=tmp_dir,
                     coh_only=coh_only,
                 )
 
             if intensity:
-                if (
-                    not os.path.exists(f"{tmp_dir}/{tmp_name}_{substr}_int.dim")
-                    and resume
-                ):
-                    log.info("Computing intensities")
+                path_int = f"{tmp_dir}/{tmp_name}_coreg.dim"
+                if not (os.path.exists(path_int) and resume):
+                    log.info("-- Computing & merging intensities")
                     path_coreg = f"{tmp_dir}/{tmp_name}_coreg.data/"
                     img_files = Path(path_coreg).glob("*.img")
                     basenames = list(set([f.stem[2:] for f in img_files]))
@@ -173,62 +173,43 @@ def S1_insar_proc(
                         name2 = basenames[1]
                     else:
                         raise ValueError("Intensity: exactly 2 bands needed.")
-                    wfl_int = Workflow(graph_int_path)
-                    wfl_int["Read"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_coreg.dim"
-                    wfl_int["Read(2)"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_{substr}.dim"
-
-                    # required to avoid merging virtual bands
-                    if coh_only:
-                        wfl_int["BandSelect"].parameters["sourceBands"] = [
-                            f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}"
-                        ]
-                    else:
-                        wfl_int["BandSelect"].parameters["sourceBands"] = [
-                            f"i_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
-                            f"q_{substr}_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
-                            f"coh_{subswath}_{p}_{calendar_mst}_{calendar_slv}",
-                        ]
-
-                    math = wfl_int["BandMaths"]
-                    exp = math.parameters["targetBands"][0]
-                    exp["name"] = f"Intensity_{name1}"
-                    exp["expression"] = f"sq(i_{name1}) + sq(q_{name1})"
-                    math2 = wfl_int["BandMaths(2)"]
-                    exp2 = math2.parameters["targetBands"][0]
-                    exp2["name"] = f"Intensity_{name2}"
-                    exp2["expression"] = f"sq(i_{name2}) + sq(q_{name2})"
-                    wfl_int["Write"].parameters[
-                        "file"
-                    ] = f"{tmp_dir}/{tmp_name}_{substr}_int"
-                    wfl_int.write(f"{tmp_dir}/graph_int.xml")
-                    gpt(f"{tmp_dir}/graph_int.xml", tmpdir=tmp_dir)
+                    _merge_intensity(
+                        file_coreg=path_coreg,
+                        file_insar=path_insar,
+                        file_out=path_int,
+                        tmp_dir=tmp_dir,
+                        coh_only=coh_only,
+                        coreg_name1=name1,
+                        coreg_name2=name2,
+                        substr=substr,
+                        subswath=subswath,
+                        pol=p,
+                        calendar_mst=calendar_mst,
+                        calendar_slv=calendar_slv,
+                    )
 
             # Terrain correction
-            tc_path = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
-            if not os.path.exists(tc_path) and resume:
-                log.info("Terrain correction (geocoding)")
+            path_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
+            if not os.path.exists(path_tc):  # and resume:
+                log.info("-- Terrain correction (geocoding)")
                 output_complex = not coh_only
                 if intensity:
                     file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 else:
                     file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}.dim"
-                file_out_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
                 geocoding(
                     file_in=file_in_tc,
-                    file_out=file_out_tc,
+                    file_out=path_tc,
                     tmp_dir=tmp_dir,
                     output_complex=output_complex,
                 )
 
-            log.info(f"Removing dark edges after terrain correction")
+            log.info(f"-- Removing dark edges after terrain correction")
             file_to_open = f"{tmp_dir}/{tmp_name}_{substr}_tc"
             rio.shutil.copy(f"{file_to_open}.tif", f"{file_to_open}_edge.tif")
             with rio.open(f"{file_to_open}_edge.tif", "r+") as src:
                 prof = src.profile
+                print(f"Profile: {prof}")
                 prof.update({"driver": "GTiff", "nodata": 0})
                 struct = np.ones((erosion_width, erosion_width))
                 for i in range(1, prof["count"] + 1):
@@ -238,7 +219,7 @@ def S1_insar_proc(
                     band_dst = band_src * msk_dst
                     src.write(band_dst, i)
 
-        log.info(f"Merging and cropping subswaths {unique_subswaths}")
+        log.info(f"---- Merging and cropping subswaths {unique_subswaths}")
         to_merge = [
             rio.open(f"{tmp_dir}/{tmp_name}_{substr}_tc_edge.tif")
             for tmp_name in tmp_names
@@ -281,7 +262,7 @@ def S1_insar_proc(
                 }
             )
 
-        log.info("write COG files")
+        log.info("---- Writing COG files")
         cog_prof = cog_profiles.get("deflate")
 
         if not coh_only and intensity:
@@ -309,34 +290,38 @@ def S1_insar_proc(
                 out_name = (
                     f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
                 )
+                out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
-                    cog_translate(
-                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
-                    )
+                cog_translate(
+                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                )
             if sub == "coh":
                 out_name = (
                     f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
                 )
+                out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(arr_out[offidx], 1)
-                    cog_translate(
-                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
-                    )
+                cog_translate(
+                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                )
             if sub == "mst_int":
                 out_name = f"int_{p}_{calendar_mst}_slice{slnum}{postfix}"
+                out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(arr_out[1 + offidx], 1)
-                    cog_translate(
-                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
-                    )
+                cog_translate(
+                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                )
             if sub == "slv_int":
                 out_name = f"int_{p}_{calendar_slv}_slice{slnum}{postfix}"
+                out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(arr_out[2 + offidx], 1)
-                    cog_translate(
-                        dst, f"{out_dir}/{out_name}.tif", cog_prof, quiet=True
-                    )
+                cog_translate(
+                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                )
 
         if clear_tmp_files:
             os.remove(f"{tmp_dir}/graph_coreg.xml")
@@ -388,7 +373,6 @@ def TOPS_coregistration(
 
     wfl_coreg["TOPSAR-Deburst"].parameters["selectedPolarisations"] = pol
 
-    # wfl_coreg["Write"].parameters["file"] = f"{tmp_dir}/{tmp_name}_coreg"
     wfl_coreg["Write"].parameters["file"] = file_out
     wfl_coreg.write(f"{tmp_dir}/graph_coreg.xml")
     grp = groupbyWorkers(f"{tmp_dir}/graph_coreg.xml", n=1)
@@ -408,8 +392,49 @@ def insar_processing(file_in, file_out, tmp_dir, coh_only=False):
     gpt(f"{tmp_dir}/graph_insar.xml", tmpdir=tmp_dir)
 
 
-def merge_intensity():
-    pass
+# convenience function
+def _merge_intensity(
+    file_coreg,
+    file_insar,
+    file_out,
+    tmp_dir,
+    coh_only,
+    coreg_name1,
+    coreg_name2,
+    substr,
+    subswath,
+    pol,
+    calendar_mst,
+    calendar_slv,
+):
+    graph_int_path = "../graph/MasterSlaveIntensity.xml"
+    wfl_int = Workflow(graph_int_path)
+    wfl_int["Read"].parameters["file"] = file_coreg
+    wfl_int["Read(2)"].parameters["file"] = file_insar
+
+    # required to avoid merging virtual bands
+    if coh_only:
+        wfl_int["BandSelect"].parameters["sourceBands"] = [
+            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}"
+        ]
+    else:
+        wfl_int["BandSelect"].parameters["sourceBands"] = [
+            f"i_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+            f"q_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+        ]
+
+    math = wfl_int["BandMaths"]
+    exp = math.parameters["targetBands"][0]
+    exp["name"] = f"Intensity_{coreg_name1}"
+    exp["expression"] = f"sq(i_{coreg_name1}) + sq(q_{coreg_name1})"
+    math2 = wfl_int["BandMaths(2)"]
+    exp2 = math2.parameters["targetBands"][0]
+    exp2["name"] = f"Intensity_{coreg_name2}"
+    exp2["expression"] = f"sq(i_{coreg_name2}) + sq(q_{coreg_name2})"
+    wfl_int["Write"].parameters["file"] = file_out
+    wfl_int.write(f"{tmp_dir}/graph_int.xml")
+    gpt(f"{tmp_dir}/graph_int.xml", tmpdir=tmp_dir)
 
 
 def geocoding(file_in, file_out, tmp_dir, output_complex=False):
@@ -431,7 +456,7 @@ def geocoding(file_in, file_out, tmp_dir, output_complex=False):
 # - add some parameters
 # - subswaths as a parameter
 # - ESD (optional)
-# - break into functions to be reused by other processors if possible
 # - slice assembly (post-process with rio)
 # - goldstein filter (optional)
 # - gpt options (?)
+# - write class (?)
