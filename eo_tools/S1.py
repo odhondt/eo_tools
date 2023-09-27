@@ -48,9 +48,9 @@ def process_InSAR(
         pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
         coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
         intensity (bool, optional): Adds image intensities. Defaults to True.
-        clear_tmp_files (bool, optional): Removes temporary files. Defaults to True.
+        clear_tmp_files (bool, optional): Removes temporary files at the end (recommended). Defaults to True.
         erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
-        resume (bool, optional): Allows to resume the processing when interrupted. Defaults to False.
+        resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
     """
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
@@ -110,11 +110,12 @@ def process_InSAR(
     calendar_slv = f"{date_slv.day}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
 
     # check availability of orbit state vector file
+    log.info("---- Looking for available orbit files")
     orbit_type = "Sentinel Precise (Auto Download)"
     match = info_mst.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
     match2 = info_slv.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
     if match is None or match2 is None:
-        print("Precise orbits not available, using restituted")
+        log.info("-- Precise orbits not available, using restituted")
         info_mst.getOSV(osvType="RES")  # , osvdir=osvPath)
         info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
         orbit_type = "Sentinel Restituted (Auto Download)"
