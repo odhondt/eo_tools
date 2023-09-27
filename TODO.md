@@ -21,11 +21,10 @@
 
 - [x] Split graphs into smaller chunks.  
 
-- add some parameters
-- slice assembly (post-process with rio)
-- goldstein filter (optional)
-- gpt options (?)
-- write class (?)
+- [ ] add more parameters, think of a convenient way of doing it (class?)
+- [ ] slice assembly (post-process with rio)
+- [ ] goldstein filter (optional)
+- [ ] gpt options (?)
 
 ## display
 

@@ -11,7 +11,7 @@ from rasterio.io import MemoryFile
 from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from scipy.ndimage import binary_erosion
-from s1pro.auxils import get_burst_geometry
+from eo_tools.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
 
@@ -22,7 +22,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def S1_insar_proc(
+def process_InSAR(
     file_mst,
     file_slv,
     out_dir,
@@ -206,7 +206,6 @@ def S1_insar_proc(
             rio.shutil.copy(f"{file_to_open}.tif", f"{file_to_open}_edge.tif")
             with rio.open(f"{file_to_open}_edge.tif", "r+") as src:
                 prof = src.profile
-                print(f"Profile: {prof}")
                 prof.update({"driver": "GTiff", "nodata": 0})
                 struct = np.ones((erosion_width, erosion_width))
                 for i in range(1, prof["count"] + 1):
@@ -315,18 +314,21 @@ def S1_insar_proc(
                 )
 
         if clear_tmp_files:
-            os.remove(f"{tmp_dir}/graph_coreg.xml")
-            if intensity:
-                os.remove(f"{tmp_dir}/graph_int.xml")
-            os.remove(f"{tmp_dir}/graph_{substr}.xml")
-            os.remove(f"{tmp_dir}/graph_tc.xml")
-            files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
-            for fi in files:
-                remove(fi)
+            raise NotImplementedError(
+                "This feature will be implemented in a future version."
+            )
+            # os.remove(f"{tmp_dir}/graph_coreg.xml")
+            # if intensity:
+            #     os.remove(f"{tmp_dir}/graph_int.xml")
+            # os.remove(f"{tmp_dir}/graph_insar.xml")
+            # os.remove(f"{tmp_dir}/graph_tc.xml")
+            # files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
+            # for fi in files:
+            #     remove(fi)
 
-            for tmp_name in tmp_names:
-                os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
-                os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_border.tif")
+            # for tmp_name in tmp_names:
+            #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
+            #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_edge.tif")
 
 
 def TOPS_coregistration(
