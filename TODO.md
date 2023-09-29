@@ -3,6 +3,7 @@
 ## search
 - [ ] look for scenes intersecting an AOI between 2 dates
 - [ ] group scenes by orbit and footprint (InSAR processing will be only performed for fully overlapping scenes)
+- [ ] produce a geo dataframe with scenes that can be displayed on a map to help the user visualizing the different products
 
 
 ## processing
@@ -18,6 +19,9 @@
 - [x] geocode independently all IW, stitch in the end with rasterio
 - [x] improved coregistration (ESD, etc)
 - [x] make graph more generic by adding placeholders
+- [ ] Speckle filtering
+    - [ ] for parameter estimation (would need covariance)
+    - [ ] for visualization -- channels could be addressed independently
 
 - [x] Split graphs into smaller chunks.  
 

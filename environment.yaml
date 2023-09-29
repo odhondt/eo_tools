@@ -20,3 +20,4 @@ dependencies:
   - rio-cogeo
   # - snapista
   - scikit-image
+  - sentinelsat 
