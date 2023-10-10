@@ -106,8 +106,13 @@ def process_InSAR(
     datestr_slv = meta_slv["start"]
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
     date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
-    calendar_mst = f"{date_mst.day}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
-    calendar_slv = f"{date_slv.day}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
+
+    calendar_mst = (
+        f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
+    )
+    calendar_slv = (
+        f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
+    )
 
     # check availability of orbit state vector file
     log.info("---- Looking for available orbit files")
@@ -128,7 +133,7 @@ def process_InSAR(
     for p in pol:
         tmp_names = []
         for subswath in unique_subswaths:
-            log.info(f"---- Processing subswath {subswath} in {p} polarization.")
+            log.info(f"---- Processing subswath {subswath} in {p} polarization")
 
             # identify bursts to process
             bursts_slv = gdf_burst_slv[gdf_burst_slv["subswath"] == subswath][
