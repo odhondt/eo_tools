@@ -1,9 +1,9 @@
 # Features to implement
 
 ## search
-- [ ] look for scenes intersecting an AOI between 2 dates
-- [ ] group scenes by orbit and footprint (InSAR processing will be only performed for fully overlapping scenes)
-- [ ] produce a geo dataframe with scenes that can be displayed on a map to help the user visualizing the different products
+- [x] look for scenes intersecting an AOI between 2 dates
+- [x] group scenes by orbit and footprint (InSAR processing will be only performed for fully overlapping scenes)
+- [x] produce a geo dataframe with scenes that can be displayed on a map to help the user visualizing the different products
 
 
 ## processing

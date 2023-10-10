@@ -4,7 +4,6 @@ channels:
   - defaults
 dependencies:
   - python>=3.8
-  # - tqdm
   - gdal
   - rasterio
   - pyroSAR
@@ -15,7 +14,11 @@ dependencies:
   - pandas
   - asf_search
   - ipykernel
+  - ipywidgets
   - black
   - rio-cogeo
   - scikit-image
   - sentinelsat 
+  # - localtileserver 
+  # - ipyleaflet
+  # - tqdm
