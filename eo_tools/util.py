@@ -110,6 +110,6 @@ def visualize_insar_phase(file_in):
     client = TileClient(file_in)
     t = get_folium_tile_layer(client, palette=cmap_hex)
 
-    m = folium.Map()
+    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
     return m
