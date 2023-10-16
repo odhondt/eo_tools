@@ -317,7 +317,9 @@ def process_InSAR(
                 out_name = f"int_{p}_{calendar_mst}_slice{slnum}{postfix}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                    dst.write(arr_out[1 + offidx], 1)
+                    band = arr_out[1 + offidx]
+                    dst.update_tags(mean_value=band[band != 0].mean())
+                    dst.write(band, 1)
                 cog_translate(
                     f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 )
@@ -325,7 +327,9 @@ def process_InSAR(
                 out_name = f"int_{p}_{calendar_slv}_slice{slnum}{postfix}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                    dst.write(arr_out[2 + offidx], 1)
+                    band = arr_out[2 + offidx]
+                    dst.update_tags(mean_value=band[band != 0].mean())
+                    dst.write(band, 1)
                 cog_translate(
                     f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 )
