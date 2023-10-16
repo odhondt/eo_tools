@@ -4,6 +4,7 @@ from shapely import intersection_all
 from shapely.geometry import mapping
 
 import numpy as np
+import rasterio
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
 
@@ -109,6 +110,47 @@ def visualize_insar_phase(file_in):
 
     client = TileClient(file_in)
     t = get_folium_tile_layer(client, palette=cmap_hex)
+
+    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
+    t.add_to(m)
+    return m
+
+
+def visualize_insar_coh(file_in):
+    """Visualize coherence on a map.
+
+    Args:
+        file_in (str): GeoTiff input file (preferably COG)
+
+    Returns:
+        folium.Map: Phase raster visualization on an interactive map
+    """
+
+
+    client = TileClient(file_in)
+    t = get_folium_tile_layer(client, vmin=0.0, vmax=1.0)
+
+    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
+    t.add_to(m)
+    return m
+
+def visualize_sar_intensity(file_in):
+    """Visualize intensity on a map.
+
+    Args:
+        file_in (str): GeoTiff input file (preferably COG)
+
+    Returns:
+        folium.Map: Phase raster visualization on an interactive map
+    """
+
+    try:
+        with rasterio.open(file_in) as src: 
+            mean_val = src.tags()["mean_value"]
+    except:
+        raise Exception("File not found or no 'mean_value' tag.")
+    client = TileClient(file_in)
+    t = get_folium_tile_layer(client, vmin=0.0, vmax=2.5*float(mean_val))
 
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
