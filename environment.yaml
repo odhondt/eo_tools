@@ -19,6 +19,6 @@ dependencies:
   - rio-cogeo
   - scikit-image
   - sentinelsat 
-  # - localtileserver 
-  # - ipyleaflet
-  # - tqdm
+  - localtileserver 
+  - ipyleaflet
+  - tqdm
