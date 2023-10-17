@@ -32,5 +32,5 @@
 
 ## display
 
-- [ ] plot raster on top of folium map, use tile server
+- [x] plot raster on top of folium map, use tile server
 - [ ] make HSV composites with phase / coherence / intensity
