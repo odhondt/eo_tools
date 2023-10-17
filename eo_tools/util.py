@@ -134,7 +134,7 @@ def visualize_insar_coh(file_in):
     t.add_to(m)
     return m
 
-def visualize_sar_intensity(file_in):
+def visualize_sar_intensity(file_in, vmin=None, vmax=None):
     """Visualize intensity on a map.
 
     Args:
@@ -150,7 +150,18 @@ def visualize_sar_intensity(file_in):
     except:
         raise Exception("File not found or no 'mean_value' tag.")
     client = TileClient(file_in)
-    t = get_folium_tile_layer(client, vmin=0.0, vmax=2.5*float(mean_val))
+
+    if vmin is None:
+        vmin_ = 0
+    else:
+        vmin_ = vmin
+
+    if vmax is None:
+        vmax_ = 2.5*float(mean_val)
+    else:
+        vmax_ = vmax
+
+    t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
 
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
