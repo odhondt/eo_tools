@@ -83,13 +83,13 @@ def visualize_S1_products_for_insar(product_geodataframe, aoi_geojson=None):
 
 
 def visualize_insar_phase(file_in):
-    """Visualize interferometric phase on a map with a cyclic colormap similar to the one in SNAP.
+    """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
 
     Args:
         file_in (str): GeoTiff input file (preferably COG)
 
     Returns:
-        folium.Map: Phase raster visualization on an interactive map
+        folium.Map: raster visualization on an interactive map
     """
 
     # palette used by SNAP for insar phase
@@ -123,7 +123,7 @@ def visualize_insar_coh(file_in):
         file_in (str): GeoTiff input file (preferably COG)
 
     Returns:
-        folium.Map: Phase raster visualization on an interactive map
+        folium.Map: raster visualization on an interactive map
     """
 
 
@@ -141,7 +141,7 @@ def visualize_sar_intensity(file_in, vmin=None, vmax=None):
         file_in (str): GeoTiff input file (preferably COG)
 
     Returns:
-        folium.Map: Phase raster visualization on an interactive map
+        folium.Map: raster visualization on an interactive map
     """
 
     try:
