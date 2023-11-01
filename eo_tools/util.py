@@ -1,7 +1,7 @@
 import folium
 
 from shapely import intersection_all
-from shapely.geometry import mapping
+from shapely.geometry import mapping, shape
 
 import numpy as np
 import rasterio
@@ -83,7 +83,12 @@ def visualize_S1_products_for_insar(product_geodataframe, aoi_geojson=None):
     return map_
 
 
-def visualize_S2_products(product_geodataframe, aoi_geojson=None):
+def has_overlap(geom1, geom2, tolerance=0.01):
+    intersection = geom1.intersection(geom2)
+    return intersection.area / min(geom1.area, geom2.area)
+
+
+def visualize_S2_products(product_geodataframe, date, aoi_geojson=None):
     """Visualize Sentinel-2 products on a map.
 
     Args:
@@ -94,166 +99,56 @@ def visualize_S2_products(product_geodataframe, aoi_geojson=None):
         folium Map: interactive map
     """
     map_ = folium.Map()
-    gdf = gpd.GeoDataFrame(product_geodataframe.astype("str"))
+    gdf = product_geodataframe[product_geodataframe.beginposition == date]
+    gdf = gpd.GeoDataFrame(gdf.astype("str"))
     gdf.geometry = product_geodataframe.geometry
-    # grouped = gdf.groupby(["beginposition", "tileid"])
-    grouped = gdf.groupby("tileid")
-    # grouped = gdf.groupby("relativeorbitnumber")
-    groups = list(grouped.groups.keys())
     ll = product_geodataframe.total_bounds.reshape(2, 2)
     # folium inverts coordinates
     bbox = list(map(lambda x: [x[1], x[0]], ll))
-    for g in groups:
-        # convert Multipolygons to Polygons
-        dfg = grouped.get_group(g).explode(index_parts=False).to_crs("EPSG:4236")
-        # find the intersection of all geometries
-        # inter = intersection_all(dfg.geometry)
-        union = dfg.geometry.unary_union
-        # a collection is required for folium styling props
-        gj = {}
-        gj["type"] = "FeatureCollection"
-        gj["features"] = []
-        item = mapping(union)
-        # item = mapping(inter)
-        item["properties"] = {}
-        if all(dfg.orbitdirection == "ASCENDING"):
-            item["properties"]["color"] = "cadetblue"
-            orbit_conf = "Ascending"
-        elif all(dfg.orbitdirection == "DESCENDING"):
-            item["properties"]["color"] = "orange"
-            orbit_conf = "Descending"
-        else:
-            # for safety -- not sure if this may happen
-            item["properties"]["color"] = "red"
-            orbit_conf = "Mix of ascending and descending"
-        gj["features"].append(item)
-        folium_products = folium.GeoJson(
-            # data=dfg.to_json(),
-            data=gj,
-            # style_function=lambda x: {
-            #     "fillColor": "lightblue",
-            #     "color": x["properties"]["color"],
-            # },
-        )
+    # convert Multipolygons to Polygons
+    dfg = gdf.explode(index_parts=False).to_crs("EPSG:4236")
+    union = dfg.geometry.unary_union
 
-        date_ts = dfg["beginposition"]  # .dt.strftime("%Y-%m-%d %X")
-        date_str = "<br>".join(
-            date_ts.index.astype(str)
-            .str.cat(date_ts.values, sep=" / ")
-            # .str.cat(dfg["tileid"].values, sep=" / ")
-        )
-        folium.Tooltip(
-            f"<b>Configuration:</b><br>{orbit_conf}, Tile ID: {g[0]}, <br><b>Product list (index / date):</b><br>{date_str}"
-        ).add_to(folium_products)
-        folium_products.add_to(map_)
-        # dfg.add_to(map_)
+    # a collection is required for folium styling props
+    gj = {}
+    gj["type"] = "FeatureCollection"
+    gj["features"] = []
+    item = mapping(union)
+    item["properties"] = {}
+    if all(dfg.orbitdirection == "ASCENDING"):
+        item["properties"]["color"] = "cadetblue"
+        orbit_conf = "Ascending"
+    elif all(dfg.orbitdirection == "DESCENDING"):
+        item["properties"]["color"] = "orange"
+        orbit_conf = "Descending"
+    else:
+        # for safety -- not sure if this may happen
+        item["properties"]["color"] = "red"
+        orbit_conf = "Mix of ascending and descending"
+    gj["features"].append(item)
+    folium_products = folium.GeoJson(
+        data=gj,
+        # style_function=lambda x: {
+        #     "fillColor": "lightblue",
+        #     "color": x["properties"]["color"],
+        # },
+    )
+    date_ts = dfg["beginposition"]  # .dt.strftime("%Y-%m-%d %X")
+    date_str = "<br>".join(
+        date_ts.index.astype(str)
+        .str.cat(date_ts.values, sep=" / ")
+        .str.cat(dfg.tileid.values, sep=" / ")
+    )
 
     if aoi_geojson is not None:
-        folium_aoi = folium.GeoJson(
-            data=aoi_geojson,
-            style_function=lambda x: {
-                "fillColor": "none",
-                "color": "grey",
-            },
-        )
-        folium.Tooltip(f"Area of Interest").add_to(folium_aoi)
-        folium_aoi.add_to(map_)
-    map_.fit_bounds(bbox)
-    return map_
+        overlap = has_overlap(union, shape(aoi_geojson[0]["geometry"]))
+        tooltip = f"Orbit configuration: {orbit_conf}, <br>Total overlap: {overlap*100:.1f}&percnt;<br><br><b>Product list (index / date / tile):</b><br>{date_str}"
+    else:
+        tooltip = f"<b>Configuration:</b><br>{orbit_conf}, <br><b>Product list (index / date / tile):</b><br>{date_str}"
 
-
-def group_overlapping(gdf, tolerance=0.01):
-    def has_overlap(geom1, geom2, tolerance=0.01):
-        intersection = geom1.intersection(geom2)
-        return intersection.area / min(geom1.area, geom2.area) >= (1 - tolerance)
-
-    # Group the products by geometry with overlap tolerance
-    groups = []
-    for i, row in gdf.iterrows():
-        geom1 = row["geometry"]
-        # group = [row['title']]
-        group = [i]
-        for i, inner_row in gdf.iterrows():
-            geom2 = inner_row["geometry"]
-            if geom1 != geom2 and has_overlap(geom1, geom2, tolerance):
-                # group.append(inner_row['title'])
-                group.append(i)
-        if len(group) > 0:
-            groups.append(group)
-
-    # Remove duplicate groups and sort
-    unique_groups = []
-    for group in groups:
-        group = list(set(group))
-        group.sort()
-        if group not in unique_groups:
-            unique_groups.append(group)
-
-    return groups
-
-
-def visualize_S2_products_v2(product_geodataframe, aoi_geojson=None):
-    """Visualize Sentinel-2 products on a map.
-
-    Args:
-        product_geodataframe (geopandas GeoDataFrame): products returned by sentinelsat (see example notebook).
-        aoi_geojson (dict, optional): Area of interest to display on the map. Defaults to None.
-
-    Returns:
-        folium Map: interactive map
-    """
-    map_ = folium.Map()
-    gdf = gpd.GeoDataFrame(product_geodataframe.astype("str"))
-    gdf.geometry = product_geodataframe.geometry
-    print(gdf.index.max())
-    # grouped = gdf.groupby("relativeorbitnumber")
-    # groups = list(grouped.groups.keys())
-    groups = group_overlapping(gdf, 0.0)
-    ll = product_geodataframe.total_bounds.reshape(2, 2)
-    # folium inverts coordinates
-    bbox = list(map(lambda x: [x[1], x[0]], ll))
-    for g in groups:
-        # convert Multipolygons to Polygons
-        print(g)
-        dfg = gdf.iloc[g].explode(index_parts=False).to_crs("EPSG:4236")
-        # find the intersection of all geometries
-        inter = intersection_all(dfg.geometry)
-        # a collection is required for folium styling props
-
-        gj = {}
-        gj["type"] = "FeatureCollection"
-        gj["features"] = []
-        item = mapping(inter)
-        item["properties"] = {}
-        if all(dfg.orbitdirection == "ASCENDING"):
-            item["properties"]["color"] = "cadetblue"
-            orbit_conf = "Ascending"
-        elif all(dfg.orbitdirection == "DESCENDING"):
-            item["properties"]["color"] = "orange"
-            orbit_conf = "Descending"
-        else:
-            # for safety -- not sure if this may happen
-            item["properties"]["color"] = "red"
-            orbit_conf = "Mix of ascending and descending"
-        gj["features"].append(item)
-        folium_products = folium.GeoJson(
-            # data=dfg.to_json(),
-            data=gj,
-            # style_function=lambda x: {
-            #     "fillColor": "lightblue",
-            #     "color": x["properties"]["color"],
-            # },
-        )
-
-        date_ts = dfg["beginposition"]  # .dt.strftime("%Y-%m-%d %X")
-        date_str = "<br>".join(
-            date_ts.index.astype(str).str.cat(date_ts.values, sep=" / ")
-        )
-        folium.Tooltip(
-            f"<b>Configuration:</b><br>{orbit_conf}, Orbit: {g[0]}, <br><b>Product list (index / date):</b><br>{date_str}"
-        ).add_to(folium_products)
-        folium_products.add_to(map_)
-        # dfg.add_to(map_)
+    folium.Tooltip(tooltip).add_to(folium_products)
+    folium_products.add_to(map_)
+    # dfg.add_to(map_)
 
     if aoi_geojson is not None:
         folium_aoi = folium.GeoJson(
