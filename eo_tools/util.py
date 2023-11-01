@@ -133,7 +133,7 @@ def visualize_S2_products(product_geodataframe, date, aoi_geojson=None):
         #     "color": x["properties"]["color"],
         # },
     )
-    date_ts = dfg["beginposition"]  # .dt.strftime("%Y-%m-%d %X")
+    date_ts = dfg["beginposition"]
     date_str = "<br>".join(
         date_ts.index.astype(str)
         .str.cat(date_ts.values, sep=" / ")
@@ -144,11 +144,10 @@ def visualize_S2_products(product_geodataframe, date, aoi_geojson=None):
         overlap = has_overlap(union, shape(aoi_geojson[0]["geometry"]))
         tooltip = f"Orbit configuration: {orbit_conf}, <br>Total overlap: {overlap*100:.1f}&percnt;<br><br><b>Product list (index / date / tile):</b><br>{date_str}"
     else:
-        tooltip = f"<b>Configuration:</b><br>{orbit_conf}, <br><b>Product list (index / date / tile):</b><br>{date_str}"
+        tooltip = f"Configuration:<br>{orbit_conf}, <br><b>Product list (index / date / tile):</b><br>{date_str}"
 
     folium.Tooltip(tooltip).add_to(folium_products)
     folium_products.add_to(map_)
-    # dfg.add_to(map_)
 
     if aoi_geojson is not None:
         folium_aoi = folium.GeoJson(
