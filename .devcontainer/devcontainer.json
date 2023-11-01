@@ -13,7 +13,8 @@
           // "ms-python.autopep8",
           "ms-python.black-formatter",
           "ms-toolsai.jupyter",
-          "njpwerner.autodocstring"
+          "njpwerner.autodocstring",
+          "zhang-renyang.chat-gpt"
         ],
         "settings": {
           "git.ignoreLimitWarning": true,
