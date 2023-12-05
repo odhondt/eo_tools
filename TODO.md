@@ -6,7 +6,7 @@
 - [x] produce a geo dataframe with scenes that can be displayed on a map to help the user visualizing the different products
 
 
-## processing
+## S1 processing
 - [x] use a pre-defined graph (one subswath and polarization)
 - [x] simple version: takes master and slave assuming they are from the same orbit / slice
 - [x] polarization list
@@ -32,5 +32,5 @@
 
 ## display
 
-- [ ] plot raster on top of folium map, use tile server
+- [x] plot raster on top of folium map, use tile server
 - [ ] make HSV composites with phase / coherence / intensity

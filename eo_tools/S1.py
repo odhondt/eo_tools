@@ -22,6 +22,8 @@ import logging
 log = logging.getLogger(__name__)
 
 
+# TODO add aoi substring
+# TODO return output paths
 def process_InSAR(
     file_mst,
     file_slv,
