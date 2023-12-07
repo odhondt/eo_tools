@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 # TODO add aoi substring
 # TODO return output paths
+# TODO: make subfolder to write individual bands
 def process_InSAR(
     file_mst,
     file_slv,
