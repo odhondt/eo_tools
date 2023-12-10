@@ -171,3 +171,7 @@ def visualize_sar_intensity(file_in, vmin=None, vmax=None):
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
     return m
+
+# TODO: Viz single band (any raster)
+# TODO: Viz S2 combinations (RGB, NDVI, ...)
+# TODO: Viz InSAR composite (HSV)
