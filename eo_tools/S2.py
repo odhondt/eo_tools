@@ -8,6 +8,9 @@ from rasterio import mask
 import numpy as np
 import pandas as pd
 
+import logging
+
+log = logging.getLogger(__name__)
 
 # TODO: add "all" options for bands or "10m", "20m", "60m", "RGB" + parse single band (not a list)
 # TODO: AOI prefix
@@ -35,16 +38,16 @@ def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, o
             out_dir = f"{outputs_prefix}/{pid}"
         else:
             out_dir = f"{outputs_prefix}/{pid}_{aoi_name}"
-        print(f"Processing data take {pid}")
+        log.info(f"---- Processing data take {pid}")
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
         for band in bands:
-            print(f"Band {band}")
+            log.info(f"-- Band {band}")
             to_merge = []
             for path in path_list:
                 # open granule
                 with rasterio.open(path) as src:
-                    print(f"Tile {path}")
+                    log.info(f"-- Tile {path}")
                     row = df_bands.loc[band]
                     upscale_factor = int(row["resolution"] / 10)
 
@@ -134,7 +137,7 @@ def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, o
                     # add to merge list
                     to_merge.append(tmp_ds)
 
-            print(f"Merging {len(to_merge)} tiles")
+            log.info(f"-- Merging {len(to_merge)} tiles")
             arr_merge, trans_merge = merge(to_merge)
             for ds in to_merge:
                 ds.close()
