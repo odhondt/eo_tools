@@ -13,8 +13,6 @@ import logging
 log = logging.getLogger(__name__)
 
 # TODO: add "all" options for bands or "10m", "20m", "60m", "RGB" + parse single band (not a list)
-# TODO: AOI prefix
-# TODO: change prints in logs
 # TODO: cog
 def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, outputs_prefix="/tmp"):
 
