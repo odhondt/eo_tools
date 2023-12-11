@@ -11,6 +11,7 @@ from scipy.ndimage import binary_erosion
 from eo_tools.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
+from dateutil.parser import parser
 
 # from .auxils import remove
 
@@ -19,7 +20,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO add aoi substring
 # TODO return output paths
 # TODO: make subfolder to write individual bands
 def process_InSAR(
@@ -113,12 +113,15 @@ def process_InSAR(
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
     date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
 
-    calendar_mst = (
-        f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
-    )
-    calendar_slv = (
-        f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
-    )
+    # calendar_mst = (
+    #     f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
+    # )
+    # calendar_slv = (
+    #     f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
+    # )
+
+    id_mst = date_mst.strftime("%Y-%m-%d_%H%M%S")
+    id_slv = date_slv.strftime("%Y-%m-%d_%H%M%S")
 
     # check availability of orbit state vector file
     log.info("---- Looking for available orbit files")
@@ -153,7 +156,7 @@ def process_InSAR(
             burst_mst_min = bursts_mst.min()
             burst_mst_max = bursts_mst.max()
 
-            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
+            tmp_name = f"{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
             tmp_names.append(tmp_name)
 
             path_coreg = f"{tmp_dir}/{tmp_name}_coreg.dim"
@@ -205,8 +208,8 @@ def process_InSAR(
                         substr=substr,
                         subswath=subswath,
                         pol=p,
-                        calendar_mst=calendar_mst,
-                        calendar_slv=calendar_slv,
+                        calendar_mst=id_mst,
+                        calendar_slv=id_slv,
                     )
 
             path_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
@@ -302,7 +305,7 @@ def process_InSAR(
         else:
             arr_out = arr_merge
 
-        out_dir = f"{outputs_prefix}/{calendar_mst}_{calendar_slv}_{p}{aoi_substr}"
+        out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}_{id_slv}{aoi_substr}"
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
 
@@ -417,8 +420,8 @@ def _merge_intensity(
     substr,
     subswath,
     pol,
-    calendar_mst,
-    calendar_slv,
+    id_mst,
+    id_slv,
 ):
     """Helper function to compute intensities of coregistered master and slave and merge it with InSAR outputs"""
     graph_int_path = "../graph/S1-MasterSlaveIntensity.xml"
@@ -429,13 +432,13 @@ def _merge_intensity(
     # required to avoid merging virtual bands
     if coh_only:
         wfl_int["BandSelect"].parameters["sourceBands"] = [
-            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}"
+            f"coh_{subswath}_{pol}_{id_mst}_{id_slv}"
         ]
     else:
         wfl_int["BandSelect"].parameters["sourceBands"] = [
-            f"i_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
-            f"q_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
-            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+            f"i_{substr}_{subswath}_{pol}_{id_mst}_{id_slv}",
+            f"q_{substr}_{subswath}_{pol}_{id_mst}_{id_slv}",
+            f"coh_{subswath}_{pol}_{id_mst}_{id_slv}",
         ]
 
     math = wfl_int["BandMaths"]
