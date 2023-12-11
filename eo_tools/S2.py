@@ -12,14 +12,31 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: add "all" options for bands or "10m", "20m", "60m", "RGB" + parse single band (not a list)
-# TODO: cog
-def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, outputs_prefix="/tmp"):
+
+def merge_s2_tiles(
+    paths, bands=["B4", "B3", "B2"], shp=None, aoi_name=None, outputs_prefix="/tmp"
+):
+    """Merge Sentinel-2 tiles by grouping them by data take ID. Writes bands as individual COG (Cloud Optimized GeoTIFF) files in a sub-folder.
+
+    Args:
+        paths (str): List of paths pointing to Sentinel-2 zipped products like e.g. EODAG download outputs.
+        bands (list, optional): list of bands to process. A single string (e.g. "B11") is also valid, as well as "all" to merge all bands.  Defaults to ["B4", "B3", "B2"].
+        shp (shapely geometry, optional): If shp is provided, the outputs will be cropped to the geometry. Defaults to None.
+        aoi_name (str, optional): adds a suffix to the subfolder name. Useful when the same products are cropped with different geometries, or simply to add a short description of the subfolder content. Defaults to None.
+        outputs_prefix (str, optional): path where the subfolder will be created. Defaults to "/tmp".
+    """
+    df_bands = s2_band_info()
+
+    if not isinstance(bands, list):
+        if bands == "all":
+            bands_ = list(df_bands["band"])
+        else:
+            bands_ = [bands]
+    else:
+        bands_ = bands
 
     # identify distinct products
     dict_products = {}
-
-    df_bands = _make_df_bands()
 
     for path in paths:
         with rasterio.open(path) as ds:
@@ -39,7 +56,7 @@ def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, o
         log.info(f"---- Processing data take {pid}")
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
-        for band in bands:
+        for band in bands_:
             log.info(f"-- Band {band}")
             to_merge = []
             for path in path_list:
@@ -89,10 +106,14 @@ def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, o
                                 "width": width,
                                 "height": height,
                                 "count": 1,
-                                "driver": "GTiff",
+                                "driver": "COG",
                                 "compress": "deflate",
                             }
                         )
+                        # remove COG unsupported options
+                        del prof["blockxsize"]
+                        del prof["blockysize"]
+                        del prof["tiled"]
 
                     # reproject to EPSG:4326
                     with MemoryFile() as memfile:
@@ -151,8 +172,10 @@ def merge_s2_tiles(paths, bands=["B4", "B3", "B2"], shp=None, aoi_name = None, o
             with rasterio.open(f"{out_dir}/{band}.tif", "w", **prof) as dst:
                 dst.write(arr_merge)
 
+
 # TODO: improve descriptions
-def _make_df_bands():
+def s2_band_info():
+    """Returns a pandas dataframe with information about Sentinel-2 bands."""
     df_bands = pd.DataFrame(
         {
             "band": [
