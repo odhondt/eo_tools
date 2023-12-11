@@ -28,8 +28,9 @@ log = logging.getLogger(__name__)
 def process_InSAR(
     file_mst,
     file_slv,
-    out_dir,
+    outputs_prefix,
     tmp_dir,
+    aoi_name=None,
     shp=None,
     pol="full",
     coh_only=False,
@@ -93,14 +94,14 @@ def process_InSAR(
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
-    # do a check on orbits and slice
+    # do a check on orbits
     info_slv = identify(file_slv)
     meta_mst = info_mst.scanMetadata()
     meta_slv = info_slv.scanMetadata()
-    slnum = meta_mst["sliceNumber"]
+    # slnum = meta_mst["sliceNumber"]
     orbnum = meta_mst["orbitNumber_rel"]
-    if meta_slv["sliceNumber"] != slnum:
-        raise ValueError("Images from two different slices")
+    # if meta_slv["sliceNumber"] != slnum:
+    # raise ValueError("Images from two different slices")
     if meta_slv["orbitNumber_rel"] != orbnum:
         raise ValueError("Images from two different orbits")
 
@@ -150,7 +151,7 @@ def process_InSAR(
             burst_mst_min = bursts_mst.min()
             burst_mst_max = bursts_mst.max()
 
-            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_slice_{slnum}"
+            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
             tmp_names.append(tmp_name)
 
             path_coreg = f"{tmp_dir}/{tmp_name}_coreg.dim"
@@ -273,7 +274,14 @@ def process_InSAR(
             prof_out.update({"count": 1})
 
         log.info("---- Writing COG files")
-        cog_prof = cog_profiles.get("deflate")
+
+        # Using COG driver
+        prof_out.update({"driver": "COG", "compress": "deflate"})
+        del prof_out["blockxsize"]
+        del prof_out["blockysize"]
+        del prof_out["tiled"]
+
+        # cog_prof = cog_profiles.get("deflate")
 
         if not coh_only and intensity:
             cog_substrings = ["phi", "coh", "mst_int", "slv_int"]
@@ -290,52 +298,54 @@ def process_InSAR(
 
         if shp is not None:
             arr_out = arr_crop
-            postfix = "_crop"
         else:
             arr_out = arr_merge
-            postfix = ""
+
+        out_dir = f"{outputs_prefix}/{calendar_mst}_{calendar_slv}_{p}_{aoi_name}"
+        if not os.path.exists(out_dir):
+            os.mkdir(out_dir)
 
         for sub in cog_substrings:
             if sub == "phi":
-                out_name = (
-                    f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
-                )
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
                 out_path = f"{out_dir}/{out_name}.tif"
-                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
-                cog_translate(
-                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                )
+                # cog_translate(
+                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                # )
             if sub == "coh":
-                out_name = (
-                    f"{sub}_{p}_{calendar_mst}_{calendar_slv}_slice{slnum}{postfix}"
-                )
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
                 out_path = f"{out_dir}/{out_name}.tif"
-                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     dst.write(arr_out[offidx], 1)
-                cog_translate(
-                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                )
+                # cog_translate(
+                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                # )
             if sub == "mst_int":
-                out_name = f"int_{p}_{calendar_mst}_slice{slnum}{postfix}"
+                out_name = f"int_{p}_{calendar_mst}_{aoi_name}"
                 out_path = f"{out_dir}/{out_name}.tif"
-                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     band = arr_out[1 + offidx]
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
-                cog_translate(
-                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                )
+                # cog_translate(
+                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                # )
             if sub == "slv_int":
-                out_name = f"int_{p}_{calendar_slv}_slice{slnum}{postfix}"
+                out_name = f"int_{p}_{calendar_slv}_{aoi_name}"
                 out_path = f"{out_dir}/{out_name}.tif"
-                with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
                     band = arr_out[2 + offidx]
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
-                cog_translate(
-                    f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                )
+                # cog_translate(
+                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
+                # )
 
     # TODO: implement clear tmp files
     if clear_tmp_files:
