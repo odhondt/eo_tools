@@ -337,6 +337,7 @@ def process_InSAR(
                     f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 )
 
+    # TODO: implement clear tmp files
     if clear_tmp_files:
         # raise NotImplementedError(
         log.info(
