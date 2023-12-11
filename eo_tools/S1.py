@@ -59,6 +59,11 @@ def process_InSAR(
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
 
+    if aoi_name is None:
+        aoi_substr = ""
+    else:
+        aoi_substr = f"_{aoi_name}"
+
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
         file_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
@@ -151,7 +156,7 @@ def process_InSAR(
             burst_mst_min = bursts_mst.min()
             burst_mst_max = bursts_mst.max()
 
-            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
+            tmp_name = f"{subswath}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
             tmp_names.append(tmp_name)
 
             path_coreg = f"{tmp_dir}/{tmp_name}_coreg.dim"
@@ -301,13 +306,13 @@ def process_InSAR(
         else:
             arr_out = arr_merge
 
-        out_dir = f"{outputs_prefix}/{calendar_mst}_{calendar_slv}_{p}_{aoi_name}"
+        out_dir = f"{outputs_prefix}/{calendar_mst}_{calendar_slv}_{p}{aoi_substr}"
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
 
         for sub in cog_substrings:
             if sub == "phi":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                 with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
@@ -316,7 +321,7 @@ def process_InSAR(
                     # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 # )
             if sub == "coh":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}_{aoi_name}"
+                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                 with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
@@ -325,7 +330,7 @@ def process_InSAR(
                     # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 # )
             if sub == "mst_int":
-                out_name = f"int_{p}_{calendar_mst}_{aoi_name}"
+                out_name = f"int_{p}_{calendar_mst}{aoi_substr}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                 with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
@@ -336,7 +341,7 @@ def process_InSAR(
                     # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
                 # )
             if sub == "slv_int":
-                out_name = f"int_{p}_{calendar_slv}_{aoi_name}"
+                out_name = f"int_{p}_{calendar_slv}{aoi_substr}"
                 out_path = f"{out_dir}/{out_name}.tif"
                 # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
                 with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
