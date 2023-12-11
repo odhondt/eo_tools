@@ -114,15 +114,15 @@ def process_InSAR(
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
     date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
 
-    # calendar_mst = (
-    #     f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
-    # )
-    # calendar_slv = (
-    #     f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
-    # )
+    calendar_mst = (
+        f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
+    )
+    calendar_slv = (
+        f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
+    )
 
-    id_mst = date_mst.strftime("%Y-%m-%d_%H%M%S")
-    id_slv = date_slv.strftime("%Y-%m-%d_%H%M%S")
+    id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
+    id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
 
     # check availability of orbit state vector file
     log.info("---- Looking for available orbit files")
@@ -209,8 +209,8 @@ def process_InSAR(
                         substr=substr,
                         subswath=subswath,
                         pol=p,
-                        calendar_mst=id_mst,
-                        calendar_slv=id_slv,
+                        calendar_mst=calendar_mst,
+                        calendar_slv=calendar_slv,
                     )
 
             path_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
@@ -283,16 +283,15 @@ def process_InSAR(
 
         # Using COG driver
         prof_out.update({"driver": "COG", "compress": "deflate"})
-        # del prof_out["blockxsize"]
         del prof_out["blockysize"]
         del prof_out["tiled"]
         del prof_out["interleave"]
 
         if not coh_only and intensity:
-            cog_substrings = ["phi", "coh", "mst_int", "slv_int"]
+            cog_substrings = ["phi", "coh", "int_mst", "int_slv"]
             offidx = 2
         elif coh_only and intensity:
-            cog_substrings = ["coh", "mst_int", "slv_int"]
+            cog_substrings = ["coh", "int_mst", "int_slv"]
             offidx = 0
         elif not coh_only and not intensity:
             cog_substrings = ["phi", "coh"]
@@ -306,7 +305,7 @@ def process_InSAR(
         else:
             arr_out = arr_merge
 
-        out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}_{id_slv}{aoi_substr}"
+        out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
 
@@ -319,13 +318,13 @@ def process_InSAR(
                 out_path = f"{out_dir}/{sub}.tif"
                 with rio.open(out_path, "w", **prof_out) as dst:
                     dst.write(arr_out[offidx], 1)
-            if sub == "mst_int":
+            if sub == "int_mst":
                 out_path = f"{out_dir}/{sub}.tif"
                 with rio.open(out_path, "w", **prof_out) as dst:
                     band = arr_out[1 + offidx]
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
-            if sub == "slv_int":
+            if sub == "int_slv":
                 out_path = f"{out_dir}/{sub}.tif"
                 with rio.open(out_path, "w", **prof_out) as dst:
                     band = arr_out[2 + offidx]
@@ -421,8 +420,8 @@ def _merge_intensity(
     substr,
     subswath,
     pol,
-    id_mst,
-    id_slv,
+    calendar_mst,
+    calendar_slv,
 ):
     """Helper function to compute intensities of coregistered master and slave and merge it with InSAR outputs"""
     graph_int_path = "../graph/S1-MasterSlaveIntensity.xml"
@@ -433,13 +432,13 @@ def _merge_intensity(
     # required to avoid merging virtual bands
     if coh_only:
         wfl_int["BandSelect"].parameters["sourceBands"] = [
-            f"coh_{subswath}_{pol}_{id_mst}_{id_slv}"
+            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}"
         ]
     else:
         wfl_int["BandSelect"].parameters["sourceBands"] = [
-            f"i_{substr}_{subswath}_{pol}_{id_mst}_{id_slv}",
-            f"q_{substr}_{subswath}_{pol}_{id_mst}_{id_slv}",
-            f"coh_{subswath}_{pol}_{id_mst}_{id_slv}",
+            f"i_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+            f"q_{substr}_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
+            f"coh_{subswath}_{pol}_{calendar_mst}_{calendar_slv}",
         ]
 
     math = wfl_int["BandMaths"]
