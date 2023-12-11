@@ -45,6 +45,7 @@ def process_InSAR(
         file_slv (str): Slave image (SLC Sentinel-1 product)
         out_dir (str): Output directory
         tmp_dir (str): Temporary directory to store intermediate files
+        aoi_name (str): Optional suffix to describe AOI / experiment
         shp (object, optional): Shapely geometry describing an area of interest as a polygon. If set to None, the whole product is processed. Defaults to None.
         pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
         coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
