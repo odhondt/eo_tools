@@ -2,20 +2,17 @@ from pyroSAR.snap.auxil import Workflow, gpt, groupbyWorkers
 from pyroSAR import identify
 
 import os
-import glob
 from pathlib import Path
 import rasterio as rio
 import numpy as np
 from rasterio import merge, mask
 from rasterio.io import MemoryFile
-from rio_cogeo.cogeo import cog_translate
-from rio_cogeo.profiles import cog_profiles
 from scipy.ndimage import binary_erosion
 from eo_tools.auxils import get_burst_geometry
 from datetime import datetime
 import calendar
 
-from .auxils import remove
+# from .auxils import remove
 
 import logging
 
@@ -282,11 +279,10 @@ def process_InSAR(
 
         # Using COG driver
         prof_out.update({"driver": "COG", "compress": "deflate"})
-        del prof_out["blockxsize"]
+        # del prof_out["blockxsize"]
         del prof_out["blockysize"]
         del prof_out["tiled"]
-
-        # cog_prof = cog_profiles.get("deflate")
+        del prof_out["interleave"]
 
         if not coh_only and intensity:
             cog_substrings = ["phi", "coh", "mst_int", "slv_int"]
@@ -312,45 +308,25 @@ def process_InSAR(
 
         for sub in cog_substrings:
             if sub == "phi":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
-                out_path = f"{out_dir}/{out_name}.tif"
-                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                out_path = f"{out_dir}/{sub}.tif"
+                with rio.open(out_path, "w", **prof_out) as dst:
                     dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
-                # cog_translate(
-                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                # )
             if sub == "coh":
-                out_name = f"{sub}_{p}_{calendar_mst}_{calendar_slv}{aoi_substr}"
-                out_path = f"{out_dir}/{out_name}.tif"
-                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                out_path = f"{out_dir}/{sub}.tif"
+                with rio.open(out_path, "w", **prof_out) as dst:
                     dst.write(arr_out[offidx], 1)
-                # cog_translate(
-                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                # )
             if sub == "mst_int":
-                out_name = f"int_{p}_{calendar_mst}{aoi_substr}"
-                out_path = f"{out_dir}/{out_name}.tif"
-                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                out_path = f"{out_dir}/{sub}.tif"
+                with rio.open(out_path, "w", **prof_out) as dst:
                     band = arr_out[1 + offidx]
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
-                # cog_translate(
-                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                # )
             if sub == "slv_int":
-                out_name = f"int_{p}_{calendar_slv}{aoi_substr}"
-                out_path = f"{out_dir}/{out_name}.tif"
-                # with rio.open(f"{tmp_dir}/{out_name}.tif", "w", **prof_out) as dst:
-                with rio.open(f"{out_dir}/{out_name}.tif", "w", **prof_out) as dst:
+                out_path = f"{out_dir}/{sub}.tif"
+                with rio.open(out_path, "w", **prof_out) as dst:
                     band = arr_out[2 + offidx]
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
-                # cog_translate(
-                    # f"{tmp_dir}/{out_name}.tif", out_path, cog_prof, quiet=True
-                # )
 
     # TODO: implement clear tmp files
     if clear_tmp_files:
