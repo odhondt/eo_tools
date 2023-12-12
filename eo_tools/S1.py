@@ -53,6 +53,8 @@ def process_InSAR(
         clear_tmp_files (bool, optional): Removes temporary files at the end (recommended). Defaults to True.
         erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
         resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
+    Returns:
+        out_dirs (list): Output directories containing COG files.
     """
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
@@ -136,7 +138,7 @@ def process_InSAR(
         substr = "coh"
     else:
         substr = "ifg"
-
+    out_dirs = []
     for p in pol:
         tmp_names = []
         for subswath in unique_subswaths:
@@ -308,6 +310,7 @@ def process_InSAR(
             arr_out = arr_merge
 
         out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
+        out_dirs.append(out_dir)
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
 
@@ -358,6 +361,7 @@ def process_InSAR(
             remove(f"{tmp_dir}/graph_insar.xml")
             remove(f"{tmp_dir}/graph_int.xml")
             remove(f"{tmp_dir}/graph_tc.xml")
+    return out_dirs
 
 
 def TOPS_coregistration(
