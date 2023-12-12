@@ -4,6 +4,7 @@ from pyroSAR import identify
 import os
 from pathlib import Path
 import rasterio as rio
+import rasterio.shutil
 import numpy as np
 from rasterio import merge, mask
 from rasterio.io import MemoryFile
@@ -13,7 +14,7 @@ from datetime import datetime
 import calendar
 from dateutil.parser import parser
 
-# from .auxils import remove
+from .auxils import remove
 
 import logging
 
@@ -21,7 +22,6 @@ log = logging.getLogger(__name__)
 
 
 # TODO return output paths
-# TODO: make subfolder to write individual bands
 def process_InSAR(
     file_mst,
     file_slv,
@@ -101,10 +101,7 @@ def process_InSAR(
     info_slv = identify(file_slv)
     meta_mst = info_mst.scanMetadata()
     meta_slv = info_slv.scanMetadata()
-    # slnum = meta_mst["sliceNumber"]
     orbnum = meta_mst["orbitNumber_rel"]
-    # if meta_slv["sliceNumber"] != slnum:
-    # raise ValueError("Images from two different slices")
     if meta_slv["orbitNumber_rel"] != orbnum:
         raise ValueError("Images from two different orbits")
 
@@ -160,7 +157,8 @@ def process_InSAR(
             tmp_name = f"{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
             tmp_names.append(tmp_name)
 
-            path_coreg = f"{tmp_dir}/{tmp_name}_coreg.dim"
+            name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
+            path_coreg = f"{name_coreg}.dim"
             if not (os.path.exists(path_coreg) and resume):
                 log.info("-- TOPS coregistration")
                 TOPS_coregistration(
@@ -177,7 +175,8 @@ def process_InSAR(
                     burst_slv_max=burst_slv_max,
                 )
 
-            path_insar = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+            name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
+            path_insar = f"{name_insar}.dim"
             if not (os.path.exists(path_insar) and resume):
                 log.info("-- InSAR processing")
                 insar_processing(
@@ -187,8 +186,9 @@ def process_InSAR(
                     coh_only=coh_only,
                 )
 
+            name_int = f"{tmp_dir}/{tmp_name}_{substr}_int"
+            path_int = f"{name_int}.dim"
             if intensity:
-                path_int = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 if not (os.path.exists(path_int) and resume):
                     log.info("-- Computing & merging intensities")
                     img_files = Path(f"{tmp_dir}/{tmp_name}_coreg.data").glob("*.img")
@@ -213,14 +213,15 @@ def process_InSAR(
                         calendar_slv=calendar_slv,
                     )
 
-            path_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc.tif"
+            name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
+            path_tc = f"{name_tc}.tif"
             if not os.path.exists(path_tc):  # and resume:
                 log.info("-- Terrain correction (geocoding)")
                 output_complex = not coh_only
                 if intensity:
-                    file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
+                    file_in_tc = path_int  # f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 else:
-                    file_in_tc = f"{tmp_dir}/{tmp_name}_{substr}.dim"
+                    file_in_tc = path_insar  # f"{tmp_dir}/{tmp_name}_{substr}.dim"
                 geocoding(
                     file_in=file_in_tc,
                     file_out=path_tc,
@@ -229,9 +230,10 @@ def process_InSAR(
                 )
 
             log.info(f"-- Removing dark edges after terrain correction")
-            file_to_open = f"{tmp_dir}/{tmp_name}_{substr}_tc"
-            rio.shutil.copy(f"{file_to_open}.tif", f"{file_to_open}_edge.tif")
-            with rio.open(f"{file_to_open}_edge.tif", "r+") as src:
+            # file_to_open = f"{tmp_dir}/{tmp_name}_{substr}_tc"
+            path_edge = f"{name_tc}_edge.tif"
+            rasterio.shutil.copy(path_tc, path_edge)
+            with rio.open(path_edge, "r+") as src:
                 prof = src.profile
                 prof.update({"driver": "GTiff", "nodata": 0})
                 struct = np.ones((erosion_width, erosion_width))
@@ -248,7 +250,7 @@ def process_InSAR(
             for tmp_name in tmp_names
         ]
         arr_merge, trans_merge = merge.merge(to_merge)
-        with rio.open(f"{file_to_open}_edge.tif") as src:
+        with rio.open(path_edge) as src:
             prof = src.profile.copy()
             prof.update(
                 {
@@ -331,25 +333,31 @@ def process_InSAR(
                     dst.update_tags(mean_value=band[band != 0].mean())
                     dst.write(band, 1)
 
-    # TODO: implement clear tmp files
-    if clear_tmp_files:
-        # raise NotImplementedError(
-        log.info(
-            "clear_tmp_files: This feature will be implemented in a future version."
-        )
-        # )
-        # os.remove(f"{tmp_dir}/graph_coreg.xml")
-        # if intensity:
-        #     os.remove(f"{tmp_dir}/graph_int.xml")
-        # os.remove(f"{tmp_dir}/graph_insar.xml")
-        # os.remove(f"{tmp_dir}/graph_tc.xml")
-        # files = glob.glob(f"{tmp_dir}/*.data") + glob.glob(f"{tmp_dir}/*.dim")
-        # for fi in files:
-        #     remove(fi)
+        if clear_tmp_files:
+            log.info(
+                # "clear_tmp_files: This feature will be implemented in a future version."
+                "---- Removing temporary files."
+            )
+            # tmp_name = f"{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
+            for tmp_name in tmp_names:
+                name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
+                name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
+                name_int = f"{tmp_dir}/{tmp_name}_{substr}_int"
+                dimfiles_to_remove = [name_coreg, name_insar, name_int]
+                for name in dimfiles_to_remove:
+                    remove(f"{name}.dim")
+                    remove(f"{name}.data")
+            
+                    name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
+                    path_tc = f"{name_tc}.tif"
+                    path_edge = f"{name_tc}_edge.tif"
+                    remove(path_tc)
+                    remove(path_edge)
 
-        # for tmp_name in tmp_names:
-        #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc.tif")
-        #     os.remove(f"{tmp_dir}/{tmp_name}_{substr}_tc_edge.tif")
+            remove(f"{tmp_dir}/graph_coreg.xml")
+            remove(f"{tmp_dir}/graph_insar.xml")
+            remove(f"{tmp_dir}/graph_int.xml")
+            remove(f"{tmp_dir}/graph_tc.xml")
 
 
 def TOPS_coregistration(
