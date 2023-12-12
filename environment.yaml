@@ -12,16 +12,14 @@ dependencies:
   - pystac
   - geopandas
   - pandas
-  # - asf_search
   - ipykernel
   - ipywidgets
   - black
-  - rio-cogeo
   - scikit-image
-  # - sentinelsat 
-  - localtileserver 
+  - eodag
   - ipyleaflet
+  - folium
   - tqdm
-  - pip:
+  - localtileserver 
+  # - pip:
   # get latest version
-    - eodag
