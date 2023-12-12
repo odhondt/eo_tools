@@ -11,14 +11,21 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import geopandas as gpd
 
+import logging
+
+log = logging.getLogger(__name__)
 
 ##function to clean up temporary elements
 
-def remove(path):
+def remove(path, verb=True):
     """ param <path> could either be relative or absolute. """
     if os.path.isfile(path) or os.path.islink(path):
+        if verb:
+            log.info(f"Removing {path}")
         os.remove(path)  # remove the file
     elif os.path.isdir(path):
+        if verb:
+            log.info(f"Removing {path}")
         shutil.rmtree(path)  # remove dir and all contains
 
 ## return dictonary from config file
