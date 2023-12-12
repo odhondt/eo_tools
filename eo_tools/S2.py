@@ -48,11 +48,13 @@ def merge_s2_tiles(
                 dict_products[pid].append(path)
 
     # merge granules from the same product
+    out_dirs = []
     for pid, path_list in dict_products.items():
         if aoi_name is None:
             out_dir = f"{outputs_prefix}/{pid}"
         else:
             out_dir = f"{outputs_prefix}/{pid}_{aoi_name}"
+        out_dirs.append(out_dir)
         log.info(f"---- Processing data take {pid}")
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
@@ -168,10 +170,9 @@ def merge_s2_tiles(
                     "nodata": 0,
                 }
             )
-            # TODO: (optional) stacking?
             with rasterio.open(f"{out_dir}/{band}.tif", "w", **prof) as dst:
                 dst.write(arr_merge)
-
+    return out_dirs
 
 # TODO: improve descriptions
 def s2_band_info():
