@@ -242,7 +242,7 @@ def visualize_s2_rgb(input_dir):
         make_s2_rgb(input_dir)
 
     client = TileClient(rgb_path)
-    t = get_folium_tile_layer(client, band=[0,1,2])
+    t = get_folium_tile_layer(client)
 
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
