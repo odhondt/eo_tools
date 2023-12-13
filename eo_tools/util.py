@@ -3,12 +3,14 @@ import folium
 from shapely import intersection_all
 from shapely.geometry import mapping
 
+import os
 import numpy as np
 import rasterio
 import geopandas as gpd
 import json
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
+from eo_tools.S2 import make_s2_rgb
 
 from localtileserver import get_folium_tile_layer
 from localtileserver.client import TileClient
@@ -87,16 +89,23 @@ def explore_products(products, aoi=None):
     return m
 
 
-def visualize_insar_phase(file_in):
+def visualize_insar_phase(input_path):
     """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
 
     Args:
-        file_in (str): GeoTiff input file (preferably COG)
+        input_path (str): Directory with InSAR products (phi.tif) or GeoTiff input file (preferably COG).
 
     Returns:
         folium.Map: raster visualization on an interactive map
     """
-
+    if os.path.isdir(input_path):
+        print("dir")
+        file_in = f"{input_path}/phi.tif"
+    elif os.path.isfile(input_path):
+        print("file")
+        file_in = input_path
+    else:
+        raise FileExistsError(f"Problem reading file.")
     # palette used by SNAP for insar phase
     palette = [
         [110, 60, 170],
@@ -121,15 +130,22 @@ def visualize_insar_phase(file_in):
     return m
 
 
-def visualize_insar_coh(file_in):
+def visualize_insar_coh(input_path):
     """Visualize coherence on a map.
 
     Args:
-        file_in (str): GeoTiff input file (preferably COG)
+        input_path (str): Directory with InSAR products (coh.tif) or GeoTiff input file (preferably COG).
 
     Returns:
         folium.Map: raster visualization on an interactive map
     """
+
+    if os.path.isdir(input_path):
+        file_in = f"{input_path}/coh.tif"
+    elif os.path.isfile(input_path):
+        file_in = input_path
+    else:
+        raise FileExistsError("Problem reading file or file does not exist.")
 
     client = TileClient(file_in)
     t = get_folium_tile_layer(client, vmin=0.0, vmax=1.0)
@@ -139,16 +155,28 @@ def visualize_insar_coh(file_in):
     return m
 
 
-def visualize_sar_intensity(file_in, vmin=None, vmax=None):
+# TODO: add dB
+def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
     """Visualize intensity on a map.
 
     Args:
-        file_in (str): GeoTiff input file (preferably COG)
+        input path (str): Directory with InSAR products (int_mst.tif or int_slv.tif) or GeoTiff input file (preferably COG).
+        master (bool): Read master file if True, slave file otherwise. This has no effect if input_path points to a file.
+        vmin (float): minimum clipping value (0 if not set)
+        vmax (float): maximum clipping value (2.5*mean(raster) if not set)
 
     Returns:
         folium.Map: raster visualization on an interactive map
     """
-
+    if os.path.isdir(input_path):
+        if master:
+            file_in = f"{input_path}/int_mst.tif"
+        else:
+            file_in = f"{input_path}/int_slv.tif"
+    elif os.path.isfile(input_path):
+        file_in = input_path
+    else:
+        raise FileExistsError("Problem reading file or file does not exist.")
     try:
         with rasterio.open(file_in) as src:
             mean_val = src.tags()["mean_value"]
@@ -167,6 +195,54 @@ def visualize_sar_intensity(file_in, vmin=None, vmax=None):
         vmax_ = vmax
 
     t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
+
+    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
+    t.add_to(m)
+    return m
+
+
+# def visualize_sar_intensity(file_in, vmin=None, vmax=None):
+#     """Visualize intensity on a map.
+
+#     Args:
+#         input path (str): Directory with InSAR products (int_mst.tif or int_slv.tif) or GeoTiff input file (preferably COG).
+
+#     Returns:
+#         folium.Map: raster visualization on an interactive map
+#     """
+
+#     try:
+#         with rasterio.open(file_in) as src:
+#             mean_val = src.tags()["mean_value"]
+#     except:
+#         raise Exception("File not found or no 'mean_value' tag.")
+#     client = TileClient(file_in)
+
+#     if vmin is None:
+#         vmin_ = 0
+#     else:
+#         vmin_ = vmin
+
+#     if vmax is None:
+#         vmax_ = 2.5 * float(mean_val)
+#     else:
+#         vmax_ = vmax
+
+#     t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
+
+#     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
+#     t.add_to(m)
+#     return m
+
+
+def visualize_s2_rgb(input_dir):
+    rgb_path = f"{input_dir}/RGB.tif"
+    if not os.path.exists(rgb_path):
+        print("RGB.tif not found. Creating the file.")
+        make_s2_rgb(input_dir)
+
+    client = TileClient(rgb_path)
+    t = get_folium_tile_layer(client, band=[0,1,2])
 
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
