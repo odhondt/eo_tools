@@ -7,13 +7,15 @@ from rasterio.enums import Resampling
 from rasterio import mask
 import numpy as np
 import pandas as pd
+from glob import glob
+from pathlib import Path
 
 import logging
 
 log = logging.getLogger(__name__)
 
 
-def merge_s2_tiles(
+def process_s2_tiles(
     paths, bands=["B4", "B3", "B2"], shp=None, aoi_name=None, outputs_prefix="/tmp"
 ):
     """Merge Sentinel-2 tiles by grouping them by data take ID. Writes bands as individual COG (Cloud Optimized GeoTIFF) files in a sub-folder.
@@ -174,15 +176,41 @@ def merge_s2_tiles(
                 dst.write(arr_merge)
     return out_dirs
 
+
+def make_s2_rgb(input_dir):
+    bands = ["B4", "B3", "B2"]
+    band_files = [Path(path).name for path in glob(f"{input_dir}/*.tif")]
+    for band in bands:
+        if not f'{band}.tif' in band_files:
+            raise FileNotFoundError(
+                "Missing band. Please create RGB (B4, B3, B2) bands with process_s2_tiles."
+            )
+
+    with rasterio.open(f"{input_dir}/B4.tif") as ds:
+        prof = ds.profile.copy()
+
+    # TODO: convert to uint8
+    # prof.update({"count": 3, "dtype": "uint8"})
+    prof.update({"count": 3})# "dtype": "uint8"})
+
+    with rasterio.open(f"{input_dir}/RGB.tif", "w", **prof) as dst:
+        for i, band in enumerate(bands):
+            with rasterio.open(f"{input_dir}/{band}.tif") as src:
+                # data = (255 * src.read(1).clip(0, 1)).astype("uint8")
+                data = src.read(1).clip(0, 1)# .astype("uint8")
+                dst.write(data, i + 1)
+
+
 # TODO: improve descriptions
 def s2_band_info():
     """Returns a pandas dataframe with information about Sentinel-2 bands."""
+    # Band order was obtained by looping on tags for each subdataset band
     df_bands = pd.DataFrame(
         {
             "band": [
-                "B2",
-                "B3",
                 "B4",
+                "B3",
+                "B2",
                 "B8",
                 "B5",
                 "B6",
