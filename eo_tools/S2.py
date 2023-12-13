@@ -181,7 +181,7 @@ def make_s2_rgb(input_dir):
     bands = ["B4", "B3", "B2"]
     band_files = [Path(path).name for path in glob(f"{input_dir}/*.tif")]
     for band in bands:
-        if not f'{band}.tif' in band_files:
+        if not f"{band}.tif" in band_files:
             raise FileNotFoundError(
                 "Missing band. Please create RGB (B4, B3, B2) bands with process_s2_tiles."
             )
@@ -189,22 +189,19 @@ def make_s2_rgb(input_dir):
     with rasterio.open(f"{input_dir}/B4.tif") as ds:
         prof = ds.profile.copy()
 
-    # TODO: convert to uint8
-    # prof.update({"count": 3, "dtype": "uint8"})
-    prof.update({"count": 3})# "dtype": "uint8"})
+    prof.update({"count": 3, "dtype": "uint8"})
 
     with rasterio.open(f"{input_dir}/RGB.tif", "w", **prof) as dst:
         for i, band in enumerate(bands):
             with rasterio.open(f"{input_dir}/{band}.tif") as src:
-                # data = (255 * src.read(1).clip(0, 1)).astype("uint8")
-                data = src.read(1).clip(0, 1)# .astype("uint8")
+                data = (255 * src.read(1).clip(0, 1)).astype("uint8")
                 dst.write(data, i + 1)
 
 
 # TODO: improve descriptions
 def s2_band_info():
     """Returns a pandas dataframe with information about Sentinel-2 bands."""
-    # Band order was obtained by looping on tags for each subdataset band
+    # Band order was obtained with rasterio by looping on tags for each subdataset band
     df_bands = pd.DataFrame(
         {
             "band": [
