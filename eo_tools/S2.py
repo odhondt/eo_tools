@@ -52,6 +52,7 @@ def process_s2_tiles(
     # merge granules from the same product
     out_dirs = []
     for pid, path_list in dict_products.items():
+        # TODO: better dir naming (eg S2A-L1C-2023-12-08-hhmmss like S1)
         if aoi_name is None:
             out_dir = f"{outputs_prefix}/{pid}"
         else:
