@@ -18,6 +18,8 @@ import logging
 log = logging.getLogger(__name__)
 
 
+
+# TODO: find a way to get unique (automatic) folder names
 def process_s2_tiles(
     paths, bands=["B4", "B3", "B2"], shp=None, aoi_name=None, outputs_prefix="/tmp"
 ):
@@ -49,39 +51,52 @@ def process_s2_tiles(
             pid = tags["DATATAKE_1_ID"]
             if pid not in dict_products.keys():
                 # Read metadata
-                xmlstr = ds.tags(ns="xml:SENTINEL2")["xml:SENTINEL2"]
-                metadict = xmltodict.parse(xmlstr)
-                proc_bsl = tags["PROCESSING_BASELINE"]
+                proc_bsl = float(tags["PROCESSING_BASELINE"])
                 proc_level = tags["PROCESSING_LEVEL"]
-                level_str = f"L{proc_level[-2:]}"
                 sensor_name = tags["DATATAKE_1_SPACECRAFT_NAME"]
-                sensor_str = f"S{sensor_name[-2:]}" 
                 start_time = tags["DATATAKE_1_DATATAKE_SENSING_START"]
                 dt_start = parser.parse(start_time)
+                level_str = f"L{proc_level[-2:]}"
+                sensor_str = f"S{sensor_name[-2:]}"
                 date_str = dt_start.strftime("%Y-%m-%d-%H%M%S")
                 QV = float(tags["QUANTIFICATION_VALUE"])
 
-                # Radiometric offset (not in GTIFF tags)
-                PIC = metadict["n1:Level-1C_User_Product"]["n1:General_Info"][
-                    "Product_Image_Characteristics"
-                ]
-                if proc_bsl > 4:
-                    ROL = PIC["Radiometric_Offset_List"]["RADIO_ADD_OFFSET"]
-                    # Assume band id won't change, use them as index
-                    OFF = float(ROL[row["id"]]["#text"])
                 dict_products[pid] = {}
-                dict_products[pid]["path"] = [path]
+                dict_products[pid]["paths"] = [path]
+                dict_products[pid]["proc_bsl"] = proc_bsl
+                dict_products[pid]["level_str"] = level_str
+                dict_products[pid]["sensor_str"] = sensor_str
+                dict_products[pid]["date_str"] = date_str
+                dict_products[pid]["qv"] = QV
+
+                # Radiometric offset (not in GTIFF tags)
+                if proc_bsl > 4:
+                    xmlstr = ds.tags(ns="xml:SENTINEL2")["xml:SENTINEL2"]
+                    metadict = xmltodict.parse(xmlstr)
+                    PIC = metadict["n1:Level-1C_User_Product"]["n1:General_Info"][
+                        "Product_Image_Characteristics"
+                    ]
+                    offset_list = [
+                        float(it["#text"])
+                        for it in PIC["Radiometric_Offset_List"]["RADIO_ADD_OFFSET"]
+                    ]
+                    dict_products[pid]["offsets"] = offset_list
             else:
-                dict_products[pid]["path"].append(path)
+                dict_products[pid]["paths"].append(path)
 
     # merge granules from the same product
     out_dirs = []
-    for pid, path_list in dict_products.items():
-        # TODO: better dir naming (eg S2A_L1C_2023-12-08-hhmmss like S1)
+    for pid, dict_pid in dict_products.items():
+        paths = dict_pid["paths"]
+        proc_bsl = dict_pid["proc_bsl"]
+        level_str = dict_pid["level_str"]
+        sensor_str = dict_pid["sensor_str"]
+        date_str = dict_pid["date_str"]
+        QV = dict_pid["qv"]
         if aoi_name is None:
-            out_dir = f"{outputs_prefix}/{pid}"
+            out_dir = f"{outputs_prefix}/{sensor_str}_{level_str}_{date_str}"
         else:
-            out_dir = f"{outputs_prefix}/{pid}_{aoi_name}"
+            out_dir = f"{outputs_prefix}/{sensor_str}_{level_str}_{date_str}_{aoi_name}"
         out_dirs.append(out_dir)
         log.info(f"---- Processing data take {pid}")
         if not os.path.exists(out_dir):
@@ -89,14 +104,12 @@ def process_s2_tiles(
         for band in bands_:
             log.info(f"-- Band {band}")
             to_merge = []
-            for path in path_list:
+            for path in paths:
                 # open granule
                 with rasterio.open(path) as src:
                     log.info(f"-- Tile {path}")
                     row = df_bands.loc[band]
                     upscale_factor = int(row["resolution"] / 10)
-
-
 
                     # open sub dataset and read band
                     with rasterio.open(src.subdatasets[row["subd"]]) as subds:
@@ -173,6 +186,7 @@ def process_s2_tiles(
                             else:
                                 raster = tmp_ds.read()
                     if proc_bsl > 4:
+                        OFF = dict_pid["offsets"][df_bands.loc[band]["id"]]
                         raster = ((raster + OFF) / QV).astype(np.float32)
                     else:
                         raster = (raster / QV).astype(np.float32)
