@@ -187,9 +187,10 @@ def process_s2_tiles(
                                 raster = tmp_ds.read()
                     if proc_bsl > 4:
                         OFF = dict_pid["offsets"][df_bands.loc[band]["id"]]
-                        raster = ((raster + OFF) / QV).astype(np.float32)
+                        raster = ((raster + OFF) / QV).clip(0).astype(np.float32)
                     else:
                         raster = (raster / QV).astype(np.float32)
+                    # raster = (raster / QV).astype(np.float32)
                     prof.update(
                         {
                             "dtype": "float32",
