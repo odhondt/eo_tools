@@ -235,10 +235,10 @@ def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
 #     return m
 
 
-def visualize_s2_rgb(input_dir):
+def visualize_s2_rgb(input_dir, force_create=False):
     rgb_path = f"{input_dir}/RGB.tif"
-    if not os.path.exists(rgb_path):
-        print("RGB.tif not found. Creating the file.")
+    if not os.path.exists(rgb_path) or force_create:
+        print("RGB.tif not found (or force_create==True). Creating the file.")
         make_s2_rgb(input_dir)
 
     client = TileClient(rgb_path)
