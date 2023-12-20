@@ -5,10 +5,13 @@ from rasterio.merge import merge
 from rasterio import MemoryFile
 from rasterio.enums import Resampling
 from rasterio import mask
+from dateutil import parser
 import numpy as np
 import pandas as pd
 from glob import glob
 from pathlib import Path
+
+import xmltodict
 
 import logging
 
@@ -45,14 +48,36 @@ def process_s2_tiles(
             tags = ds.tags()
             pid = tags["DATATAKE_1_ID"]
             if pid not in dict_products.keys():
-                dict_products[pid] = [path]
+                # Read metadata
+                xmlstr = ds.tags(ns="xml:SENTINEL2")["xml:SENTINEL2"]
+                metadict = xmltodict.parse(xmlstr)
+                proc_bsl = tags["PROCESSING_BASELINE"]
+                proc_level = tags["PROCESSING_LEVEL"]
+                level_str = f"L{proc_level[-2:]}"
+                sensor_name = tags["DATATAKE_1_SPACECRAFT_NAME"]
+                sensor_str = f"S{sensor_name[-2:]}" 
+                start_time = tags["DATATAKE_1_DATATAKE_SENSING_START"]
+                dt_start = parser.parse(start_time)
+                date_str = dt_start.strftime("%Y-%m-%d-%H%M%S")
+                QV = float(tags["QUANTIFICATION_VALUE"])
+
+                # Radiometric offset (not in GTIFF tags)
+                PIC = metadict["n1:Level-1C_User_Product"]["n1:General_Info"][
+                    "Product_Image_Characteristics"
+                ]
+                if proc_bsl > 4:
+                    ROL = PIC["Radiometric_Offset_List"]["RADIO_ADD_OFFSET"]
+                    # Assume band id won't change, use them as index
+                    OFF = float(ROL[row["id"]]["#text"])
+                dict_products[pid] = {}
+                dict_products[pid]["path"] = [path]
             else:
-                dict_products[pid].append(path)
+                dict_products[pid]["path"].append(path)
 
     # merge granules from the same product
     out_dirs = []
     for pid, path_list in dict_products.items():
-        # TODO: better dir naming (eg S2A-L1C-2023-12-08-hhmmss like S1)
+        # TODO: better dir naming (eg S2A_L1C_2023-12-08-hhmmss like S1)
         if aoi_name is None:
             out_dir = f"{outputs_prefix}/{pid}"
         else:
@@ -70,6 +95,8 @@ def process_s2_tiles(
                     log.info(f"-- Tile {path}")
                     row = df_bands.loc[band]
                     upscale_factor = int(row["resolution"] / 10)
+
+
 
                     # open sub dataset and read band
                     with rasterio.open(src.subdatasets[row["subd"]]) as subds:
@@ -145,9 +172,10 @@ def process_s2_tiles(
                                 )
                             else:
                                 raster = tmp_ds.read()
-                    # Hardcoded quantification
-                    # TODO: apply bias correction for processor > 4
-                    raster = raster.astype(np.float32) / 10000
+                    if proc_bsl > 4:
+                        raster = ((raster + OFF) / QV).astype(np.float32)
+                    else:
+                        raster = (raster / QV).astype(np.float32)
                     prof.update(
                         {
                             "dtype": "float32",
@@ -220,6 +248,7 @@ def s2_band_info():
                 "B9",
                 "B10",
             ],
+            "id": [2, 1, 0, 7, 4, 5, 6, 8, 11, 12, 0, 9, 10],
             "resolution": [10, 10, 10, 10, 20, 20, 20, 20, 20, 20, 60, 60, 60],
             "subd": [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2],
             "idx": [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 1, 2, 3],
