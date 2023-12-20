@@ -21,5 +21,6 @@ dependencies:
   - folium
   - tqdm
   - localtileserver 
+  - xmltodict
   # - pip:
   # get latest version
