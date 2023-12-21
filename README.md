@@ -1,6 +1,6 @@
 # EO-Tools
 
-A dockerized toolbox for easy pogrammatic processing of remote sensing imagery from various public sources.
+A dockerized toolbox for easy programmatic processing of remote sensing imagery from various public sources.
 
 - This project is in its early stages, therefore API is subject to change. 
 - Currently, the available features are:
