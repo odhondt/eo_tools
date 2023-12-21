@@ -236,6 +236,15 @@ def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
 
 
 def visualize_s2_rgb(input_dir, force_create=False):
+    """Visualize Sentinel-2 RGB color image on a map
+
+    Args:
+        input_dir (str): directory that has RGB (B4, B3, B2) files.
+        force_create (bool, optional): Force create RGB.tif event if file already exists. Defaults to False.
+
+    Returns:
+        folium.Map: raster visualization on an interactive map
+    """    
     rgb_path = f"{input_dir}/RGB.tif"
     if not os.path.exists(rgb_path) or force_create:
         print("RGB.tif not found (or force_create==True). Creating the file.")
