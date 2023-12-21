@@ -13,6 +13,6 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
         - Write any band to COG files
         - Visualization of color composites (Natural RGB, CIR, SWIR, etc) on a folium map
     - All products
-        - Search catalog (using EODAG)
+        - Search catalog (using EODAG) and download products
         - Explore products by displaying their footprint on a folium map (custom function)
 - Example notebooks can be found in the `notebooks/` folder
