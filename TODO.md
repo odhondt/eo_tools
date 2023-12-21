@@ -17,7 +17,7 @@
 - [x] add interferogam option
 - [x] allow groupByWorkers processing
 - [x] geocode independently all IW, stitch in the end with rasterio
-- [x] improved coregistration (ESD, etc)
+- [ ] improved coregistration (ESD, etc)
 - [x] make graph more generic by adding placeholders
 - [ ] Speckle filtering
     - [ ] for parameter estimation (would need covariance)
@@ -30,6 +30,12 @@
 - [ ] goldstein filter (optional)
 - [ ] gpt options (?)
 
+## S2 processing
+
+- [ ] Optional: apply Sen2Cor on L1C products
+- [ ] Test:
+    - [ ] L2A processing
+    - [ ] Baseline < 4
 ## display
 
 - [x] plot raster on top of folium map, use tile server

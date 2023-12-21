@@ -18,10 +18,14 @@ import logging
 log = logging.getLogger(__name__)
 
 
-
 # TODO: find a way to get unique (automatic) folder names
 def process_s2_tiles(
-    paths, bands=["B4", "B3", "B2"], shp=None, aoi_name=None, outputs_prefix="/tmp"
+    paths,
+    bands=["B4", "B3", "B2"],
+    shp=None,
+    aoi_name=None,
+    outputs_prefix="/tmp",
+    force_create=False,
 ):
     """Merge Sentinel-2 tiles by grouping them by data take ID. Writes bands as individual COG (Cloud Optimized GeoTIFF) files in a sub-folder.
 
@@ -102,13 +106,20 @@ def process_s2_tiles(
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
         for band in bands_:
-            log.info(f"-- Band {band}")
+            if band not in df_bands.index:
+                raise ValueError(f"Unknown band name '{band}'")
+            if os.path.exists(f"{out_dir}/{band}.tif") and not force_create:
+                log.info(
+                    f"--- Band '{band}' already exists, skipping."
+                )
+                continue
+            row = df_bands.loc[band]
+            log.info(f"--- Processing band '{band}'")
             to_merge = []
             for path in paths:
                 # open granule
                 with rasterio.open(path) as src:
                     log.info(f"-- Tile {path}")
-                    row = df_bands.loc[band]
                     upscale_factor = int(row["resolution"] / 10)
 
                     # open sub dataset and read band
@@ -216,7 +227,9 @@ def process_s2_tiles(
                     "nodata": 0,
                 }
             )
-            with rasterio.open(f"{out_dir}/{band}.tif", "w", **prof) as dst:
+            out_path = f"{out_dir}/{band}.tif"
+            log.info(f"-- Writing file {out_path}")
+            with rasterio.open(out_path, "w", **prof) as dst:
                 dst.write(arr_merge)
     return out_dirs
 
