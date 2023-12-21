@@ -35,7 +35,7 @@
 - [ ] Optional: apply Sen2Cor on L1C products
 - [ ] Test:
     - [ ] L2A processing
-    - [ ] Baseline < 4
+    - [x] Baseline < 4
 ## display
 
 - [x] plot raster on top of folium map, use tile server
