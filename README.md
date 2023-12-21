@@ -15,4 +15,4 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
     - All products
         - Search catalog (using EODAG)
         - Explore products by displaying their footprint on a folium map (custom function)
-- Example notebooks can be found in the `notebook/` folder
+- Example notebooks can be found in the `notebooks/` folder
