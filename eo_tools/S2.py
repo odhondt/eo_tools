@@ -35,6 +35,7 @@ def process_s2_tiles(
         shp (shapely geometry, optional): If shp is provided, the outputs will be cropped to the geometry. Defaults to None.
         aoi_name (str, optional): adds a suffix to the subfolder name. Useful when the same products are cropped with different geometries, or simply to add a short description of the subfolder content. Defaults to None.
         outputs_prefix (str, optional): path where the subfolder will be created. Defaults to "/tmp".
+        force_create (bool, optional): force creating bands that already exist on disk. Defaults to False.
     """
     df_bands = s2_band_info()
 
