@@ -110,9 +110,7 @@ def process_s2_tiles(
             if band not in df_bands.index:
                 raise ValueError(f"Unknown band name '{band}'")
             if os.path.exists(f"{out_dir}/{band}.tif") and not force_create:
-                log.info(
-                    f"--- Band '{band}' already exists, skipping."
-                )
+                log.info(f"--- Band '{band}' already exists, skipping.")
                 continue
             row = df_bands.loc[band]
             log.info(f"--- Processing band '{band}'")
@@ -247,26 +245,51 @@ def _s2_color_composite(input_dir, out_name, bands):
                 data = (255 * src.read(1).clip(0, 1)).astype("uint8")
                 dst.write(data, i + 1)
 
-def make_s2_rgb(input_dir):
-    bands = ["B4", "B3", "B2"]
-    out_name = "RGB.tif"
+
+def _check_bands_exist(input_dir, bands):
     band_files = [Path(path).name for path in glob(f"{input_dir}/*.tif")]
     for band in bands:
         if not f"{band}.tif" in band_files:
             raise FileNotFoundError(
-                f"Missing band. Please create {' ,'.join(bands)} bands with process_s2_tiles."
+                f"Missing band. Please create {', '.join(bands)} bands with process_s2_tiles."
             )
+
+
+def _dict_composites():
+    dict_comp = dict(
+        RGB=["B4", "B3", "B2"],
+        CIR=["B8", "B4", "B3"],
+        SWIR=["B12", "B8A", "B4"],
+        agri=["B11", "B8", "B2"],
+        geol=["B12", "B11", "B2"],
+        bathy=["B4", "B3", "B1"],
+    )
+    return dict_comp
+
+
+def make_s2_color(input_dir, name="RGB"):
+    """Make a color representation of Sentinel-2 images by combining some bands.
+
+    Args:
+        input_dir (str): input directory containing the GeoTiff bands
+        name (str, optional): Name of the pre-defined color representation. Possible choices are 'RGB', 'CIR', 'SWIR', 'agri', 'geol', 'bathy'. Defaults to "RGB".
+
+    Raises:
+        ValueError: _description_
+    """
+    composites = _dict_composites()
+    if name not in composites.keys():
+        raise ValueError(
+            f"Unknown composite name. Possible choices are {', '.join(composites.keys())}."
+        )
+    bands = composites[name]
+    out_name = f"{name}.tif"
+    _check_bands_exist(input_dir, bands)
     _s2_color_composite(input_dir, out_name, bands)
-    # with rasterio.open(f"{input_dir}/B4.tif") as ds:
-    #     prof = ds.profile.copy()
 
-    # prof.update({"count": 3, "dtype": "uint8"})
 
-    # with rasterio.open(f"{input_dir}/RGB.tif", "w", **prof) as dst:
-    #     for i, band in enumerate(bands):
-    #         with rasterio.open(f"{input_dir}/{band}.tif") as src:
-    #             data = (255 * src.read(1).clip(0, 1)).astype("uint8")
-    #             dst.write(data, i + 1)
+def make_s2_rgb(input_dir):
+    make_s2_color(input_dir, "RGB")
 
 
 # TODO: improve descriptions
