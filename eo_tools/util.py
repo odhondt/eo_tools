@@ -10,7 +10,7 @@ import geopandas as gpd
 import json
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
-from eo_tools.S2 import make_s2_rgb
+from eo_tools.S2 import make_s2_rgb, make_s2_color
 
 from localtileserver import get_folium_tile_layer
 from localtileserver.client import TileClient
@@ -201,40 +201,6 @@ def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
     return m
 
 
-# def visualize_sar_intensity(file_in, vmin=None, vmax=None):
-#     """Visualize intensity on a map.
-
-#     Args:
-#         input path (str): Directory with InSAR products (int_mst.tif or int_slv.tif) or GeoTiff input file (preferably COG).
-
-#     Returns:
-#         folium.Map: raster visualization on an interactive map
-#     """
-
-#     try:
-#         with rasterio.open(file_in) as src:
-#             mean_val = src.tags()["mean_value"]
-#     except:
-#         raise Exception("File not found or no 'mean_value' tag.")
-#     client = TileClient(file_in)
-
-#     if vmin is None:
-#         vmin_ = 0
-#     else:
-#         vmin_ = vmin
-
-#     if vmax is None:
-#         vmax_ = 2.5 * float(mean_val)
-#     else:
-#         vmax_ = vmax
-
-#     t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
-
-#     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-#     t.add_to(m)
-#     return m
-
-
 def visualize_s2_rgb(input_dir, force_create=False):
     """Visualize Sentinel-2 RGB color image on a map
 
@@ -244,7 +210,7 @@ def visualize_s2_rgb(input_dir, force_create=False):
 
     Returns:
         folium.Map: raster visualization on an interactive map
-    """    
+    """
     rgb_path = f"{input_dir}/RGB.tif"
     if not os.path.exists(rgb_path) or force_create:
         print("RGB.tif not found (or force_create==True). Creating the file.")
@@ -257,6 +223,31 @@ def visualize_s2_rgb(input_dir, force_create=False):
     t.add_to(m)
     return m
 
+
+def visualize_s2_color(input_dir, name="RGB", force_create=False):
+    """Visualize Sentinel-2 color image on a map
+
+    Args:
+        input_dir (str): directory that contains GeoTIFF band files.
+        name (str, optional): Name of the pre-defined color representation. Possible choices are 'RGB', 'CIR', 'SWIR', 'agri', 'geol', 'bathy'. Defaults to "RGB".
+        force_create (bool, optional): Force create RGB.tif event if file already exists. Defaults to False.
+
+    Returns:
+        folium.Map: raster visualization on an interactive map
+    """
+    im_path = f"{input_dir}/{name}.tif"
+    if not os.path.exists(im_path) or force_create:
+        print(f"{name}.tif not found (or force_create==True). Creating the file.")
+        make_s2_color(input_dir, name)
+
+    client = TileClient(im_path)
+    t = get_folium_tile_layer(client)
+
+    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
+    t.add_to(m)
+    return m
+
+
 # TODO: Viz single band (any raster)
-# TODO: Viz S2 combinations (RGB, NDVI, ...)
+# TODO: Other band combinations ( NDVI, ...)
 # TODO: Viz InSAR composite (HSV)
