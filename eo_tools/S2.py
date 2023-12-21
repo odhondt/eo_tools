@@ -235,25 +235,38 @@ def process_s2_tiles(
     return out_dirs
 
 
-def make_s2_rgb(input_dir):
-    bands = ["B4", "B3", "B2"]
-    band_files = [Path(path).name for path in glob(f"{input_dir}/*.tif")]
-    for band in bands:
-        if not f"{band}.tif" in band_files:
-            raise FileNotFoundError(
-                "Missing band. Please create RGB (B4, B3, B2) bands with process_s2_tiles."
-            )
-
-    with rasterio.open(f"{input_dir}/B4.tif") as ds:
+def _s2_color_composite(input_dir, out_name, bands):
+    with rasterio.open(f"{input_dir}/{bands[0]}.tif") as ds:
         prof = ds.profile.copy()
 
-    prof.update({"count": 3, "dtype": "uint8"})
+    prof.update({"count": len(bands), "dtype": "uint8"})
 
-    with rasterio.open(f"{input_dir}/RGB.tif", "w", **prof) as dst:
+    with rasterio.open(f"{input_dir}/{out_name}", "w", **prof) as dst:
         for i, band in enumerate(bands):
             with rasterio.open(f"{input_dir}/{band}.tif") as src:
                 data = (255 * src.read(1).clip(0, 1)).astype("uint8")
                 dst.write(data, i + 1)
+
+def make_s2_rgb(input_dir):
+    bands = ["B4", "B3", "B2"]
+    out_name = "RGB.tif"
+    band_files = [Path(path).name for path in glob(f"{input_dir}/*.tif")]
+    for band in bands:
+        if not f"{band}.tif" in band_files:
+            raise FileNotFoundError(
+                f"Missing band. Please create {' ,'.join(bands)} bands with process_s2_tiles."
+            )
+    _s2_color_composite(input_dir, out_name, bands)
+    # with rasterio.open(f"{input_dir}/B4.tif") as ds:
+    #     prof = ds.profile.copy()
+
+    # prof.update({"count": 3, "dtype": "uint8"})
+
+    # with rasterio.open(f"{input_dir}/RGB.tif", "w", **prof) as dst:
+    #     for i, band in enumerate(bands):
+    #         with rasterio.open(f"{input_dir}/{band}.tif") as src:
+    #             data = (255 * src.read(1).clip(0, 1)).astype("uint8")
+    #             dst.write(data, i + 1)
 
 
 # TODO: improve descriptions
