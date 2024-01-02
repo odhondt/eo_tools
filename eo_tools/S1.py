@@ -21,6 +21,10 @@ import logging
 log = logging.getLogger(__name__)
 
 
+# TODO: geocoding with lightweight processing chain (instead of performing slice assembly in SNAP, we apply geocode to individual images and crop / merge COGs afterwards with rasterio, like S2 processor)
+# TODO: compute and viz log dB for InSAR intensities (separate)
+
+
 def process_InSAR(
     file_mst,
     file_slv,
@@ -349,7 +353,7 @@ def process_InSAR(
                 for name in dimfiles_to_remove:
                     remove(f"{name}.dim")
                     remove(f"{name}.data")
-            
+
                     name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
                     path_tc = f"{name_tc}.tif"
                     path_edge = f"{name_tc}_edge.tif"
