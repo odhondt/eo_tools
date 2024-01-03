@@ -23,7 +23,14 @@ log = logging.getLogger(__name__)
 
 # TODO: geocoding with lightweight processing chain (instead of performing slice assembly in SNAP, we apply geocode to individual images and crop / merge COGs afterwards with rasterio, like S2 processor)
 # TODO: compute and viz log dB for InSAR intensities (separate)
+# TODO: notify that only IW can be used for now (not EW)
 
+def process_s1_tiles(in_files, outputs_prefix, aoi_name=None, shp=None, pol="full", flattening=False, dB=False):
+    # - group by data take (?)
+    # - process with geocode
+    # - crop and make cog
+    # - friendly file name 
+    pass
 
 def process_InSAR(
     file_mst,
