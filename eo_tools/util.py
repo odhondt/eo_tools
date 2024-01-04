@@ -59,6 +59,7 @@ def explore_products(products, aoi=None):
                 "fillColor": "none",
                 "color": "black",
             },
+            name= "Area of Interest"
         )
     folium.Tooltip(f"Area of Interest").add_to(folium_aoi)
     folium_aoi.add_to(m)
@@ -70,21 +71,22 @@ def explore_products(products, aoi=None):
 
         # group very overlapping products
         group_indices = group_by_overlap(dfg)
-        for g in group_indices:
+        for i, g in enumerate(group_indices):
             sel = gdf.loc[g]
             geom = mapping(sel.unary_union)
 
-            folium_products = folium.GeoJson(geom).add_to(m)
+            orbit_conf = sel.iloc[0]["orbitDirection"]
+            orbit_num = sel.iloc[0]["relativeOrbitNumber"]
+            folium_products = folium.GeoJson(geom, name=f"Orbit {orbit_num}, group {i+1}").add_to(m)
+            # folium_products = folium.GeoJson(geom).add_to(m)
             date_ts = sel["startTimeFromAscendingNode"].dt.strftime("%Y-%m-%d %X")
             date_str = "<br>".join(
                 date_ts.index.astype(str).str.cat(date_ts.values, sep=" / ")
             )
-            orbit_conf = sel.iloc[0]["orbitDirection"]
-            orbit_num = sel.iloc[0]["relativeOrbitNumber"]
             folium.Tooltip(
                 f"<b>Configuration:</b><br>{orbit_conf}, Orbit: {orbit_num}<br><b>Product list (index / date):</b><br>{date_str}"
             ).add_to(folium_products)
-
+    folium.LayerControl().add_to(m)
     m.fit_bounds(bbox)
     return m
 
