@@ -1,5 +1,6 @@
 from pyroSAR.snap.auxil import Workflow, gpt, groupbyWorkers
 from pyroSAR import identify
+from pyroSAR.snap import geocode
 
 import os
 from pathlib import Path
@@ -25,12 +26,12 @@ log = logging.getLogger(__name__)
 # TODO: compute and viz log dB for InSAR intensities (separate)
 # TODO: notify that only IW can be used for now (not EW)
 
-def process_s1_tiles(in_files, outputs_prefix, aoi_name=None, shp=None, pol="full", flattening=False, dB=False):
+def process_s1_tiles(in_files, outputs_prefix, tmp_dir=None,  aoi_name=None, shp=None, pol="full", flattening=False, dB=False):
     # - group by data take (?)
     # - process with geocode
     # - crop and make cog
     # - friendly file name 
-    pass
+    geocode(infile=in_files, outdir=outputs_prefix, tmpdir=tmp_dir, shapefile=shp, polarizations=pol)
 
 def process_InSAR(
     file_mst,
@@ -38,6 +39,7 @@ def process_InSAR(
     outputs_prefix,
     tmp_dir,
     aoi_name=None,
+    # TODO: handle gjson files and strings
     shp=None,
     pol="full",
     coh_only=False,
