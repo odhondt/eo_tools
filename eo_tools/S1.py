@@ -1,6 +1,5 @@
 from pyroSAR.snap.auxil import Workflow, gpt, groupbyWorkers
 from pyroSAR import identify
-from pyroSAR.snap import geocode
 
 import os
 from pathlib import Path
@@ -22,24 +21,12 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: geocoding with lightweight processing chain (instead of performing slice assembly in SNAP, we apply geocode to individual images and crop / merge COGs afterwards with rasterio, like S2 processor)
-# TODO: compute and viz log dB for InSAR intensities (separate)
-# TODO: notify that only IW can be used for now (not EW)
-
-def process_s1_tiles(in_files, outputs_prefix, tmp_dir=None,  aoi_name=None, shp=None, pol="full", flattening=False, dB=False):
-    # - group by data take (?)
-    # - process with geocode
-    # - crop and make cog
-    # - friendly file name 
-    geocode(infile=in_files, outdir=outputs_prefix, tmpdir=tmp_dir, shapefile=shp, polarizations=pol)
-
 def process_InSAR(
     file_mst,
     file_slv,
     outputs_prefix,
     tmp_dir,
     aoi_name=None,
-    # TODO: handle gjson files and strings
     shp=None,
     pol="full",
     coh_only=False,
@@ -53,8 +40,8 @@ def process_InSAR(
     AOI crop is optional.
 
     Args:
-        file_mst (str): Master image (SLC Sentinel-1 product)
-        file_slv (str): Slave image (SLC Sentinel-1 product)
+        file_mst (str): Master image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        file_slv (str): Slave image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
         out_dir (str): Output directory
         tmp_dir (str): Temporary directory to store intermediate files
         aoi_name (str): Optional suffix to describe AOI / experiment
@@ -67,6 +54,8 @@ def process_InSAR(
         resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
     Returns:
         out_dirs (list): Output directories containing COG files.
+    Note:
+        With products from Copernicus Data Space, processing of some zipped products may lead to errors. This issue can be temporarily fixed by processing the unzipped product instead of the zip file.
     """
     # detailed debug info
     # logging.basicConfig(level=logging.DEBUG)
@@ -362,7 +351,7 @@ def process_InSAR(
                 for name in dimfiles_to_remove:
                     remove(f"{name}.dim")
                     remove(f"{name}.data")
-
+            
                     name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
                     path_tc = f"{name_tc}.tif"
                     path_edge = f"{name_tc}_edge.tif"
