@@ -6,6 +6,7 @@ import geopandas as gpd
 from shapely.geometry import Polygon
 import configparser
 from zipfile import ZipFile
+from glob import glob
 import re
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -199,8 +200,11 @@ def group_by_info(infiles, group= None):
     return(out_files)
 ## get metadata from zip file for specific polarization and subswaths
 def load_metadata(zip_path, subswath, polarization):
-    archive = ZipFile(zip_path)
-    archive_files = archive.namelist()
+    if zip_path.endswith(".zip"):
+        archive = ZipFile(zip_path)
+        archive_files = archive.namelist()
+    else:
+        archive_files = glob(f"{zip_path}/**", recursive=True)
     regex_filter = r's1(?:a|b)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml'
     metadata_file_list = []
     for item in archive_files:
@@ -213,7 +217,11 @@ def load_metadata(zip_path, subswath, polarization):
     for item in metadata_file_list:
         if subswath.lower() in item and polarization.lower() in item:
             target_file = item
-    return archive.open(target_file)
+    if zip_path.endswith(".zip"):
+        return archive.open(target_file)
+    else:
+        return open(target_file)
+
 ## get total number of bursts and their coordinates from metadata
 def parse_location_grid(metadata):
     tree = ET.parse(metadata)
