@@ -3,5 +3,5 @@
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "editor.formatOnSave": true,
-    "remote.autoForwardPortsSource": "process"
+    "remote.autoForwardPortsSource": "hybrid"
 }
