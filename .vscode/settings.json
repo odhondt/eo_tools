@@ -3,5 +3,6 @@
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "editor.formatOnSave": true,
-    "remote.autoForwardPortsSource": "hybrid"
+    "remote.autoForwardPortsSource": "hybrid",
+    "remote.autoForwardPortsFallback": 0
 }

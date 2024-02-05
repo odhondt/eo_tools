@@ -2,8 +2,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",
-  "forwardPorts": ["stac-fastapi:8081"],
-  // "forwardPorts": [8081,"stac-fastapi:8081"],
+  // "forwardPorts": ["stac-fastapi:8081"],
   "customizations": {
     "vscode": {
         "extensions": [
