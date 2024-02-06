@@ -14,6 +14,7 @@ from eo_tools.S2 import make_s2_rgb, make_s2_color
 
 from localtileserver import get_folium_tile_layer
 from localtileserver.client import TileClient
+import httpx
 
 
 # check for geometrical overlap
@@ -59,7 +60,7 @@ def explore_products(products, aoi=None):
                 "fillColor": "none",
                 "color": "black",
             },
-            name= "Area of Interest"
+            name="Area of Interest",
         )
     folium.Tooltip(f"Area of Interest").add_to(folium_aoi)
     folium_aoi.add_to(m)
@@ -77,7 +78,9 @@ def explore_products(products, aoi=None):
 
             orbit_conf = sel.iloc[0]["orbitDirection"]
             orbit_num = sel.iloc[0]["relativeOrbitNumber"]
-            folium_products = folium.GeoJson(geom, name=f"Orbit {orbit_num}, group {i+1}").add_to(m)
+            folium_products = folium.GeoJson(
+                geom, name=f"Orbit {orbit_num}, group {i+1}"
+            ).add_to(m)
             # folium_products = folium.GeoJson(geom).add_to(m)
             date_ts = sel["startTimeFromAscendingNode"].dt.strftime("%Y-%m-%d %X")
             date_str = "<br>".join(
@@ -90,6 +93,37 @@ def explore_products(products, aoi=None):
     m.fit_bounds(bbox)
     return m
 
+
+def ttcog_get_stats(url):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/statistics",
+        params={
+            "url": url,
+        },
+    ).json()
+    return r
+
+def ttcog_get_info(url):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/info",
+        params={
+            "url": url,
+        },
+    ).json()
+    return r
+
+def ttcog_get_tilejson(url, **kwargs):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/tilejson.json",
+        params = {
+            "url": url,
+            **kwargs
+        }
+    ).json()
+    return r
 
 def visualize_insar_phase(input_path):
     """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
@@ -149,11 +183,19 @@ def visualize_insar_coh(input_path):
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
-    client = TileClient(file_in)
-    t = get_folium_tile_layer(client, vmin=0.0, vmax=1.0)
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(file_in, rescale="0,1")
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2,(bounds[0] + bounds[2]) / 2),
+        zoom_start=8,
+    )
+
+    folium.TileLayer(
+        tiles=tjson["tiles"][0],
+        attr="InSAR Coherence"
+    ).add_to(m)
     return m
 
 
