@@ -159,8 +159,6 @@ def show_insar_phi(input_path):
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
 
-    stats = ttcog_get_stats(file_in)
-
     tjson = ttcog_get_tilejson(
         file_in,
         rescale=f"{-np.pi},{np.pi}",
@@ -174,6 +172,7 @@ def show_insar_phi(input_path):
     )
 
     folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR phase").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
 
     return m
 
@@ -205,6 +204,7 @@ def show_insar_coh(input_path):
     )
 
     folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
     return m
 
 
@@ -263,14 +263,13 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
-        zoom_start=8,
+        # zoom_start=8,
     )
 
     tt = folium.TileLayer(tiles=tjson["tiles"][0], attr="SAR Intensity")
     tt.add_to(m)
 
-    # seems to have no effect
-    # m.fit_bounds(tt.get_bounds())
+    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
     return m
 
 
