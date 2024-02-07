@@ -94,13 +94,11 @@ def explore_products(products, aoi=None):
     return m
 
 
-def ttcog_get_stats(url):
+def ttcog_get_stats(url, **kwargs):
     titiler_endpoint = "http://localhost:8085"
     r = httpx.get(
         f"{titiler_endpoint}/cog/statistics",
-        params={
-            "url": url,
-        },
+        params={"url": url, **kwargs},
     ).json()
     return r
 
@@ -163,13 +161,11 @@ def show_insar_phi(input_path):
 
     stats = ttcog_get_stats(file_in)
 
-    # col_idx = (65535 * np.arange(0,256) / 255).astype(int).tolist()
-    col_idx = range(0,256)
     tjson = ttcog_get_tilejson(
         file_in,
         rescale=f"{-np.pi},{np.pi}",
-        resampling="nearest", # make sure COG has been made with nearest too
-        colormap=json.dumps({x: y for x, y in zip(col_idx, cmap_hex)}),
+        resampling="nearest",  # please make sure COG has been made with 'nearest'
+        colormap=json.dumps({x: y for x, y in zip(range(256), cmap_hex)}),
     )
 
     m = folium.Map(
@@ -177,7 +173,7 @@ def show_insar_phi(input_path):
         zoom_start=8,
     )
 
-    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR phase").add_to(m)
 
     return m
 
@@ -214,7 +210,7 @@ def show_insar_coh(input_path):
 
 # TODO: add dB
 # def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
-def show_sar_int(input_path, master=True, vmin=None, vmax=None):
+def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     """Visualize intensity on a map.
 
     Args:
@@ -235,27 +231,46 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None):
         file_in = input_path
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
-    try:
-        with rasterio.open(file_in) as src:
-            mean_val = src.tags()["mean_value"]
-    except:
-        raise Exception("File not found or no 'mean_value' tag.")
-    client = TileClient(file_in)
+
+    if not dB:
+        stats = ttcog_get_stats(file_in)["b1"]
+    else:
+        stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
+    print(stats)
 
     if vmin is None:
-        vmin_ = 0
+        vmin_ = float(stats["percentile_2"])
     else:
         vmin_ = vmin
 
     if vmax is None:
-        vmax_ = 2.5 * float(mean_val)
+        vmax_ = float(stats["percentile_98"])
     else:
         vmax_ = vmax
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
+    if dB:
+        tjson = ttcog_get_tilejson(
+            file_in,
+            rescale=f"{vmin_},{vmax_}",
+            resampling="average",
+            expression="10*log10(b1)",
+        )
+    else:
+        tjson = ttcog_get_tilejson(
+            file_in, rescale=f"{vmin_},{vmax_}", resampling="average"
+        )
 
-    t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        zoom_start=8,
+    )
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    tt = folium.TileLayer(tiles=tjson["tiles"][0], attr="SAR Intensity")
+    tt.add_to(m)
+
+    # seems to have no effect
+    # m.fit_bounds(tt.get_bounds())
     return m
 
 
@@ -279,6 +294,7 @@ def visualize_s2_rgb(input_dir, force_create=False):
 
     m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
     t.add_to(m)
+
     return m
 
 
