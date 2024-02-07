@@ -104,6 +104,7 @@ def ttcog_get_stats(url):
     ).json()
     return r
 
+
 def ttcog_get_info(url):
     titiler_endpoint = "http://localhost:8085"
     r = httpx.get(
@@ -114,18 +115,17 @@ def ttcog_get_info(url):
     ).json()
     return r
 
+
 def ttcog_get_tilejson(url, **kwargs):
     titiler_endpoint = "http://localhost:8085"
     r = httpx.get(
-        f"{titiler_endpoint}/cog/tilejson.json",
-        params = {
-            "url": url,
-            **kwargs
-        }
+        f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
     ).json()
     return r
 
-def visualize_insar_phase(input_path):
+
+def show_insar_phi(input_path):
+    # def visualize_insar_phase(input_path):
     """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
 
     Args:
@@ -158,15 +158,31 @@ def visualize_insar_phase(input_path):
     interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
     cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
 
-    client = TileClient(file_in)
-    t = get_folium_tile_layer(client, palette=cmap_hex)
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    stats = ttcog_get_stats(file_in)
+
+    # col_idx = (65535 * np.arange(0,256) / 255).astype(int).tolist()
+    col_idx = range(0,256)
+    tjson = ttcog_get_tilejson(
+        file_in,
+        rescale=f"{-np.pi},{np.pi}",
+        resampling="nearest", # make sure COG has been made with nearest too
+        colormap=json.dumps({x: y for x, y in zip(col_idx, cmap_hex)}),
+    )
+
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        zoom_start=8,
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
+
     return m
 
 
-def visualize_insar_coh(input_path):
+def show_insar_coh(input_path):
     """Visualize coherence on a map.
 
     Args:
@@ -188,19 +204,17 @@ def visualize_insar_coh(input_path):
     tjson = ttcog_get_tilejson(file_in, rescale="0,1")
 
     m = folium.Map(
-        location=((bounds[1] + bounds[3]) / 2,(bounds[0] + bounds[2]) / 2),
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
         zoom_start=8,
     )
 
-    folium.TileLayer(
-        tiles=tjson["tiles"][0],
-        attr="InSAR Coherence"
-    ).add_to(m)
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
     return m
 
 
 # TODO: add dB
-def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
+# def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
+def show_sar_int(input_path, master=True, vmin=None, vmax=None):
     """Visualize intensity on a map.
 
     Args:
