@@ -21,7 +21,6 @@ dependencies:
   - ipyleaflet
   - folium
   - tqdm
-  - localtileserver 
   - xmltodict
   - httpx
   # - pip:
