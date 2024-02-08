@@ -1,4 +1,4 @@
-name: s1_proc
+name: eo_tools
 channels:
   - conda-forge
   - defaults

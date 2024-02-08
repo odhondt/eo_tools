@@ -22,6 +22,6 @@ RUN micromamba shell init --shell=bash --prefix=~/micromamba
 RUN source ~/.bashrc
 COPY environment.yaml environment.yaml
 RUN micromamba create -f  environment.yaml
-RUN echo "micromamba activate s1_proc" >> ~/.bashrc
+RUN echo "micromamba activate eo_tools" >> ~/.bashrc
 
-RUN micromamba activate s1_proc
+RUN micromamba activate eo_tools
