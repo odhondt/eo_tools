@@ -4,7 +4,6 @@ channels:
   - defaults
 dependencies:
   - python=3.11
-  # - python>=3.8
   - gdal
   - rasterio
   - pyroSAR
@@ -23,9 +22,3 @@ dependencies:
   - tqdm
   - xmltodict
   - httpx
-  # - pip:
-  #   - stac-fastapi.api 
-  #   - stac-fastapi.types 
-  #   - stac-fastapi.extensions
-  #   - stac-fastapi.pgstac
-  # get latest version
