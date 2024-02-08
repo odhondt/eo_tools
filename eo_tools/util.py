@@ -172,7 +172,7 @@ def show_insar_phi(input_path):
     )
 
     folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR phase").add_to(m)
-    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
     return m
 
@@ -204,7 +204,7 @@ def show_insar_coh(input_path):
     )
 
     folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
-    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
@@ -269,11 +269,11 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     tt = folium.TileLayer(tiles=tjson["tiles"][0], attr="SAR Intensity")
     tt.add_to(m)
 
-    m.fit_bounds([[bounds[1], bounds[0]],[bounds[3], bounds[2]]])
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
-def visualize_s2_rgb(input_dir, force_create=False):
+def show_s2_rgb(input_dir, force_create=False):
     """Visualize Sentinel-2 RGB color image on a map
 
     Args:
@@ -288,16 +288,20 @@ def visualize_s2_rgb(input_dir, force_create=False):
         print("RGB.tif not found (or force_create==True). Creating the file.")
         make_s2_rgb(input_dir)
 
-    client = TileClient(rgb_path)
-    t = get_folium_tile_layer(client)
+    info = ttcog_get_info(rgb_path)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(rgb_path)
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
 
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="RGB raster").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
-def visualize_s2_color(input_dir, name="RGB", force_create=False):
+def show_s2_color(input_dir, name="RGB", force_create=False):
     """Visualize Sentinel-2 color image on a map
 
     Args:
@@ -313,13 +317,43 @@ def visualize_s2_color(input_dir, name="RGB", force_create=False):
         print(f"{name}.tif not found (or force_create==True). Creating the file.")
         make_s2_color(input_dir, name)
 
-    client = TileClient(im_path)
-    t = get_folium_tile_layer(client)
+    info = ttcog_get_info(im_path)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(im_path)
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="RGB raster").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
     return m
 
+
+def show_cog(url, **kwargs):
+    """Low-level function to show local or remote raster COG on a folium map.
+
+    Args:
+        url (str): remote url or local path
+        kwargs: extra-arguments to be passed to TiTiler cog endpoint
+
+    Returns:
+        folium.Map: raster visualization on an interactive map
+    """   
+
+    info = ttcog_get_info(url)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(url, **kwargs)
+
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="COG").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
+    return m 
 
 # TODO: Viz single band (any raster)
 # TODO: Other band combinations ( NDVI, ...)
