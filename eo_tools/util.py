@@ -1,19 +1,15 @@
 import folium
 
-from shapely import intersection_all
 from shapely.geometry import mapping
 
 import os
 import numpy as np
-import rasterio
 import geopandas as gpd
 import json
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
 from eo_tools.S2 import make_s2_rgb, make_s2_color
 
-from localtileserver import get_folium_tile_layer
-from localtileserver.client import TileClient
 import httpx
 
 
