@@ -14,6 +14,7 @@ from eo_tools.S2 import make_s2_rgb, make_s2_color
 
 from localtileserver import get_folium_tile_layer
 from localtileserver.client import TileClient
+import httpx
 
 
 # check for geometrical overlap
@@ -59,7 +60,7 @@ def explore_products(products, aoi=None):
                 "fillColor": "none",
                 "color": "black",
             },
-            name= "Area of Interest"
+            name="Area of Interest",
         )
     folium.Tooltip(f"Area of Interest").add_to(folium_aoi)
     folium_aoi.add_to(m)
@@ -77,7 +78,9 @@ def explore_products(products, aoi=None):
 
             orbit_conf = sel.iloc[0]["orbitDirection"]
             orbit_num = sel.iloc[0]["relativeOrbitNumber"]
-            folium_products = folium.GeoJson(geom, name=f"Orbit {orbit_num}, group {i+1}").add_to(m)
+            folium_products = folium.GeoJson(
+                geom, name=f"Orbit {orbit_num}, group {i+1}"
+            ).add_to(m)
             # folium_products = folium.GeoJson(geom).add_to(m)
             date_ts = sel["startTimeFromAscendingNode"].dt.strftime("%Y-%m-%d %X")
             date_str = "<br>".join(
@@ -91,7 +94,36 @@ def explore_products(products, aoi=None):
     return m
 
 
-def visualize_insar_phase(input_path):
+def ttcog_get_stats(url, **kwargs):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/statistics",
+        params={"url": url, **kwargs},
+    ).json()
+    return r
+
+
+def ttcog_get_info(url):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/info",
+        params={
+            "url": url,
+        },
+    ).json()
+    return r
+
+
+def ttcog_get_tilejson(url, **kwargs):
+    titiler_endpoint = "http://localhost:8085"
+    r = httpx.get(
+        f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
+    ).json()
+    return r
+
+
+def show_insar_phi(input_path):
+    # def visualize_insar_phase(input_path):
     """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
 
     Args:
@@ -124,15 +156,28 @@ def visualize_insar_phase(input_path):
     interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
     cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
 
-    client = TileClient(file_in)
-    t = get_folium_tile_layer(client, palette=cmap_hex)
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    tjson = ttcog_get_tilejson(
+        file_in,
+        rescale=f"{-np.pi},{np.pi}",
+        resampling="nearest",  # please make sure COG has been made with 'nearest'
+        colormap=json.dumps({x: y for x, y in zip(range(256), cmap_hex)}),
+    )
+
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        zoom_start=8,
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR phase").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
     return m
 
 
-def visualize_insar_coh(input_path):
+def show_insar_coh(input_path):
     """Visualize coherence on a map.
 
     Args:
@@ -149,16 +194,22 @@ def visualize_insar_coh(input_path):
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
-    client = TileClient(file_in)
-    t = get_folium_tile_layer(client, vmin=0.0, vmax=1.0)
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(file_in, rescale="0,1")
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        zoom_start=8,
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="InSAR Coherence").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
 # TODO: add dB
-def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
+def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     """Visualize intensity on a map.
 
     Args:
@@ -179,31 +230,49 @@ def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
         file_in = input_path
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
-    try:
-        with rasterio.open(file_in) as src:
-            mean_val = src.tags()["mean_value"]
-    except:
-        raise Exception("File not found or no 'mean_value' tag.")
-    client = TileClient(file_in)
+
+    if not dB:
+        stats = ttcog_get_stats(file_in)["b1"]
+    else:
+        stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
+    print(stats)
 
     if vmin is None:
-        vmin_ = 0
+        vmin_ = float(stats["percentile_2"])
     else:
         vmin_ = vmin
 
     if vmax is None:
-        vmax_ = 2.5 * float(mean_val)
+        vmax_ = float(stats["percentile_98"])
     else:
         vmax_ = vmax
+    info = ttcog_get_info(file_in)
+    bounds = info["bounds"]
+    if dB:
+        tjson = ttcog_get_tilejson(
+            file_in,
+            rescale=f"{vmin_},{vmax_}",
+            resampling="average",
+            expression="10*log10(b1)",
+        )
+    else:
+        tjson = ttcog_get_tilejson(
+            file_in, rescale=f"{vmin_},{vmax_}", resampling="average"
+        )
 
-    t = get_folium_tile_layer(client, vmin=vmin_, vmax=vmax_)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        # zoom_start=8,
+    )
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    tt = folium.TileLayer(tiles=tjson["tiles"][0], attr="SAR Intensity")
+    tt.add_to(m)
+
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
-def visualize_s2_rgb(input_dir, force_create=False):
+def show_s2_rgb(input_dir, force_create=False):
     """Visualize Sentinel-2 RGB color image on a map
 
     Args:
@@ -218,15 +287,20 @@ def visualize_s2_rgb(input_dir, force_create=False):
         print("RGB.tif not found (or force_create==True). Creating the file.")
         make_s2_rgb(input_dir)
 
-    client = TileClient(rgb_path)
-    t = get_folium_tile_layer(client)
+    info = ttcog_get_info(rgb_path)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(rgb_path)
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="RGB raster").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
     return m
 
 
-def visualize_s2_color(input_dir, name="RGB", force_create=False):
+def show_s2_color(input_dir, name="RGB", force_create=False):
     """Visualize Sentinel-2 color image on a map
 
     Args:
@@ -242,14 +316,43 @@ def visualize_s2_color(input_dir, name="RGB", force_create=False):
         print(f"{name}.tif not found (or force_create==True). Creating the file.")
         make_s2_color(input_dir, name)
 
-    client = TileClient(im_path)
-    t = get_folium_tile_layer(client)
+    info = ttcog_get_info(im_path)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(im_path)
 
-    m = folium.Map(location=client.center(), zoom_start=client.default_zoom)
-    t.add_to(m)
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="RGB raster").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
     return m
 
 
-# TODO: Viz single band (any raster)
+def show_cog(url, **kwargs):
+    """Low-level function to show local or remote raster COG on a folium map.
+
+    Args:
+        url (str): remote url or local path
+        kwargs: extra-arguments to be passed to the TiTiler cog endpoint
+
+    Returns:
+        folium.Map: raster visualization on an interactive map
+    """   
+
+    info = ttcog_get_info(url)
+    bounds = info["bounds"]
+    tjson = ttcog_get_tilejson(url, **kwargs)
+
+    m = folium.Map(
+        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+    )
+
+    folium.TileLayer(tiles=tjson["tiles"][0], attr="COG").add_to(m)
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
+    return m 
+
 # TODO: Other band combinations ( NDVI, ...)
 # TODO: Viz InSAR composite (HSV)

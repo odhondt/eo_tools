@@ -287,7 +287,7 @@ def process_InSAR(
         log.info("---- Writing COG files")
 
         # Using COG driver
-        prof_out.update({"driver": "COG", "compress": "deflate"})
+        prof_out.update({"driver": "COG", "compress": "deflate", "resampling": "nearest"})
         del prof_out["blockysize"]
         del prof_out["tiled"]
         del prof_out["interleave"]
