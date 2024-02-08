@@ -209,7 +209,6 @@ def show_insar_coh(input_path):
 
 
 # TODO: add dB
-# def visualize_sar_intensity(input_path, master=True, vmin=None, vmax=None):
 def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     """Visualize intensity on a map.
 
@@ -336,7 +335,7 @@ def show_cog(url, **kwargs):
 
     Args:
         url (str): remote url or local path
-        kwargs: extra-arguments to be passed to TiTiler cog endpoint
+        kwargs: extra-arguments to be passed to the TiTiler cog endpoint
 
     Returns:
         folium.Map: raster visualization on an interactive map
@@ -355,6 +354,5 @@ def show_cog(url, **kwargs):
 
     return m 
 
-# TODO: Viz single band (any raster)
 # TODO: Other band combinations ( NDVI, ...)
 # TODO: Viz InSAR composite (HSV)
