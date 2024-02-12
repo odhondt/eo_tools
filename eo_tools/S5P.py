@@ -4,7 +4,7 @@ import xarray as xr
 import rasterio
 
 
-def s5p_so2_to_cog(filein, outpath="/tmp"):
+def s5p_so2_to_cog(filein, outpath="/tmp", res_km=5):
 
     ds = xr.load_dataset(filein, group="PRODUCT")
 
@@ -14,9 +14,14 @@ def s5p_so2_to_cog(filein, outpath="/tmp"):
     minlon, maxlon = lon.min(), lon.max()
     minlat, maxlat = lat.min(), lat.max()
 
-    # TODO: compute size based on approx resolution
-    x = np.linspace(minlon, maxlon, 500)
-    y = np.linspace(minlat, maxlat, 500)
+    # using rule of thumb to determine lon-lat resolutions
+    meanlat = 0.5 * (maxlat + minlat)
+    res_lon = res_km / 110.574
+    res_lat = res_km / (111.320 * np.cos(np.radians(meanlat)))
+
+
+    x = np.arange(minlon, maxlon + res_lon, res_lon)
+    y = np.arange(minlat, maxlat + res_lat, res_lat)
 
     xx, yy = np.meshgrid(x, y)
 
