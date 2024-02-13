@@ -2,9 +2,14 @@ import numpy as np
 from scipy.interpolate import griddata
 import xarray as xr
 import rasterio
+from pathlib import Path
 
 
-def s5p_so2_to_cog(filein, outpath="/tmp", res_km=5):
+def s5p_so2_to_cog(filein, outdir="/tmp", res_km=5):
+
+    substr = "S5P_NRTI_L2__SO2"
+    if not Path(filein).stem.startswith(substr):
+        raise ValueError("File is not an SO2 NRTI L2 product.")
 
     ds = xr.load_dataset(filein, group="PRODUCT")
 
@@ -19,7 +24,6 @@ def s5p_so2_to_cog(filein, outpath="/tmp", res_km=5):
     res_lon = res_km / 110.574
     res_lat = res_km / (111.320 * np.cos(np.radians(meanlat)))
 
-
     x = np.arange(minlon, maxlon + res_lon, res_lon)
     y = np.arange(minlat, maxlat + res_lat, res_lat)
 
@@ -32,10 +36,9 @@ def s5p_so2_to_cog(filein, outpath="/tmp", res_km=5):
     )
     crs = "EPSG:4326"
 
-    # TODO: parse filename from input
-    fileout = f"{outpath}/regridded.tif"
+    str_time = Path(filein).stem.split("_")[8]
+    fileout = f"{outdir}/{substr}_{str_time}.tif"
 
-    # TODO: write with COG driver
     with rasterio.open(
         fileout,
         "w",
@@ -46,6 +49,9 @@ def s5p_so2_to_cog(filein, outpath="/tmp", res_km=5):
         count=1,
         dtype="float32",
         nodata=np.nan,
+        driver="COG",
+        compress="deflate",
+        resampling="nearest",
     ) as ds_out:
         ds_out.write(res, 1)
 
