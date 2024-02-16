@@ -4,13 +4,41 @@ version: "3.7"
 services:
 
   eo_tools:
-      build: 
-        context: .
-        dockerfile: Dockerfile
-      environment:
-        PYTHONPATH: /eo_tools
-      volumes:
-        - ${HOME}/eo_tools:/eo_tools
-        - ${HOME}/data:/data
-        # Overrides default command so things don't shut down after the process ends.
-      command: /bin/sh -c "while sleep 1000; do :; done"  
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PYTHONPATH: /eo_tools
+    volumes:
+      - ${HOME}/eo_tools:/eo_tools
+      - ${HOME}/data:/data
+      # Overrides default command so things don't shut down after the process ends.
+    command: /bin/sh -c "while sleep 1000; do :; done" 
+    network_mode: host
+
+  titiler:
+    image: ghcr.io/developmentseed/titiler:latest
+    environment:
+      # Application
+      - HOST=127.0.0.1
+      - PORT=8085
+      # Gunicorn / Uvicorn
+      # https://github.com/tiangolo/uvicorn-gunicorn-docker#web_concurrency
+      - WEB_CONCURRENCY=1
+      # https://github.com/tiangolo/uvicorn-gunicorn-docker#workers_per_core
+      - WORKERS_PER_CORE=1
+      # GDAL config
+      - CPL_TMPDIR=/tmp
+      - GDAL_CACHEMAX=75%
+      - GDAL_INGESTED_BYTES_AT_OPEN=32768
+      - GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
+      - GDAL_HTTP_MERGE_CONSECUTIVE_RANGES=YES
+      - GDAL_HTTP_MULTIPLEX=YES
+      - GDAL_HTTP_VERSION=2
+      - PYTHONWARNINGS=ignore
+      - VSI_CACHE=TRUE
+      - VSI_CACHE_SIZE=536870912
+      - LOG_LEVEL="debug"
+    volumes:
+      - ${HOME}/data:/data
+    network_mode: host

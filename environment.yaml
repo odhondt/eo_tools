@@ -1,9 +1,9 @@
-name: s1_proc
+name: eo_tools
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python>=3.8
+  - python=3.11
   - gdal
   - rasterio
   - pyroSAR
@@ -20,7 +20,5 @@ dependencies:
   - ipyleaflet
   - folium
   - tqdm
-  - localtileserver 
   - xmltodict
-  # - pip:
-  # get latest version
+  - httpx
