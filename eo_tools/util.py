@@ -231,7 +231,6 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
         stats = ttcog_get_stats(file_in)["b1"]
     else:
         stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
-    print(stats)
 
     if vmin is None:
         vmin_ = float(stats["percentile_2"])
@@ -352,3 +351,39 @@ def show_cog(url, **kwargs):
 
 # TODO: Other band combinations ( NDVI, ...)
 # TODO: Viz InSAR composite (HSV)
+
+def boxcar(img, dimaz, dimrg=None):
+    ''' Apply a boxcar filter to an image
+
+        Parameters
+        ----------
+        img: complex or real array, shape (naz, nrg,...)
+            input image, with arbitrary number of dimension
+        dimaz, dimrg: floats
+            size in azimuth and range of the filter. If only dimaz is specified, dimensions are (dimaz, dimaz)
+
+        Returns
+        -------
+        imgout: complex or real array, shape (naz, nrg,...)
+            filtered image
+
+        Note
+        ----
+        The filter is always along 2 dimensions (azimuth, range), please
+        ensure to provide a valid image.
+    '''
+
+    import scipy.ndimage.filters as flt
+    uflt = flt.uniform_filter
+    ndim = len(img.shape)
+    ws = np.ones(ndim)
+    ws[0] = dimaz
+    if dimrg is not None:
+        ws[1] = dimrg
+    else:
+        ws[1] = dimaz
+    if np.iscomplexobj(img):
+        imgout = uflt(img.real, size=ws) + 1j*uflt(img.imag, size=ws)
+    else:
+        imgout = uflt(img.real, size=ws)
+    return imgout
