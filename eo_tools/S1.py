@@ -10,6 +10,7 @@ from rasterio import merge, mask
 from rasterio.io import MemoryFile
 from scipy.ndimage import binary_erosion
 from eo_tools.auxils import get_burst_geometry
+from eo_tools.util import boxcar
 from datetime import datetime
 import calendar
 from dateutil.parser import parser
@@ -33,7 +34,7 @@ def process_InSAR(
     intensity=True,
     clear_tmp_files=True,
     erosion_width=15,
-    resume=False
+    resume=False,
     # apply_ESD=False -- maybe for later
 ):
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -287,7 +288,9 @@ def process_InSAR(
         log.info("---- Writing COG files")
 
         # Using COG driver
-        prof_out.update({"driver": "COG", "compress": "deflate", "resampling": "nearest"})
+        prof_out.update(
+            {"driver": "COG", "compress": "deflate", "resampling": "nearest"}
+        )
         del prof_out["blockysize"]
         del prof_out["tiled"]
         del prof_out["interleave"]
@@ -351,7 +354,7 @@ def process_InSAR(
                 for name in dimfiles_to_remove:
                     remove(f"{name}.dim")
                     remove(f"{name}.data")
-            
+
                     name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
                     path_tc = f"{name_tc}.tif"
                     path_edge = f"{name_tc}_edge.tif"
@@ -481,3 +484,45 @@ def geocoding(file_in, file_out, tmp_dir, output_complex=False):
     wfl_tc.write(f"{tmp_dir}/graph_tc.xml")
     grp = groupbyWorkers(f"{tmp_dir}/graph_tc.xml", n=1)
     gpt(f"{tmp_dir}/graph_tc.xml", groups=grp, tmpdir=tmp_dir)
+
+
+def change_int(filein1, filein2, fileout, db=True):
+
+    import matplotlib.pyplot as plt
+
+    with rasterio.open(filein1, "r") as ds1:
+        if ds1.count != 1:
+            raise Exception("Only single band images allowed.")
+        img1 = ds1.read(1)
+        prof = ds1.profile.copy()
+    with rasterio.open(filein2, "r") as ds2:
+        if ds2.count != 1:
+            raise Exception("Only single band images allowed.")
+        img2 = ds2.read(1)
+
+    if img1.shape != img2.shape:
+        raise Exception("Image dimensions must match.")
+
+    res = np.zeros_like(img1)
+
+    if not db:
+        res[img1 > 0] = img2[img1 > 0] / img1[img1 > 0]
+    else:
+        msk = ((img1 > 0) * (img2 > 0)).astype(bool)
+        res[msk] = np.log10(img2[msk]) - np.log10(img1[msk])
+
+    res = boxcar(res, 5)
+
+    # plt.figure()
+    # plt.imshow(res, vmin=np.percentile(res, 2), vmax=np.percentile(res, 98))
+    # plt.colorbar()
+    # plt.show()
+
+    # remove keys if exist
+    prof.pop("blockxsize", None)
+    prof.pop("blockysize", None)
+    prof.pop("tiled", None)
+    prof.pop("interleave", None)
+    prof.update({"driver": "COG", "compress": "deflate", "resampling": "average", "overview_resampling": "average"})
+    with rasterio.open(fileout, "w", **prof) as dsout:
+        dsout.write(res, 1)
