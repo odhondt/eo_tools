@@ -28,6 +28,7 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", tmp_dir="/tmp"):
     ]
     prof = to_merge[0].profile.copy()
     arr_merge, trans_merge = rasterio.merge.merge(to_merge)
+    print(arr_merge.shape)
     prof.update(
         {
             "height": arr_merge.shape[1],
@@ -42,7 +43,7 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", tmp_dir="/tmp"):
     with MemoryFile() as memfile:
         with memfile.open(**prof) as mem:
             # Populate the input file with numpy array
-            mem.write(arr_merge, 1)
+            mem.write(arr_merge)
             arr_crop, trans_crop = rasterio.mask.mask(mem, [shp], crop=True)
             prof_out = mem.profile.copy()
             prof_out.update(
@@ -55,4 +56,4 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", tmp_dir="/tmp"):
             )
 
     with rasterio.open(file_out, 'w', **prof_out) as dst:
-        dst.write(arr_crop, 1)
+        dst.write(arr_crop)
