@@ -22,3 +22,6 @@ dependencies:
   - tqdm
   - xmltodict
   - httpx
+  - xarray
+  - netcdf4
+  - rioxarray

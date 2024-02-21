@@ -33,7 +33,7 @@ def process_InSAR(
     intensity=True,
     clear_tmp_files=True,
     erosion_width=15,
-    resume=False
+    resume=False,
     # apply_ESD=False -- maybe for later
 ):
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -287,7 +287,9 @@ def process_InSAR(
         log.info("---- Writing COG files")
 
         # Using COG driver
-        prof_out.update({"driver": "COG", "compress": "deflate", "resampling": "nearest"})
+        prof_out.update(
+            {"driver": "COG", "compress": "deflate", "resampling": "nearest"}
+        )
         del prof_out["blockysize"]
         del prof_out["tiled"]
         del prof_out["interleave"]
@@ -338,11 +340,7 @@ def process_InSAR(
                     dst.write(band, 1)
 
         if clear_tmp_files:
-            log.info(
-                # "clear_tmp_files: This feature will be implemented in a future version."
-                "---- Removing temporary files."
-            )
-            # tmp_name = f"{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
+            log.info("---- Removing temporary files.")
             for tmp_name in tmp_names:
                 name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
                 name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
@@ -351,7 +349,7 @@ def process_InSAR(
                 for name in dimfiles_to_remove:
                     remove(f"{name}.dim")
                     remove(f"{name}.data")
-            
+
                     name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
                     path_tc = f"{name_tc}.tif"
                     path_edge = f"{name_tc}_edge.tif"

@@ -326,7 +326,7 @@ def show_s2_color(input_dir, name="RGB", force_create=False):
     return m
 
 
-def show_cog(url, **kwargs):
+def show_cog(url, folium_map=None, **kwargs):
     """Low-level function to show local or remote raster COG on a folium map.
 
     Args:
@@ -335,20 +335,26 @@ def show_cog(url, **kwargs):
 
     Returns:
         folium.Map: raster visualization on an interactive map
-    """   
+    """
 
     info = ttcog_get_info(url)
     bounds = info["bounds"]
     tjson = ttcog_get_tilejson(url, **kwargs)
 
-    m = folium.Map(
-        location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
-    )
+    if folium_map is None:
+        m = folium.Map(
+            location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
+        )
+    else:
+        m = folium_map
 
-    folium.TileLayer(tiles=tjson["tiles"][0], attr="COG").add_to(m)
+    folium.TileLayer(
+        tiles=tjson["tiles"][0], attr="COG", overlay=True, name=url
+    ).add_to(m)
     m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
-    return m 
+    return m
+
 
 # TODO: Other band combinations ( NDVI, ...)
 # TODO: Viz InSAR composite (HSV)
