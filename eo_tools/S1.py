@@ -341,11 +341,7 @@ def process_InSAR(
                     dst.write(band, 1)
 
         if clear_tmp_files:
-            log.info(
-                # "clear_tmp_files: This feature will be implemented in a future version."
-                "---- Removing temporary files."
-            )
-            # tmp_name = f"{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
+            log.info("---- Removing temporary files.")
             for tmp_name in tmp_names:
                 name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
                 name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
