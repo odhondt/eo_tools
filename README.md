@@ -1,7 +1,8 @@
-# EO-Tools
+# EO-Tools: 
 
 A dockerized toolbox for easy programmatic processing of remote sensing imagery from various public sources.
 
+## Overview
 - This project is in its early stages, therefore API is likely to change. 
 - Currently, the available features are:
     - Sentinel-1
@@ -19,3 +20,9 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
         - Explore products by displaying their footprint on a folium map (custom function)
         - Show remote and local images on top of folium maps in the notebook
 - Example notebooks can be found in the `notebooks/` folder
+
+## Usage
+- It works as a dev container for VSCode. 
+    - Clone into the location of your choice.
+    - Volumes paths can be changed in `docker-compose.yml`.
+    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks can be used. 
