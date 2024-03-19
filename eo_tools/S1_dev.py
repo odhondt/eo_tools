@@ -3,9 +3,13 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
+from scipy.interpolate import CubicHermiteSpline
+from dateutil.parser import isoparse
+from eo_tools.dem import retrieve_dem
+from shapely.geometry import box
 
 
-def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
+def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif"):
     if not os.isdir(safe_dir):
         raise ValueError("Directory not found.")
 
@@ -38,6 +42,12 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
         pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
     )
 
+    # state vectors
+    orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
+    orbit_count = orbit_list["@count"]
+    state_vectors = orbit_list["orbit"]
+    
+    interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
 def read_metadata(pth_xml):
     # read product XML
@@ -59,4 +69,31 @@ def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
             for it in gcps
             if it.row >= first_line and it.row <= first_line + number_of_lines
         ]
-        return arr, gcps_burst, gcps_crs
+    return arr, gcps_burst, gcps_crs
+
+def orbit_interpolator(state_vectors):
+    tt0 = isoparse(state_vectors[0]["time"])
+    tt = [(isoparse(it["time"]) - tt0).total_seconds() for it in state_vectors]
+    xx = [float(it["position"]["x"]) for it in state_vectors]
+    yy = [float(it["position"]["y"]) for it in state_vectors]
+    zz = [float(it["position"]["z"]) for it in state_vectors]
+
+    vxx = [float(it["velocity"]["x"]) for it in state_vectors]
+    vyy = [float(it["velocity"]["y"]) for it in state_vectors]
+    vzz = [float(it["velocity"]["z"]) for it in state_vectors]
+
+    interp_orb = CubicHermiteSpline(
+        tt, np.array([xx, yy, zz]).T, np.array([vxx, vyy, vzz]).T
+    )
+    interp_orb_v = interp_orb.derivative(1)
+    return interp_orb, interp_orb_v
+
+def auto_dem(file_dem, gcps_burst):
+    minmax  = lambda x: (x.min(), x.max())
+    xmin, xmax = minmax(np.array([p.x for p in gcps_burst]))
+    ymin, ymax = minmax(np.array([p.y for p in gcps_burst]))
+    shp = box(xmin, ymin, xmax, ymax)
+
+
+    if not os.path.exists(file_dem):
+        retrieve_dem(shp, file_dem)
