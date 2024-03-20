@@ -10,14 +10,26 @@ from shapely.geometry import box
 from rasterio.enums import Resampling
 from rasterio.warp import transform
 from numba import jit, prange
+from scipy.ndimage import map_coordinates
+
+import logging
+
+log = logging.getLogger(__name__)
+
+# TODO: make Product class that contains metadata
+# TODO: better function names
 
 
-def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif"):
+def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     if not os.isdir(safe_dir):
         raise ValueError("Directory not found.")
 
-    pth_tiff = Path(f"{safe_dir}/measurement/").glob(f"*iw{iw}*{pol}*.tiff")
-    pth_xml = Path(f"{safe_dir}/annotation/").glob(f"*iw{iw}*{pol}*.xml")
+    log.info("Read input files")
+    dir_tiff = Path(f"{safe_dir}/measurement/")
+    dir_xml = Path(f"{safe_dir}/annotation/")
+
+    pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+    pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
     pth_tiff = list(pth_tiff)[0]
     pth_xml = list(pth_xml)[0]
 
@@ -41,7 +53,7 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif")
     az_time = first_burst["azimuthTime"]
 
     first_line = (burst_idx - 1) * lines_per_burst
-    im, gcps, gcps_crs = read_chunk(
+    gcps, gcps_crs = read_gcps(
         pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
     )
 
@@ -52,10 +64,14 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif")
 
     interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
+    log.info("DEM downloading and processing")
+    name_dem = f"dem-b{burst_idx}-{pth_xml.stem}.tiff"
+    file_dem = f"{dir_dem}/{name_dem}"
     auto_dem(file_dem, gcps)
-    lat, lon, alt, dem_prof = load_dem(file_dem)
+    lat, lon, alt, dem_prof = load_dem_coords(file_dem)
     dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt)
 
+    log.info("Terrain correction (index computation)")
     # preparing geocoding
     tt0 = isoparse(state_vectors[0]["time"])
     t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -72,9 +88,9 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif")
     c0 = 299792458.0
     r0 = float(slant_range_time) * c0 / 2
     # dr = float(range_pixel_spacing)
-    dr = c0 / (2*float(range_sampling_rate))
+    dr = c0 / (2 * float(range_sampling_rate))
 
-    rg_geo = ((np.sqrt(d2_geo)-r0)/dr)
+    rg_geo = (np.sqrt(d2_geo) - r0) / dr
 
     cnd1 = (rg_geo >= 0) & (rg_geo < nrg)
     cnd2 = (az_geo >= 0) & (az_geo < naz)
@@ -85,7 +101,44 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, file_dem="autodem.tif")
 
     rg[~valid] = np.nan
     az[~valid] = np.nan
-    return rg, az
+    return rg, az, dem_prof
+
+
+def resample_burst_ampl(
+    safe_dir, file_out, az, rg, dem_profile, iw=1, pol="vv", burst_idx=1, order=1
+):
+    dir_tiff = Path(f"{safe_dir}/measurement/")
+    dir_xml = Path(f"{safe_dir}/annotation/")
+
+    pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+    pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+    pth_tiff = list(pth_tiff)[0]
+    pth_xml = list(pth_xml)[0]
+
+    meta = read_metadata(pth_xml)
+    burst_info = meta["product"]["swathTiming"]
+    lines_per_burst = int(burst_info["linesPerBurst"])
+
+    first_line = (burst_idx - 1) * lines_per_burst
+    log.info("Read burst")
+    arr = read_chunk(pth_tiff, first_line=first_line, number_of_lines=lines_per_burst)
+
+    ampl = np.abs(arr)
+
+    log.info("Warp to match DEM geometry")
+    width = dem_profile["width"]
+    height = dem_profile["height"]
+    wped = np.zeros_like(rg)
+    valid = not (np.isnan(az) * np.isnan(rg))
+    wped[valid] = map_coordinates(
+        ampl, [az[valid] - first_line, rg[valid]], order=order
+    )
+    wped[~valid] = 0
+    wped = wped.reshape(height, width)
+
+    log.info("Write output GeoTIFF")
+    with rasterio.open(file_out, "w", **dem_profile) as dst:
+        dst.write(wped, 1)
 
 
 def read_metadata(pth_xml):
@@ -95,20 +148,21 @@ def read_metadata(pth_xml):
     return meta
 
 
-def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
+def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
     with rasterio.open(pth_tiff) as src:
-        # prof = src.profile.copy()
         gcps, gcps_crs = src.gcps
-        arr = np.log(
-            np.abs(src.read(1, window=(0, first_line, src.width, number_of_lines))) + 1
-        )
-        # TODO: use filter?
         gcps_burst = [
             it
             for it in gcps
             if it.row >= first_line and it.row <= first_line + number_of_lines
         ]
-    return arr, gcps_burst, gcps_crs
+    return gcps_burst, gcps_crs
+
+
+def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
+    with rasterio.open(pth_tiff) as src:
+        arr = src.read(1, window=(0, first_line, src.width, number_of_lines))
+    return arr
 
 
 def orbit_interpolator(state_vectors):
@@ -141,7 +195,7 @@ def auto_dem(file_dem, gcps):
 
 
 # TODO add resampling options
-def load_dem(file_dem, upscale_factor=2):
+def load_dem_coords(file_dem, upscale_factor=2):
     with rasterio.open(file_dem) as ds:
         # alt = ds.read(1)
         # on-the-fly resampling
