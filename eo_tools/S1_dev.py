@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 
 def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
-    if not os.isdir(safe_dir):
+    if not os.path.isdir(safe_dir):
         raise ValueError("Directory not found.")
 
     log.info("Read input files")
@@ -49,8 +49,8 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     lines_per_burst = int(burst_info["linesPerBurst"])
     samples_per_burst = int(burst_info["samplesPerBurst"])
     burst_count = int(burst_info["burstList"]["@count"])
-    first_burst = burst_info["burstList"]["burst"][0]
-    az_time = first_burst["azimuthTime"]
+    burst = burst_info["burstList"]["burst"][burst_idx-1]
+    az_time = burst["azimuthTime"]
 
     first_line = (burst_idx - 1) * lines_per_burst
     gcps, gcps_crs = read_gcps(
@@ -64,11 +64,14 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
 
     interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
-    log.info("DEM downloading and processing")
+    log.info("DEM downloading")
     name_dem = f"dem-b{burst_idx}-{pth_xml.stem}.tiff"
     file_dem = f"{dir_dem}/{name_dem}"
     auto_dem(file_dem, gcps)
+    log.info("DEM upsampling and extract coordinates")
     lat, lon, alt, dem_prof = load_dem_coords(file_dem)
+
+    log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
     dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt)
 
     log.info("Terrain correction (index computation)")
@@ -101,7 +104,7 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
 
     rg[~valid] = np.nan
     az[~valid] = np.nan
-    return rg, az, dem_prof
+    return az, rg, dem_prof
 
 
 def resample_burst_ampl(
@@ -129,9 +132,9 @@ def resample_burst_ampl(
     width = dem_profile["width"]
     height = dem_profile["height"]
     wped = np.zeros_like(rg)
-    valid = not (np.isnan(az) * np.isnan(rg))
+    valid = (az!=np.nan) * (rg!=np.nan)
     wped[valid] = map_coordinates(
-        ampl, [az[valid] - first_line, rg[valid]], order=order
+        ampl, [az[valid], rg[valid]], order=order
     )
     wped[~valid] = 0
     wped = wped.reshape(height, width)
@@ -160,8 +163,11 @@ def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
 
 
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
+    from rasterio.windows import Window
     with rasterio.open(pth_tiff) as src:
-        arr = src.read(1, window=(0, first_line, src.width, number_of_lines))
+        arr = src.read(1, window=Window(0, first_line, src.width, number_of_lines))
+    import matplotlib.pyplot as plt
+    plt.imshow(np.abs(arr), vmin=0, vmax=300)
     return arr
 
 
@@ -192,6 +198,8 @@ def auto_dem(file_dem, gcps):
     # TODO handle better
     if not os.path.exists(file_dem):
         retrieve_dem(shp, file_dem)
+    else:
+        log.info("--DEM already on disk")
 
 
 # TODO add resampling options
@@ -206,7 +214,7 @@ def load_dem_coords(file_dem, upscale_factor=2):
                 int(ds.width * upscale_factor),
             ),
             resampling=Resampling.bilinear,
-        )[0].ravel()
+        )[0]
 
         # scale image transform
         dem_prof = ds.profile.copy()
@@ -224,13 +232,14 @@ def load_dem_coords(file_dem, upscale_factor=2):
     else:
         # much faster
         ix, iy = np.arange(width), np.arange(height)
-        lat_ = dem_trans[0] * ix + dem_trans[4]
-        lon_ = dem_trans[2] * iy + dem_trans[5]
-        lat = lat_[:, None] + np.zeros_like(alt)
-        lon = lon_[None, :] + np.zeros_like(alt)
+        lat_ = dem_trans[0] * ix + dem_trans[2]
+        lon_ = dem_trans[4] * iy + dem_trans[5]
+        lon = lon_[:, None] + np.zeros_like(alt)
+        lat = lat_[None, :] + np.zeros_like(alt)
 
+    # print(lat.shape, lon.shape, alt.shape)
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt, dem_prof
+    return lat.ravel(), lon.ravel(), alt.ravel(), dem_prof
 
 
 def lla_to_ecef(lat, lon, alt):
