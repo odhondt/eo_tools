@@ -41,7 +41,7 @@ def fetch_dem_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     auto_dem(file_dem, gcps)
     return file_dem
 
-
+# TODO check parameter validity
 def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     if not os.path.isdir(safe_dir):
         raise ValueError("Directory not found.")
@@ -70,14 +70,12 @@ def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     burst_info = meta["product"]["swathTiming"]
     lines_per_burst = int(burst_info["linesPerBurst"])
     samples_per_burst = int(burst_info["samplesPerBurst"])
-    # burst_count = int(burst_info["burstList"]["@count"])
+    burst_count = int(burst_info["burstList"]["@count"])
+    if burst_idx > burst_count or burst_idx < 1:
+        raise ValueError(f"Burst index must be between 1 and {burst_count}")
     burst = burst_info["burstList"]["burst"][burst_idx-1]
     az_time = burst["azimuthTime"]
 
-    # first_line = (burst_idx - 1) * lines_per_burst
-    # gcps, _ = read_gcps(
-    #     pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
-    # )
 
     # state vectors
     orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
@@ -85,10 +83,6 @@ def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
 
     interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
-    # log.info("DEM downloading")
-    # name_dem = f"dem-b{burst_idx}-{pth_xml.stem}.tiff"
-    # file_dem = f"{dir_dem}/{name_dem}"
-    # auto_dem(file_dem, gcps)
     log.info("DEM upsampling and extract coordinates")
     lat, lon, alt, dem_prof = load_dem_coords(file_dem)
 
@@ -212,7 +206,6 @@ def auto_dem(file_dem, gcps):
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
     shp = box(xmin, ymin, xmax, ymax)
 
-    # TODO handle better
     if not os.path.exists(file_dem):
         retrieve_dem(shp, file_dem)
     else:
