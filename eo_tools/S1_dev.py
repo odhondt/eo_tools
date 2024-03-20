@@ -20,7 +20,29 @@ log = logging.getLogger(__name__)
 # TODO: better function names
 
 
-def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
+def fetch_dem_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
+    dir_tiff = Path(f"{safe_dir}/measurement/")
+    dir_xml = Path(f"{safe_dir}/annotation/")
+    pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+    pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+    pth_xml = list(pth_xml)[0]
+    pth_tiff = list(pth_tiff)[0]
+
+    meta = read_metadata(pth_xml)
+    burst_info = meta["product"]["swathTiming"]
+    lines_per_burst = int(burst_info["linesPerBurst"])
+    first_line = (burst_idx - 1) * lines_per_burst
+
+    name_dem = f"dem-b{burst_idx}-{pth_tiff.stem}.tiff"
+    file_dem = f"{dir_dem}/{name_dem}"
+    gcps, _ = read_gcps(
+        pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
+    )
+    auto_dem(file_dem, gcps)
+    return file_dem
+
+
+def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     if not os.path.isdir(safe_dir):
         raise ValueError("Directory not found.")
 
@@ -48,26 +70,25 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     burst_info = meta["product"]["swathTiming"]
     lines_per_burst = int(burst_info["linesPerBurst"])
     samples_per_burst = int(burst_info["samplesPerBurst"])
-    burst_count = int(burst_info["burstList"]["@count"])
+    # burst_count = int(burst_info["burstList"]["@count"])
     burst = burst_info["burstList"]["burst"][burst_idx-1]
     az_time = burst["azimuthTime"]
 
-    first_line = (burst_idx - 1) * lines_per_burst
-    gcps, gcps_crs = read_gcps(
-        pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
-    )
+    # first_line = (burst_idx - 1) * lines_per_burst
+    # gcps, _ = read_gcps(
+    #     pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
+    # )
 
     # state vectors
     orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
-    orbit_count = orbit_list["@count"]
     state_vectors = orbit_list["orbit"]
 
     interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
-    log.info("DEM downloading")
-    name_dem = f"dem-b{burst_idx}-{pth_xml.stem}.tiff"
-    file_dem = f"{dir_dem}/{name_dem}"
-    auto_dem(file_dem, gcps)
+    # log.info("DEM downloading")
+    # name_dem = f"dem-b{burst_idx}-{pth_xml.stem}.tiff"
+    # file_dem = f"{dir_dem}/{name_dem}"
+    # auto_dem(file_dem, gcps)
     log.info("DEM upsampling and extract coordinates")
     lat, lon, alt, dem_prof = load_dem_coords(file_dem)
 
@@ -75,7 +96,6 @@ def geocode_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt)
 
     log.info("Terrain correction (index computation)")
-    # preparing geocoding
     tt0 = isoparse(state_vectors[0]["time"])
     t0_az = (isoparse(az_time) - tt0).total_seconds()
     dt_az = float(azimuth_time_interval)
@@ -145,7 +165,6 @@ def resample_burst_ampl(
 
 
 def read_metadata(pth_xml):
-    # read product XML
     with open(pth_xml) as f:
         meta = xmltodict.parse(f.read())
     return meta
@@ -166,8 +185,6 @@ def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
     from rasterio.windows import Window
     with rasterio.open(pth_tiff) as src:
         arr = src.read(1, window=Window(0, first_line, src.width, number_of_lines))
-    import matplotlib.pyplot as plt
-    plt.imshow(np.abs(arr), vmin=0, vmax=300)
     return arr
 
 
