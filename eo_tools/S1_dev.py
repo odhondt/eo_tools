@@ -11,6 +11,7 @@ from rasterio.enums import Resampling
 from rasterio.warp import transform
 from numba import jit, prange
 from scipy.ndimage import map_coordinates
+from pymap3d.ecef import geodetic2ecef
 
 import logging
 
@@ -87,7 +88,7 @@ def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     lat, lon, alt, dem_prof = load_dem_coords(file_dem)
 
     log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
-    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt)
+    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, dem_prof["crs"])
 
     log.info("Terrain correction (index computation)")
     tt0 = isoparse(state_vectors[0]["time"])
@@ -252,14 +253,15 @@ def load_dem_coords(file_dem, upscale_factor=2):
     return lat.ravel(), lon.ravel(), alt.ravel(), dem_prof
 
 
-def lla_to_ecef(lat, lon, alt):
-    WGS84_points = (lat, lon, alt)
+def lla_to_ecef(lat, lon, alt, dem_crs):
+    # WGS84_points = (lat, lon, alt)
+    WGS84_points = (lon, lat, alt)
     # TODO: use DEM CRS
-    WGS84_crs = "EPSG:4326+3855"
-    ECEF_crs = "EPSG:4978"  # cartesian
+    # WGS84_crs = "EPSG:4326+3855"
+    # ECEF_crs = "EPSG:4978"  # cartesian
     # dem_pts = transform(dem_crs, ECEF_crs, *WGS84_points)
-    dem_pts = transform(WGS84_crs, ECEF_crs, *WGS84_points)
-    dem_pts = (np.array(dem_pts[0]), np.array(dem_pts[1]), np.array(dem_pts[2]))
+    # dem_pts = (np.array(dem_pts[0]), np.array(dem_pts[1]), np.array(dem_pts[2]))
+    dem_pts = geodetic2ecef(*WGS84_points)
     return dem_pts
 
 
