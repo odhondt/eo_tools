@@ -85,7 +85,7 @@ def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     interp_orb, interp_orb_v = orbit_interpolator(state_vectors)
 
     log.info("DEM upsampling and extract coordinates")
-    lat, lon, alt, dem_prof = load_dem_coords(file_dem)
+    lat, lon, alt, dem_prof = load_dem_coords(file_dem, 1)
 
     log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
     dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, dem_prof["crs"])
