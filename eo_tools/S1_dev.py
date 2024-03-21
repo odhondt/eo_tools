@@ -252,11 +252,13 @@ def load_dem_coords(file_dem, upscale_factor=2):
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
     return lat.ravel(), lon.ravel(), alt.ravel(), dem_prof
 
-
+# TODO enforce DEM crs to WGS84
 def lla_to_ecef(lat, lon, alt, dem_crs):
     # WGS84_points = (lat, lon, alt)
+
+    # for some reason lat and lon are inverted respect to pymap3d docs
     WGS84_points = (lon, lat, alt)
-    # TODO: use DEM CRS
+    # TODO use DEM CRS
     # WGS84_crs = "EPSG:4326+3855"
     # ECEF_crs = "EPSG:4978"  # cartesian
     # dem_pts = transform(dem_crs, ECEF_crs, *WGS84_points)
