@@ -411,5 +411,7 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     rg_mid = slant_range_time + 0.5 * nrg * rg_dt
     eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
     eta_ref = eta_c - eta_mid
-    phi_deramp = np.exp(-1j * np.pi * kt * (eta - eta_ref) ** 2)
+
+    # phi_deramp = np.exp(-1j * np.pi * kt[None] * (eta[:,None] - eta_ref[None]) ** 2)
+    phi_deramp = np.pi * kt[None] * (eta[:,None] - eta_ref[None]) ** 2
     return phi_deramp
