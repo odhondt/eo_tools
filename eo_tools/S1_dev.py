@@ -337,6 +337,8 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
 
 
 def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
+    import matplotlib.pyplot as plt
+
     dir_tiff = Path(f"{safe_dir}/measurement/")
     dir_xml = Path(f"{safe_dir}/annotation/")
     pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
@@ -391,7 +393,7 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     dc_list = meta["product"]["dopplerCentroid"]["dcEstimateList"]["dcEstimate"]
     dc_times = [(isoparse(it["azimuthTime"]) - tt0).total_seconds() for it in dc_list]
     poly_dc_idx = np.argmin(np.abs(np.array(dc_times) - t_mid))
-    poly_dc_str = fm_rate_list[poly_dc_idx]["azimuthFmRatePolynomial"]["#text"]
+    poly_dc_str = dc_list[poly_dc_idx]["dataDcPolynomial"]["#text"]
     poly_dc_coeffs = np.array((poly_dc_str).split(" "), dtype="float64")
 
     def fdc_fun(tau):
@@ -412,6 +414,8 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
     eta_ref = eta_c - eta_mid
 
+    plt.plot(eta_ref)
+
     # phi_deramp = np.exp(-1j * np.pi * kt[None] * (eta[:,None] - eta_ref[None]) ** 2)
-    phi_deramp = np.pi * kt[None] * (eta[:,None] - eta_ref[None]) ** 2
+    phi_deramp = np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
     return phi_deramp
