@@ -336,7 +336,7 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
     return az_min, d2_min
 
 
-def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
+def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     dir_tiff = Path(f"{safe_dir}/measurement/")
     dir_xml = Path(f"{safe_dir}/annotation/")
     pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
@@ -347,22 +347,22 @@ def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
     meta = read_metadata(pth_xml)
     meta_image = meta["product"]["imageAnnotation"]
     meta_general = meta["product"]["generalAnnotation"]
-
-    lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
     meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
+
+    c0 = 299792458.0
+    lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
     az_time = meta_burst["azimuthTime"]
     az_dt = float(meta_image["imageInformation"]["azimuthTimeInterval"])
-    range_sampling_rate = float(meta_image["imageInformation"]["rangeSamplingRate"])
-    slant_range_time = float(meta_image["slantRangeTime"])
+    range_sampling_rate = float(meta_general["productInformation"]["rangeSamplingRate"])
+    slant_range_time = float(meta_image["imageInformation"]["slantRangeTime"])
     nrg = int(meta_image["imageInformation"]["numberOfSamples"])
     kp = float(meta_general["productInformation"]["azimuthSteeringRate"])
     fc = float(meta_general["productInformation"]["radarFrequency"])
-    c0 = 299792458.0
-    # dr = c0 / (2 * float(range_sampling_rate))
     rg_dt = 1 / range_sampling_rate
 
     orbit_list = meta_general["orbitList"]
     state_vectors = orbit_list["orbit"]
+    _, orb_v = orbit_interpolator(state_vectors)
     tt0 = isoparse(state_vectors[0]["time"])
     t0_az = (isoparse(az_time) - tt0).total_seconds()
     t_mid = t0_az + az_dt * lines_per_burst / 2.0
@@ -371,28 +371,45 @@ def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
 
     fm_rate_list = meta_general["azimuthFmRateList"]["azimuthFmRate"]
     fm_rate_times = [
-        (isoparse(it["azimuthTime"] - tt0)).total_seconds() for it in fm_rate_list
+        (isoparse(it["azimuthTime"]) - tt0).total_seconds() for it in fm_rate_list
     ]
     poly_fm_idx = np.argmin(np.abs(np.array(fm_rate_times) - t_mid))
     poly_fm_str = fm_rate_list[poly_fm_idx]["azimuthFmRatePolynomial"]["#text"]
     poly_fm_coeffs = np.array((poly_fm_str).split(" "), dtype="float64")
 
     rg_tau = slant_range_time + np.arange(nrg) * rg_dt
-    ka = (
-        poly_fm_coeffs[0]
-        + poly_fm_coeffs[1] * (rg_tau - slant_range_time)
-        + poly_fm_coeffs[2] * (rg_tau - slant_range_time) ** 2
-    )
+
+    def ka_fun(tau):
+        return (
+            poly_fm_coeffs[0]
+            + poly_fm_coeffs[1] * (tau - slant_range_time)
+            + poly_fm_coeffs[2] * (tau - slant_range_time) ** 2
+        )
+
+    ka = ka_fun(rg_tau)
 
     dc_list = meta["product"]["dopplerCentroid"]["dcEstimateList"]["dcEstimate"]
-    dc_times = [
-        (isoparse(it["azimuthTime"] - tt0)).total_seconds() for it in dc_list
-    ]
+    dc_times = [(isoparse(it["azimuthTime"]) - tt0).total_seconds() for it in dc_list]
     poly_dc_idx = np.argmin(np.abs(np.array(dc_times) - t_mid))
-    poly_dc_str = fm_rate_list[poly_fm_idx]["azimuthFmRatePolynomial"]["#text"]
+    poly_dc_str = fm_rate_list[poly_dc_idx]["azimuthFmRatePolynomial"]["#text"]
     poly_dc_coeffs = np.array((poly_dc_str).split(" "), dtype="float64")
-    fdc = (
-        poly_dc_coeffs[0]
-        + poly_dc_coeffs[1] * (rg_tau - slant_range_time)
-        + poly_dc_coeffs[2] * (rg_tau - slant_range_time) ** 2
+
+    def fdc_fun(tau):
+        return (
+            poly_dc_coeffs[0]
+            + poly_dc_coeffs[1] * (tau - slant_range_time)
+            + poly_dc_coeffs[2] * (tau - slant_range_time) ** 2
+        )
+
+    fdc = fdc_fun(rg_tau)
+    kt = ka * ks / (ka - ks)
+    # eta = np.arange(-lines_per_burst / 2.0, az_dt + lines_per_burst / 2.0, az_dt)
+    eta = np.linspace(
+        -az_dt * lines_per_burst / 2.0, az_dt * lines_per_burst / 2.0, lines_per_burst
     )
+    eta_c = -fdc / ka
+    rg_mid = slant_range_time + 0.5 * nrg * rg_dt
+    eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
+    eta_ref = eta_c - eta_mid
+    phi_deramp = np.exp(-1j * np.pi * kt * (eta - eta_ref) ** 2)
+    return phi_deramp
