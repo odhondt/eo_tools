@@ -337,7 +337,6 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
 
 
 def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
-    import matplotlib.pyplot as plt
 
     dir_tiff = Path(f"{safe_dir}/measurement/")
     dir_xml = Path(f"{safe_dir}/annotation/")
@@ -369,7 +368,7 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     t0_az = (isoparse(az_time) - tt0).total_seconds()
     t_mid = t0_az + az_dt * lines_per_burst / 2.0
     v_mid = orb_v(t_mid)
-    ks = (2 * (v_mid**2).sum() / c0) * fc * np.radians(kp)
+    ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
 
     fm_rate_list = meta_general["azimuthFmRateList"]["azimuthFmRate"]
     fm_rate_times = [
@@ -405,7 +404,6 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
 
     fdc = fdc_fun(rg_tau)
     kt = ka * ks / (ka - ks)
-    # eta = np.arange(-lines_per_burst / 2.0, az_dt + lines_per_burst / 2.0, az_dt)
     eta = np.linspace(
         -az_dt * lines_per_burst / 2.0, az_dt * lines_per_burst / 2.0, lines_per_burst
     )
@@ -414,8 +412,5 @@ def deramp_burst(safe_dir, iw=1, pol="vv", burst_idx=1):
     eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
     eta_ref = eta_c - eta_mid
 
-    plt.plot(eta_ref)
-
-    # phi_deramp = np.exp(-1j * np.pi * kt[None] * (eta[:,None] - eta_ref[None]) ** 2)
-    phi_deramp = np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
+    phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
     return phi_deramp
