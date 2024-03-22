@@ -334,3 +334,29 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
         az_min[r] = t
         d2_min[r] = dx**2 + dy**2 + dz**2
     return az_min, d2_min
+
+def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
+    dir_tiff = Path(f"{safe_dir}/measurement/")
+    dir_xml = Path(f"{safe_dir}/annotation/")
+    pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+    pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+    pth_xml = list(pth_xml)[0]
+    pth_tiff = list(pth_tiff)[0]
+
+    meta = read_metadata(pth_xml)
+
+    lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
+    burst_meta = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx-1]
+    az_time = burst_meta["azimuthTime"]
+    az_dt = float(meta["product"]["imageAnnotation"]["imageInformation"]["azimuthTimeInterval"])
+
+    # state vectors
+    orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
+    state_vectors = orbit_list["orbit"]
+    tt0 = isoparse(state_vectors[0]["time"])
+    t0_az = (isoparse(az_time) - tt0).total_seconds()
+    t_mid = t0_az + az_dt*lines_per_burst/2.0
+    v_mid = orb_v(t_mid)
+    # kp = azimuth_steering_rate
+    # fc = radar_frequency
+    # ks = (2*(vmid**2).sum()/c)*fc*kp
