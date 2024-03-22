@@ -42,6 +42,7 @@ def fetch_dem_burst(safe_dir, iw=1, pol="vv", burst_idx=1, dir_dem="/tmp"):
     auto_dem(file_dem, gcps)
     return file_dem
 
+
 # TODO check parameter validity
 def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     if not os.path.isdir(safe_dir):
@@ -74,9 +75,8 @@ def geocode_burst(safe_dir, file_dem, iw=1, pol="vv", burst_idx=1):
     burst_count = int(burst_info["burstList"]["@count"])
     if burst_idx > burst_count or burst_idx < 1:
         raise ValueError(f"Burst index must be between 1 and {burst_count}")
-    burst = burst_info["burstList"]["burst"][burst_idx-1]
+    burst = burst_info["burstList"]["burst"][burst_idx - 1]
     az_time = burst["azimuthTime"]
-
 
     # state vectors
     orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
@@ -147,10 +147,8 @@ def resample_burst_ampl(
     width = dem_profile["width"]
     height = dem_profile["height"]
     wped = np.zeros_like(rg)
-    valid = (az!=np.nan) * (rg!=np.nan)
-    wped[valid] = map_coordinates(
-        ampl, [az[valid], rg[valid]], order=order
-    )
+    valid = (az != np.nan) * (rg != np.nan)
+    wped[valid] = map_coordinates(ampl, [az[valid], rg[valid]], order=order)
     wped[~valid] = 0
     wped = wped.reshape(height, width)
 
@@ -178,6 +176,7 @@ def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
 
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
     from rasterio.windows import Window
+
     with rasterio.open(pth_tiff) as src:
         arr = src.read(1, window=Window(0, first_line, src.width, number_of_lines))
     return arr
@@ -251,6 +250,7 @@ def load_dem_coords(file_dem, upscale_factor=2):
     # print(lat.shape, lon.shape, alt.shape)
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
     return lat.ravel(), lon.ravel(), alt.ravel(), dem_prof
+
 
 # TODO enforce DEM crs to WGS84
 def lla_to_ecef(lat, lon, alt, dem_crs):
@@ -335,6 +335,7 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
         d2_min[r] = dx**2 + dy**2 + dz**2
     return az_min, d2_min
 
+
 def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
     dir_tiff = Path(f"{safe_dir}/measurement/")
     dir_xml = Path(f"{safe_dir}/annotation/")
@@ -344,19 +345,54 @@ def deramp_burst(safe_dir, orb_v, iw=1, pol="vv", burst_idx=1):
     pth_tiff = list(pth_tiff)[0]
 
     meta = read_metadata(pth_xml)
+    meta_image = meta["product"]["imageAnnotation"]
+    meta_general = meta["product"]["generalAnnotation"]
 
     lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
-    burst_meta = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx-1]
-    az_time = burst_meta["azimuthTime"]
-    az_dt = float(meta["product"]["imageAnnotation"]["imageInformation"]["azimuthTimeInterval"])
+    meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
+    az_time = meta_burst["azimuthTime"]
+    az_dt = float(meta_image["imageInformation"]["azimuthTimeInterval"])
+    range_sampling_rate = float(meta_image["imageInformation"]["rangeSamplingRate"])
+    slant_range_time = float(meta_image["slantRangeTime"])
+    nrg = int(meta_image["imageInformation"]["numberOfSamples"])
+    kp = float(meta_general["productInformation"]["azimuthSteeringRate"])
+    fc = float(meta_general["productInformation"]["radarFrequency"])
+    c0 = 299792458.0
+    # dr = c0 / (2 * float(range_sampling_rate))
+    rg_dt = 1 / range_sampling_rate
 
-    # state vectors
-    orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
+    orbit_list = meta_general["orbitList"]
     state_vectors = orbit_list["orbit"]
     tt0 = isoparse(state_vectors[0]["time"])
     t0_az = (isoparse(az_time) - tt0).total_seconds()
-    t_mid = t0_az + az_dt*lines_per_burst/2.0
+    t_mid = t0_az + az_dt * lines_per_burst / 2.0
     v_mid = orb_v(t_mid)
-    # kp = azimuth_steering_rate
-    # fc = radar_frequency
-    # ks = (2*(vmid**2).sum()/c)*fc*kp
+    ks = (2 * (v_mid**2).sum() / c0) * fc * np.radians(kp)
+
+    fm_rate_list = meta_general["azimuthFmRateList"]["azimuthFmRate"]
+    fm_rate_times = [
+        (isoparse(it["azimuthTime"] - tt0)).total_seconds() for it in fm_rate_list
+    ]
+    poly_fm_idx = np.argmin(np.abs(np.array(fm_rate_times) - t_mid))
+    poly_fm_str = fm_rate_list[poly_fm_idx]["azimuthFmRatePolynomial"]["#text"]
+    poly_fm_coeffs = np.array((poly_fm_str).split(" "), dtype="float64")
+
+    rg_tau = slant_range_time + np.arange(nrg) * rg_dt
+    ka = (
+        poly_fm_coeffs[0]
+        + poly_fm_coeffs[1] * (rg_tau - slant_range_time)
+        + poly_fm_coeffs[2] * (rg_tau - slant_range_time) ** 2
+    )
+
+    dc_list = meta["product"]["dopplerCentroid"]["dcEstimateList"]["dcEstimate"]
+    dc_times = [
+        (isoparse(it["azimuthTime"] - tt0)).total_seconds() for it in dc_list
+    ]
+    poly_dc_idx = np.argmin(np.abs(np.array(dc_times) - t_mid))
+    poly_dc_str = fm_rate_list[poly_fm_idx]["azimuthFmRatePolynomial"]["#text"]
+    poly_dc_coeffs = np.array((poly_dc_str).split(" "), dtype="float64")
+    fdc = (
+        poly_dc_coeffs[0]
+        + poly_dc_coeffs[1] * (rg_tau - slant_range_time)
+        + poly_dc_coeffs[2] * (rg_tau - slant_range_time) ** 2
+    )
