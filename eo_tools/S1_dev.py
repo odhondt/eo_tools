@@ -33,17 +33,11 @@ class S1IWSwath:
         pth_xml = list(pth_xml)[0]
         self.pth_tiff = list(pth_tiff)[0]
         self.meta = read_metadata(pth_xml)
-        log.info(f"Initialization:")
+        log.info(f"S1IWSwath Initialization:")
         log.info(f"- Reading metadata file {pth_xml}")
         log.info(f"- Setting up raster path {self.pth_tiff}")
 
     def fetch_dem_burst(self, burst_idx=1, dir_dem="/tmp"):
-        # dir_tiff = Path(f"{safe_dir}/measurement/")
-        # dir_xml = Path(f"{safe_dir}/annotation/")
-        # pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
-        # pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
-        # pth_xml = list(pth_xml)[0]
-        # pth_tiff = list(pth_tiff)[0]
 
         burst_info = self.meta["product"]["swathTiming"]
         lines_per_burst = int(burst_info["linesPerBurst"])
@@ -60,24 +54,14 @@ class S1IWSwath:
     # TODO check parameter validity
     def geocode_burst(self, file_dem, burst_idx=1):
 
-        # dir_tiff = Path(f"{safe_dir}/measurement/")
-        # dir_xml = Path(f"{safe_dir}/annotation/")
-
-        # pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
-        # pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
-        # pth_tiff = list(pth_tiff)[0]
-        # pth_xml = list(pth_xml)[0]
-
         meta = self.meta
 
         # general info
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = image_info["azimuthTimeInterval"]
         slant_range_time = image_info["slantRangeTime"]
-        range_pixel_spacing = image_info["rangePixelSpacing"]
         product_info = meta["product"]["generalAnnotation"]["productInformation"]
         range_sampling_rate = product_info["rangeSamplingRate"]
-        radar_frequency = product_info["radarFrequency"]
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
@@ -116,7 +100,6 @@ class S1IWSwath:
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
         r0 = float(slant_range_time) * c0 / 2
-        # dr = float(range_pixel_spacing)
         dr = c0 / (2 * float(range_sampling_rate))
 
         rg_geo = (np.sqrt(d2_geo) - r0) / dr
@@ -187,6 +170,8 @@ class S1IWSwath:
         meta_image = meta["product"]["imageAnnotation"]
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
+
+        log.info("Computing TOPS deramping phase")
 
         c0 = 299792458.0
         lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -268,7 +253,26 @@ class S1IWSwath:
         arr = read_chunk(self.pth_tiff, first_line, lines_per_burst)
         return arr
 
+    # use metadata and range coordinate to compute the topographic phase
+    # to subtract to an image
+    def phi_topo(self, rg):
+        meta = self.meta
+        image_info = meta["product"]["imageAnnotation"]["imageInformation"]
+        slant_range_time = image_info["slantRangeTime"]
+        product_info = meta["product"]["generalAnnotation"]["productInformation"]
+        range_sampling_rate = product_info["rangeSamplingRate"]
 
+        freq = float(product_info["radarFrequency"])
+        c0 = 299792458.0
+        lam = c0 / freq
+        r0 = float(slant_range_time) * c0 / 2
+        dr = c0 / (2 * float(range_sampling_rate))
+        dist = rg * dr + r0
+
+        return (4 * np.pi / lam) * dist
+
+
+# TODO: write a separate warping function
 def coregister(
     arr_mst,
     arr_slv,
@@ -277,6 +281,8 @@ def coregister(
     az_slv,
     rg_slv,
 ):
+
+    import matplotlib.pyplot as plt
 
     naz, nrg = arr_mst.shape
 
@@ -292,30 +298,39 @@ def coregister(
         & (rg_mst != np.nan)
         & (az_slv != np.nan)
         & (rg_slv != np.nan)
-        & cnd1 & cnd2
+        & cnd1
+        & cnd2
     )
 
-    log.info("Interpolate irregular coordinates to coarse fixed grid.")
+    log.info("Interpolate irregular coordinates to coarse regular grid.")
     grg, gaz = np.meshgrid(rg_fx, az_fx)
     coords = np.stack((az_mst[valid], rg_mst[valid])).T
-    az_re = griddata(coords, az_slv[valid], (gaz.flat, grg.flat))
-    rg_re = griddata(coords, rg_slv[valid], (gaz.flat, grg.flat))
+    # TODO try pre-triangulating to avoid repeating this step
+    log.info("Processing azimuth.")
+    az_re = griddata(coords, az_slv[valid], (gaz.flat, grg.flat), method="linear")
+    log.info("Processing range.")
+    rg_re = griddata(coords, rg_slv[valid], (gaz.flat, grg.flat), method="linear")
 
     log.info("Match gridded data to master dimensions.")
     grg2, gaz2 = np.meshgrid(np.arange(0, nrg), np.arange(0, naz))
+    log.info("Processing azimuth.")
     az_w = interpn(
         (az_fx, rg_fx),
         az_re.reshape((len(az_fx), len(rg_fx))),
         (gaz2.flat, grg2.flat),
+        method="linear",
     )
+    log.info("Processing range.")
     rg_w = interpn(
         (az_fx, rg_fx),
-        rg_re.reshape((len(az_fx), len(rg_fx))),
+        rg_re[az_re != np.nan].reshape((len(az_fx), len(rg_fx))),
         (gaz2.flat, grg2.flat),
+        method="linear",
     )
-    log.info("Warp slave to master geometry.")
-    arr_slv_re = map_coordinates(arr_slv, (az_w, rg_w)).reshape((naz, nrg)) 
-    return arr_slv_re
+    return az_w, rg_w, gaz2, grg2
+    # log.info("Warp slave to master geometry.")
+    # arr_slv_re = map_coordinates(arr_slv, (az_w, rg_w)).reshape((naz, nrg))
+    # return arr_slv_re
 
 
 # utility functions
@@ -497,3 +512,39 @@ def geocode_doppler_bisect(dem_x, dem_y, dem_z, orb, orb_v, tol=1e-4, maxiter=10
         az_min[r] = t
         d2_min[r] = dx**2 + dy**2 + dz**2
     return az_min, d2_min
+
+
+def presum(img, m, n):
+    """m by n presumming of an image
+
+    Parameters
+    ----------
+    img: array, shape (naz, nrg,...)
+
+    m,n: integer
+        number of lines and columns to sum
+
+    Returns
+    -------
+    out: array, shape(M, N,...)
+        M and N are closest multiples of m and n
+        to naz and nrg
+    """
+    if m > img.shape[0] or n > img.shape[1]:
+        raise ValueError("Cannot presum with these parameters.")
+
+    # todo: write exception controlling size
+    # and validity of parameters m, n
+    M = int(np.floor(img.shape[0] / int(m)) * m)
+    N = int(np.floor(img.shape[1] / int(n)) * n)
+    img0 = img[:M, :N].copy()  # keep for readability
+    s = img0[::m].copy()
+    for i in range(1, m):
+        s += img0[i::m]
+    t = s[:, ::n]
+    for j in range(
+        1,
+        n,
+    ):
+        t += s[:, j::n]
+    return t / float(m * n)
