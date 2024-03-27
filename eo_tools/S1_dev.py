@@ -113,7 +113,7 @@ class S1IWSwath:
 
         rg[~valid] = np.nan
         az[~valid] = np.nan
-        return az, rg  # , dem_prof
+        return az, rg
 
     def resample_burst(
         self,
@@ -125,21 +125,20 @@ class S1IWSwath:
         order=1,
         output_complex=True,
     ):
-
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         lines_per_burst = int(burst_info["linesPerBurst"])
 
         first_line = (burst_idx - 1) * lines_per_burst
         log.info("Read burst")
-        arr = read_chunk(
-            self.pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
-        )
+        arr = self.read_burst(burst_idx)
 
+        # replace nan to work with map_coordinates
         if output_complex:
-            raster = arr
+            raster = np.nan_to_num(arr, nan=-9999)
         else:
             raster = np.abs(arr)
+            np.nan_to_num(raster, copy=False, nan=-9999)
 
         # retrieve dem profile
         with rasterio.open(file_dem) as ds_dem:
@@ -148,19 +147,18 @@ class S1IWSwath:
         log.info("Warp to match DEM geometry")
         width = out_prof["width"]
         height = out_prof["height"]
-        wped = np.zeros_like(rg)
-        valid = (az != np.nan) * (rg != np.nan)
-        wped[valid] = map_coordinates(raster, [az[valid], rg[valid]], order=order)
-        wped[~valid] = 0
+        wped = np.zeros_like(rg, dtype=raster.dtype)
+        valid = (az != np.nan) & (rg != np.nan)
+        wped[valid] = map_coordinates(
+            raster, [az[valid], rg[valid]], order=order, prefilter=True
+        )
+        wped[~valid] = 0.0
+        # wped[wped==np.nan] = 0.0
+        wped[wped < 0.0] = 0.0
         wped = wped.reshape(height, width)
 
         log.info("Write output GeoTIFF")
-        out_prof.update(
-            {
-                "dtype": raster.dtype,
-                "count": 1,
-            }
-        )
+        out_prof.update({"dtype": raster.dtype, "count": 1, "nodata": 0.0})
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(wped, 1)
 
@@ -244,17 +242,32 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp
 
-    def read_burst(self, burst_idx=1):
-
-        burst_info = self.meta["product"]["swathTiming"]
+    def read_burst(self, burst_idx=1, remove_border_noise=True):
+        meta = self.meta
+        burst_info = meta["product"]["swathTiming"]
+        burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
         lines_per_burst = int(burst_info["linesPerBurst"])
 
         first_line = (burst_idx - 1) * lines_per_burst
         arr = read_chunk(self.pth_tiff, first_line, lines_per_burst)
+
+        if remove_border_noise:
+            nodataval = np.nan
+            fs_str = burst_data["firstValidSample"]["#text"]
+            ls_str = burst_data["lastValidSample"]["#text"]
+            first_sample_arr = np.array((fs_str).split(" "), dtype="int")
+            last_sample_arr = np.array((ls_str).split(" "), dtype="int")
+            for i in range(lines_per_burst):
+                if first_sample_arr[i] > -1:
+                    arr[i, : first_sample_arr[i]] = nodataval
+                    arr[i, last_sample_arr[i] + 1 :] = nodataval
+                else:
+                    arr[i] = nodataval
         return arr
 
-    # use metadata and range coordinate to compute the topographic phase
-    # to subtract to an image
+    # def nodata_mask_burst()
+
+    # use metadata and range coordinate to compute topographic phase
     def phi_topo(self, rg):
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
@@ -271,6 +284,13 @@ class S1IWSwath:
 
         return (4 * np.pi / lam) * dist
 
+    # def mask_invalid_data(self, az, rg, burst_idx=1):
+    # meta = self.meta
+    # meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
+    # first_valid = meta["firstValidSample"]
+    # last_valid = meta["lastValidSample"]
+    # for
+
 
 # TODO: write a separate warping function
 def coregister(
@@ -281,8 +301,6 @@ def coregister(
     az_slv,
     rg_slv,
 ):
-
-    import matplotlib.pyplot as plt
 
     naz, nrg = arr_mst.shape
 
@@ -331,6 +349,12 @@ def coregister(
     # log.info("Warp slave to master geometry.")
     # arr_slv_re = map_coordinates(arr_slv, (az_w, rg_w)).reshape((naz, nrg))
     # return arr_slv_re
+
+
+def align(arr_mst, arr_slv, az, rg, order=3):
+    log.info("Warp slave to master geometry.")
+    arr_slv_re = map_coordinates(arr_slv, (az, rg), order=order).reshape(*arr_mst.shape)
+    return arr_slv_re
 
 
 # utility functions
@@ -425,7 +449,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
 
-    # print(lat.shape, lon.shape, alt.shape)
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
     return lat.ravel(), lon.ravel(), alt.ravel(), dem_prof
 
