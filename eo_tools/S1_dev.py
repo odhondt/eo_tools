@@ -346,14 +346,14 @@ def coregister(
         method="linear",
     )
     return az_w, rg_w, gaz2, grg2
-    # log.info("Warp slave to master geometry.")
-    # arr_slv_re = map_coordinates(arr_slv, (az_w, rg_w)).reshape((naz, nrg))
-    # return arr_slv_re
 
 
 def align(arr_mst, arr_slv, az, rg, order=3):
     log.info("Warp slave to master geometry.")
-    arr_slv_re = map_coordinates(arr_slv, (az, rg), order=order).reshape(*arr_mst.shape)
+    arr_slv_re = map_coordinates(
+        np.nan_to_num(arr_slv, nan=-9999), (az, rg), order=order
+    ).reshape(*arr_mst.shape)
+    arr_slv[arr_slv < 0] = np.nan
     return arr_slv_re
 
 
