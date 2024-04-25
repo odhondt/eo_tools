@@ -608,7 +608,7 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
     naz, nrg = ifgs[0].shape
     for i, ifg in enumerate(ifgs):
         log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
-        esd_ramp = make_ramp(i)
+        esd_ramp = make_ramp(i).astype(np.complex64)
         ifg *= esd_ramp
         if crop_overlap:
             if i > 0:
