@@ -25,3 +25,6 @@ dependencies:
   - xarray
   - netcdf4
   - rioxarray
+  - pymap3d
+  - opencv
+  - numba
