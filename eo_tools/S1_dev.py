@@ -506,9 +506,15 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
             dst.write(phi, 1)
     else:
         # TODO: change nodata
-        out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
-        with rasterio.open(file_out, "w", **out_prof) as dst:
-            dst.write(wped, 1)
+        if np.iscomplexobj(arr):
+            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": 0})
+            with rasterio.open(file_out, "w", **out_prof) as dst:
+                dst.write(wped.real, 1)
+                dst.write(wped.imag, 2)
+        else:
+            out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
+            with rasterio.open(file_out, "w", **out_prof) as dst:
+                dst.write(wped, 1)
 
 # TODO: rewrite to work on secondary SLCs
 def fast_esd(ifgs, overlap):
