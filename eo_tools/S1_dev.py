@@ -548,7 +548,7 @@ def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(wped, 1)
 
-
+# TODO: rewrite to work on secondary SLCs
 def fast_esd(ifgs, overlap, crop_overlap=True):
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
@@ -616,6 +616,41 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
             if i < len(ifgs) - 1:
                 ifg[-int(overlap / 2) - 1 :] = nodataval
 
+def stitch_bursts(bursts, overlap):
+    """Stitch bursts in the single look radar geometry
+
+    Args:
+        bursts (list): list of bursts
+        overlap (int): number of overlapping pixels
+
+    Raises:
+        ValueError: list is empty
+    """
+    if not isinstance(overlap, int):
+        log.warning("overlap must be an integer, rounding to the lowest integer.")
+    H = int(overlap / 2)
+    naz, nrg = bursts[0].shape
+    nburst = len(bursts)
+    if nburst >= 2:
+        siz = (naz - H) * 2 + (nburst - 2) * (naz - 2 * H)
+    elif nburst == 1:
+        siz = (naz - H)
+    else:
+        raise ValueError("Empty burst list")
+
+    log.info("Stitching bursts to make a continuous image")
+    arr = np.zeros((siz, nrg), dtype = bursts[0].dtype)
+    off = 0
+    for i in range(nburst):
+        if i == 0:
+            arr[: naz - H] = bursts[i][: naz - H]
+            off += naz - H
+        elif i == nburst - 1:
+            arr[-naz + H :] = bursts[i][-naz + H :]
+        else:
+            arr[off : off + (naz - 2*H)] = bursts[i][H:-H]
+            off += (naz - 2*H)
+    return arr
 
 def presum(img, m, n):
     """m by n presumming of an image
