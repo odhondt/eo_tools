@@ -1,0 +1,66 @@
+def fast_esd(ifgs, overlap, crop_overlap=True):
+    """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
+    Args:
+        ifgs (list): List of complex SLC interferograms
+        overlap (int): Number of overlapping azimuth pixels between two bursts (can be computed with `compute_burst_overlap`)
+
+    Notes:
+        Based on ideas introduced in:
+        Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
+
+    """
+
+    import matplotlib.pyplot as plt
+
+    if len(ifgs) < 2:
+        raise ValueError(
+            "There must be at least 2 consecutive bursts from the same subsawths."
+        )
+
+    nodataval = np.nan + 1j * np.nan
+    phase_diffs = []
+    for i in range(len(ifgs) - 1):
+        log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
+        cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
+        phi_clx = cross[~np.isnan(cross)]
+        phase_diffs.append(np.angle(phi_clx.mean()))
+
+    # phi_max_esd = np.concatenate(phase_diffs).mean()
+
+    naz, nrg = ifgs[0].shape
+    x = np.arange(naz)
+    xdown, xup = overlap / 2, naz - 1 - overlap / 2
+
+    def make_ramp(idx):
+        if idx == 0:
+            ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
+        elif idx == len(ifgs) - 1:
+            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx - 1] / 2
+        else:
+            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx] / 2
+        slope = (yup - ydown) / (xup - xdown)
+        off = ydown - slope * xdown
+        ramp = slope * x + off
+        return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
+
+    # old version, keeping for comparison
+    # dphi = np.angle(phi_max_esd)
+    # y1 = dphi * (1 - overlap / (naz-1))
+
+    # ramp = np.linspace(-y1, y1, naz)
+    # ramp = dphi * np.arange(naz) / (naz - 1 - overlap)
+    # ramp = dphi * np.linspace(-(naz-1)/2, (naz-1)/2, naz) / (naz - 1 - overlap)
+
+    # esd_ramp = np.exp(1j * (ramp[:, None] + np.zeros((nrg))))
+
+    # TODO: improve by downweighting points far from mid overlap ?
+    naz, nrg = ifgs[0].shape
+    for i, ifg in enumerate(ifgs):
+        log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
+        esd_ramp = make_ramp(i).astype(np.complex64)
+        ifg *= esd_ramp
+        if crop_overlap:
+            if i > 0:
+                ifg[: int(overlap / 2) + 1] = nodataval
+            if i < len(ifgs) - 1:
+                ifg[-int(overlap / 2) - 1 :] = nodataval

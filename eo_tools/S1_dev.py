@@ -576,8 +576,6 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
         phi_clx = cross[~np.isnan(cross)]
         phase_diffs.append(np.angle(phi_clx.mean()))
 
-    # phi_max_esd = np.concatenate(phase_diffs).mean()
-
     naz, nrg = ifgs[0].shape
     x = np.arange(naz)
     xdown, xup = overlap / 2, naz - 1 - overlap / 2
@@ -594,15 +592,6 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
         ramp = slope * x + off
         return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
 
-    # old version, keeping for comparison
-    # dphi = np.angle(phi_max_esd)
-    # y1 = dphi * (1 - overlap / (naz-1))
-
-    # ramp = np.linspace(-y1, y1, naz)
-    # ramp = dphi * np.arange(naz) / (naz - 1 - overlap)
-    # ramp = dphi * np.linspace(-(naz-1)/2, (naz-1)/2, naz) / (naz - 1 - overlap)
-
-    # esd_ramp = np.exp(1j * (ramp[:, None] + np.zeros((nrg))))
 
     # TODO: improve by downweighting points far from mid overlap ?
     naz, nrg = ifgs[0].shape
