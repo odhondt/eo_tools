@@ -34,7 +34,6 @@ log = logging.getLogger(__name__)
 
 
 # TODO: make Product class that contains metadata
-# TODO: better function / variable names (ex: lut_mst_rdr instead of az_mst, rg_mst)
 # TODO: Goldstein, coherence, LOS displacement
 # TODO: docstrings
 class S1IWSwath:
@@ -354,23 +353,23 @@ class S1IWSwath:
 
 
 @timeit
-def coregister(arr_mst, az_mst, rg_mst, az_slv, rg_slv):
-    log.info("Projecting slave coordinates onto master grid.")
-    return coreg_fast(arr_mst, az_mst, rg_mst, az_slv, rg_slv)
+def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
+    log.info("Projecting secondary coordinates onto primary grid.")
+    return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
 @njit(cache=True, nogil=True, parallel=True)
-def coreg_fast(arr_mst, azm, rgm, azs, rgs):
+def coreg_fast(arr_p, azp, rgp, azs, rgs):
     """Fast parallel coregistration based on lookup-tables in a DEM geometry.
 
     Args:
-        azm (array): master azimuth coordinates
-        rgm (array): master range coordinates
-        azs (array): slave azimuth coordinates
-        rgs (array): slave range coordinates
+        azp (array): primary azimuth coordinates
+        rgp (array): primary range coordinates
+        azs (array): secondary azimuth coordinates
+        rgs (array): secondary range coordinates
 
     Returns:
-        arrays: az_co and rg_co are azimuth range of the slave expressed in the master geometry
+        arrays: az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
 
     # barycentric coordinates in a triangle
@@ -389,17 +388,17 @@ def coreg_fast(arr_mst, azm, rgm, azs, rgs):
     def interp(v1, v2, v3, l1, l2, l3):
         return l1 * v1 + l2 * v2 + l3 * v3
 
-    naz, nrg = arr_mst.shape
+    naz, nrg = arr_p.shape
 
-    az_slv_rdr = np.full((naz, nrg), np.nan)
-    rg_slv_rdr = np.full((naz, nrg), np.nan)
-    nl, nc = azm.shape
+    az_s2p = np.full((naz, nrg), np.nan)
+    rg_s2p = np.full((naz, nrg), np.nan)
+    nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
             # - for each 4 neighborhood
-            aa = azm[i : i + 2, j : j + 2].flatten()  # .ravel()
-            rr = rgm[i : i + 2, j : j + 2].flatten()  # .ravel()
+            aa = azp[i : i + 2, j : j + 2].flatten()  # .ravel()
+            rr = rgp[i : i + 2, j : j + 2].flatten()  # .ravel()
             aas = azs[i : i + 2, j : j + 2].flatten()  # .ravel()
             rrs = rgs[i : i + 2, j : j + 2].flatten()  # .ravel()
             # - collect triangle vertices
@@ -407,7 +406,7 @@ def coreg_fast(arr_mst, azm, rgm, azs, rgs):
             yy = np.vstack((aas, rrs)).T
             if np.isnan(xx).any() or np.isnan(yy).any():
                 continue
-            # - compute bounding box in the master grid
+            # - compute bounding box in the primary grid
             amin, amax = np.floor(aa.min()), np.ceil(aa.max())
             rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
             amin = np.maximum(amin, 0)
@@ -419,41 +418,41 @@ def coreg_fast(arr_mst, azm, rgm, azs, rgs):
                 for r in range(int(rmin), int(rmax) + 1):
                     # - separate into 2 triangles
                     # - test if each point falls into triangle 1 or 2
-                    # - interpolate the slave range and azimuth using triangle vertices
+                    # - interpolate the secondary range and azimuth using triangle vertices
                     p = np.array([a, r])
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        az_slv_rdr[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
-                        rg_slv_rdr[a, r] = interp(rrs[0], rrs[1], rrs[2], l1, l2, l3)
+                        az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
+                        rg_s2p[a, r] = interp(rrs[0], rrs[1], rrs[2], l1, l2, l3)
                     l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        az_slv_rdr[a, r] = interp(aas[3], aas[1], aas[2], l1, l2, l3)
-                        rg_slv_rdr[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)
+                        az_s2p[a, r] = interp(aas[3], aas[1], aas[2], l1, l2, l3)
+                        rg_s2p[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)
 
-    return az_slv_rdr, rg_slv_rdr
+    return az_s2p, rg_s2p
 
 
 @timeit
-def align(arr_mst, arr_slv, az, rg, order=3):
-    log.info("Warp slave to master geometry.")
+def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
+    log.info("Warp secondary to primary geometry.")
 
-    if np.iscomplexobj(arr_slv):
+    if np.iscomplexobj(arr_s):
         nodata_dst = np.nan + 1j * np.nan
     else:
         nodata_dst = np.nan
 
-    if np.iscomplexobj(arr_mst):
+    if np.iscomplexobj(arr_p):
         nodata_src = np.nan + 1j * np.nan
     else:
         nodata_src = np.nan
 
-    msk_dst = arr_slv != nodata_dst
-    msk_src = arr_mst != nodata_src
-    arr_out = np.full_like(arr_mst, dtype=arr_slv.dtype, fill_value=nodata_dst)
+    msk_dst = arr_s != nodata_dst
+    msk_src = arr_p != nodata_src
+    arr_out = np.full_like(arr_p, dtype=arr_s.dtype, fill_value=nodata_dst)
     msk_out = np.zeros_like(msk_src, dtype=bool)
-    coords = np.vstack((az[msk_src], rg[msk_src]))
+    coords = np.vstack((az_s2p[msk_src], rg_s2p[msk_src]))
     arr_out[msk_src] = map_coordinates(
-        arr_slv,
+        arr_s,
         coords,
         order=order,
         prefilter=False,
@@ -464,11 +463,11 @@ def align(arr_mst, arr_slv, az, rg, order=3):
         order=0,
     )
     arr_out[~msk_out] = np.nan
-    return arr_out.reshape(arr_mst.shape)
+    return arr_out.reshape(arr_p.shape)
 
 
 # TODO: auto-upsampling factor, rename, mask nan in coordinates, no mask resampling
-def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
+def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
 
     # replace nan to work with map_coordinates
     # TODO: use finite NaN values, i.e -9999
@@ -485,13 +484,13 @@ def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
     # TODO: avoid mask warping
     log.info("Warp to match DEM geometry")
 
-    width = az.shape[1]
-    height = az.shape[0]
-    wped = np.zeros_like(rg, dtype=arr.dtype)
-    msk_re = np.zeros_like(rg, dtype=msk.dtype)
-    valid = (az != np.nan) & (rg != np.nan)
-    wped[valid] = map_coordinates(arr, (az[valid], rg[valid]), order=order)
-    msk_re[valid] = map_coordinates(msk, (az[valid], rg[valid]), order=0)
+    width = az_p2g.shape[1]
+    height = az_p2g.shape[0]
+    wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
+    msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
+    valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
+    wped[valid] = map_coordinates(arr, (az_p2g[valid], rg_p2g[valid]), order=order)
+    msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
 
     wped[~valid] = nodataval
     wped[msk_re] = nodataval
@@ -527,41 +526,42 @@ def fast_esd(ifgs, overlap):
     import matplotlib.pyplot as plt
 
     if len(ifgs) < 2:
-        raise ValueError(
-            "There must be at least 2 consecutive bursts from the same subsawths."
+        log.warning(
+            "Skipping ESD: there must be at least 2 consecutive bursts from the same subsawths."
         )
+    else:
 
-    nodataval = np.nan + 1j * np.nan
-    phase_diffs = []
-    for i in range(len(ifgs) - 1):
-        log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
-        cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
-        phi_clx = cross[~np.isnan(cross)]
-        phase_diffs.append(np.angle(phi_clx.mean()))
+        # nodataval = np.nan + 1j * np.nan
+        phase_diffs = []
+        for i in range(len(ifgs) - 1):
+            log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
+            cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
+            phi_clx = cross[~np.isnan(cross)]
+            phase_diffs.append(np.angle(phi_clx.mean()))
 
-    naz, nrg = ifgs[0].shape
-    x = np.arange(naz)
-    xdown, xup = overlap / 2, naz - 1 - overlap / 2
+        naz, nrg = ifgs[0].shape
+        x = np.arange(naz)
+        xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
-    def make_ramp(idx):
-        if idx == 0:
-            ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
-        elif idx == len(ifgs) - 1:
-            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx - 1] / 2
-        else:
-            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx] / 2
-        slope = (yup - ydown) / (xup - xdown)
-        off = ydown - slope * xdown
-        ramp = slope * x + off
-        return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
+        def make_ramp(idx):
+            if idx == 0:
+                ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
+            elif idx == len(ifgs) - 1:
+                ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx - 1] / 2
+            else:
+                ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx] / 2
+            slope = (yup - ydown) / (xup - xdown)
+            off = ydown - slope * xdown
+            ramp = slope * x + off
+            return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
 
 
-    # TODO: improve by downweighting points far from mid overlap ?
-    naz, nrg = ifgs[0].shape
-    for i, ifg in enumerate(ifgs):
-        log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
-        esd_ramp = make_ramp(i).astype(np.complex64)
-        ifg *= esd_ramp
+        # TODO: improve by downweighting points far from mid overlap ?
+        naz, nrg = ifgs[0].shape
+        for i, ifg in enumerate(ifgs):
+            log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
+            esd_ramp = make_ramp(i).astype(np.complex64)
+            ifg *= esd_ramp
 
 def stitch_bursts(bursts, overlap):
     """Stitch bursts in the single look radar geometry
@@ -573,8 +573,8 @@ def stitch_bursts(bursts, overlap):
     Raises:
         ValueError: list is empty
     """
-    if not isinstance(overlap, int):
-        log.warning("overlap must be an integer, rounding to the lowest integer.")
+    # if not isinstance(overlap, int):
+        # log.warning("overlap must be an integer, rounding to the lowest integer.")
     H = int(overlap / 2)
     naz, nrg = bursts[0].shape
     nburst = len(bursts)
