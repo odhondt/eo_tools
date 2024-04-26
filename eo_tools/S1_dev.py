@@ -433,7 +433,6 @@ def coreg_fast(arr_mst, azm, rgm, azs, rgs):
     return az_slv_rdr, rg_slv_rdr
 
 
-# TODO: change order for method (nearest, linear, cubic, lanczos)
 @timeit
 def align(arr_mst, arr_slv, az, rg, order=3):
     log.info("Warp slave to master geometry.")
@@ -447,26 +446,6 @@ def align(arr_mst, arr_slv, az, rg, order=3):
         nodata_src = np.nan + 1j * np.nan
     else:
         nodata_src = np.nan
-
-    # keep this code for potential speedup
-    # pitfall: absolute coordinates are not accurate in float32
-    # TODO: find if relative coordinates could be used!
-    # if np.iscomplexobj(arr_slv):
-    #     arr_out = remap(
-    #         arr_slv.real.astype(np.float32),
-    #         rg.astype(np.float32),
-    #         az.astype(np.float32),
-    #         4,
-    #     ) + 1j * remap(
-    #         arr_slv.imag.astype(np.float32),
-    #         rg.astype(np.float32),
-    #         az.astype(np.float32),
-    #         4,
-    #     )
-    # else:
-    #     arr_out = remap(
-    #         arr_slv.astype(np.float32), rg.astype(np.float32), az.astype(np.float32), 4
-    #     )
 
     msk_dst = arr_slv != nodata_dst
     msk_src = arr_mst != nodata_src
@@ -486,7 +465,6 @@ def align(arr_mst, arr_slv, az, rg, order=3):
     )
     arr_out[~msk_out] = np.nan
     return arr_out.reshape(arr_mst.shape)
-    return arr_out
 
 
 # TODO: auto-upsampling factor, rename, mask nan in coordinates, no mask resampling
@@ -519,25 +497,10 @@ def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
     wped[msk_re] = nodataval
     wped = wped.reshape(height, width)
 
-    # keep this code for potential speedup
-    # pitfall: absolute coordinates are not accurate in float32
-    # however this is less problematic in geocoding than coregistration
-    # if np.iscomplexobj(arr):
-    #     wped = remap(
-    #         arr.real.astype(np.float32), rg.astype(np.float32), az.astype(np.float32), 4
-    #     ) + 1j * remap(
-    #         arr.imag.astype(np.float32), rg.astype(np.float32), az.astype(np.float32), 4
-    #     )
-    # else:
-    #     wped = remap(
-    #         arr.astype(np.float32), rg.astype(np.float32), az.astype(np.float32), 4
-    #     )
-
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
     if write_phase:
         phi = np.angle(wped)
-        # phi = np.angle(arr_out)
         # TODO: change nodata
         out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
         with rasterio.open(file_out, "w", **out_prof) as dst:
@@ -549,7 +512,7 @@ def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
             dst.write(wped, 1)
 
 # TODO: rewrite to work on secondary SLCs
-def fast_esd(ifgs, overlap, crop_overlap=True):
+def fast_esd(ifgs, overlap):
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
         ifgs (list): List of complex SLC interferograms
@@ -599,11 +562,6 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
         log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
         esd_ramp = make_ramp(i).astype(np.complex64)
         ifg *= esd_ramp
-        if crop_overlap:
-            if i > 0:
-                ifg[: int(overlap / 2) + 1] = nodataval
-            if i < len(ifgs) - 1:
-                ifg[-int(overlap / 2) - 1 :] = nodataval
 
 def stitch_bursts(bursts, overlap):
     """Stitch bursts in the single look radar geometry
