@@ -37,7 +37,21 @@ log = logging.getLogger(__name__)
 # TODO: Goldstein, coherence, LOS displacement
 # TODO: docstrings
 class S1IWSwath:
+    """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+    - DEM retrieval (only SRTM 1sec for now)
+    - Back-geocoding to the DEM grid (by computing lookup tables)
+    - Computing the azimuth deramping correction term
+    - Read the raster burst from the SLC tiff file
+    - Computing the topographic phase from slant range values
+    """    
     def __init__(self, safe_dir, iw=1, pol="vv"):
+        """Object intialization
+
+        Args:
+            safe_dir (str): Directory where the (unzipped) product lies.
+            iw (int, optional): Number of subswath (1 to 3). Defaults to 1.
+            pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
+        """        
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
         dir_tiff = Path(f"{safe_dir}/measurement/")
@@ -52,6 +66,7 @@ class S1IWSwath:
         self.meta = read_metadata(pth_xml)
 
         # extract beta_nought to rescale data
+        # TODO: more advanced calibration (sigma nought)
         calinfo = read_metadata(pth_cal)
         calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
         BN_str = calvec[0]["betaNought"]["#text"]
@@ -94,6 +109,17 @@ class S1IWSwath:
     def fetch_dem_burst(
         self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=20, force_download=False
     ):
+        """Downloads the DEM for a given burst
+
+        Args:
+            burst_idx (int, optional): Burst number. Defaults to 1.
+            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 20.
+            force_download (bool, optional): Forces the file to download even if a DEM is already present on disk. Defaults to False.
+
+        Returns:
+            str: path to the downloaded file
+        """    
 
         burst_info = self.meta["product"]["swathTiming"]
         lines_per_burst = int(burst_info["linesPerBurst"])
@@ -109,6 +135,16 @@ class S1IWSwath:
 
     # TODO check parameter validity
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
+        """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
+
+        Args:
+            file_dem (str): path to the DEM
+            burst_idx (int, optional): Burst number. Defaults to 1.
+            dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
+
+        Returns:
+            (ndarray, ndarray): azimuth slant range indices. Arrays have the shape of the DEM.
+        """        
 
         meta = self.meta
 
@@ -182,7 +218,14 @@ class S1IWSwath:
         return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape)
 
     def deramp_burst(self, burst_idx=1):
+        """Computes the azimuth deramping phase using product metadata.
 
+        Args:
+            burst_idx (int, optional): Burst number. Defaults to 1.
+
+        Returns:
+            ndarray: phase correction to apply to the SLC burst.
+        """
         meta = self.meta
         meta_image = meta["product"]["imageAnnotation"]
         meta_general = meta["product"]["generalAnnotation"]
@@ -272,6 +315,15 @@ class S1IWSwath:
         return phi_deramp  # .astype("float32")
 
     def read_burst(self, burst_idx=1, remove_border_noise=True):
+        """Reads raster SLC burst.
+
+        Args:
+            burst_idx (int, optional): burst number. Defaults to 1.
+            remove_border_noise (bool, optional): Sets non-valid pixels to NaN. Defaults to True.
+
+        Returns:
+            ndarray: Complex raster
+        """        
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
@@ -303,6 +355,18 @@ class S1IWSwath:
 
     # use metadata and range coordinate to compute topographic phase
     def phi_topo(self, rg):
+        """Computes the topographic phase using slant range indices.
+
+        Args:
+            rg (ndarray): slant range pixel indices that will be converted to distances using annotation data.
+
+        Returns:
+            ndarray: topographic phase for the given burst.
+        
+        Note:
+            For the primary burst, range is simply the pixel slant range index. For a secondary burst, it is the range index of the burst reprojected in the primary grid thanks to the coregistration function.
+
+        """        
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         slant_range_time = image_info["slantRangeTime"]
