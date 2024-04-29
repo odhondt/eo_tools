@@ -43,7 +43,8 @@ class S1IWSwath:
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
     - Computing the topographic phase from slant range values
-    """    
+    """
+
     def __init__(self, safe_dir, iw=1, pol="vv"):
         """Object intialization
 
@@ -51,7 +52,7 @@ class S1IWSwath:
             safe_dir (str): Directory where the (unzipped) product lies.
             iw (int, optional): Number of subswath (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
-        """        
+        """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
         dir_tiff = Path(f"{safe_dir}/measurement/")
@@ -64,6 +65,13 @@ class S1IWSwath:
         pth_cal = list(pth_cal)[0]
         self.pth_tiff = list(pth_tiff)[0]
         self.meta = read_metadata(pth_xml)
+
+        self.start_time = self.meta["product"]["adsHeader"]["startTime"]
+
+        burst_info = self.meta["product"]["swathTiming"]
+        self.lines_per_burst = int(burst_info["linesPerBurst"])
+        self.samples_per_burst = int(burst_info["samplesPerBurst"])
+        self.burst_count = int(burst_info["burstList"]["@count"])
 
         # extract beta_nought to rescale data
         # TODO: more advanced calibration (sigma nought)
@@ -119,16 +127,21 @@ class S1IWSwath:
 
         Returns:
             str: path to the downloaded file
-        """    
+        """
 
-        burst_info = self.meta["product"]["swathTiming"]
-        lines_per_burst = int(burst_info["linesPerBurst"])
-        first_line = (burst_idx - 1) * lines_per_burst
+        if burst_idx < 1 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+
+        # burst_info = self.meta["product"]["swathTiming"]
+        # lines_per_burst = int(burst_info["linesPerBurst"])
+        first_line = (burst_idx - 1) * self.lines_per_burst
 
         name_dem = f"dem-b{burst_idx}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
         gcps, _ = read_gcps(
-            self.pth_tiff, first_line=first_line, number_of_lines=lines_per_burst
+            self.pth_tiff, first_line=first_line, number_of_lines=self.lines_per_burst
         )
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
@@ -144,7 +157,12 @@ class S1IWSwath:
 
         Returns:
             (ndarray, ndarray): azimuth slant range indices. Arrays have the shape of the DEM.
-        """        
+        """
+
+        if burst_idx < 1 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
 
         meta = self.meta
 
@@ -157,11 +175,11 @@ class S1IWSwath:
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
-        lines_per_burst = int(burst_info["linesPerBurst"])
-        samples_per_burst = int(burst_info["samplesPerBurst"])
-        burst_count = int(burst_info["burstList"]["@count"])
-        if burst_idx > burst_count or burst_idx < 1:
-            raise ValueError(f"Burst index must be between 1 and {burst_count}")
+        # lines_per_burst = int(burst_info["linesPerBurst"])
+        # samples_per_burst = int(burst_info["samplesPerBurst"])
+        # burst_count = int(burst_info["burstList"]["@count"])
+        if burst_idx > self.burst_count or burst_idx < 1:
+            raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
 
@@ -178,8 +196,10 @@ class S1IWSwath:
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
         dt_az = float(azimuth_time_interval)
-        naz = int(lines_per_burst)
-        nrg = int(samples_per_burst)
+        # naz = int(lines_per_burst)
+        # nrg = int(samples_per_burst)
+        naz = self.lines_per_burst
+        nrg = self.samples_per_burst
 
         # keeping a few points before and after burst
         t_end_burst = t0_az + dt_az * naz
@@ -226,6 +246,12 @@ class S1IWSwath:
         Returns:
             ndarray: phase correction to apply to the SLC burst.
         """
+
+        if burst_idx < 1 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+
         meta = self.meta
         meta_image = meta["product"]["imageAnnotation"]
         meta_general = meta["product"]["generalAnnotation"]
@@ -234,7 +260,7 @@ class S1IWSwath:
         log.info("Computing TOPS deramping phase")
 
         c0 = 299792458.0
-        lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
+        # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
         az_time = meta_burst["azimuthTime"]
         az_dt = float(meta_image["imageInformation"]["azimuthTimeInterval"])
         range_sampling_rate = float(
@@ -250,7 +276,8 @@ class S1IWSwath:
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         dt_az = float(azimuth_time_interval)
-        naz = int(lines_per_burst)
+        # naz = int(lines_per_burst)
+        naz = self.lines_per_burst
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
         t_end_burst = t0_az + dt_az * naz
@@ -261,7 +288,7 @@ class S1IWSwath:
 
         _, orb_v = sv_interpolator_poly(state_vectors)
         # _, orb_v = sv_interpolator(state_vectors)
-        t_mid = t0_az + az_dt * lines_per_burst / 2.0
+        t_mid = t0_az + az_dt * self.lines_per_burst / 2.0
         v_mid = orb_v(t_mid)
         ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
 
@@ -302,9 +329,9 @@ class S1IWSwath:
         fdc = fdc_fun(rg_tau)
         kt = ka * ks / (ka - ks)
         eta = np.linspace(
-            -az_dt * lines_per_burst / 2.0,
-            az_dt * lines_per_burst / 2.0,
-            lines_per_burst,
+            -az_dt * self.lines_per_burst / 2.0,
+            az_dt * self.lines_per_burst / 2.0,
+            self.lines_per_burst,
         )
         eta_c = -fdc / ka
         rg_mid = slant_range_time + 0.5 * nrg * rg_dt
@@ -323,17 +350,25 @@ class S1IWSwath:
 
         Returns:
             ndarray: Complex raster
-        """        
+        """
+
+        if burst_idx < 1 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
-        lines_per_burst = int(burst_info["linesPerBurst"])
+        # lines_per_burst = int(burst_info["linesPerBurst"])
 
-        first_line = (burst_idx - 1) * lines_per_burst
+        first_line = (burst_idx - 1) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
         arr = (
-            read_chunk(self.pth_tiff, first_line, lines_per_burst).astype(np.complex64)
+            read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
+                np.complex64
+            )
             / self.beta_nought
         )
         # TODO: instead of logic, use geometric information for nodata?
@@ -345,7 +380,7 @@ class S1IWSwath:
             ls_str = burst_data["lastValidSample"]["#text"]
             first_sample_arr = np.array((fs_str).split(" "), dtype="int")
             last_sample_arr = np.array((ls_str).split(" "), dtype="int")
-            for i in range(lines_per_burst):
+            for i in range(self.lines_per_burst):
                 if first_sample_arr[i] > -1:
                     arr[i, : first_sample_arr[i]] = nodataval
                     arr[i, last_sample_arr[i] + 1 :] = nodataval
@@ -362,11 +397,11 @@ class S1IWSwath:
 
         Returns:
             ndarray: topographic phase for the given burst.
-        
+
         Note:
             For the primary burst, range is simply the pixel slant range index. For a secondary burst, it is the range index of the burst reprojected in the primary grid thanks to the coregistration function.
 
-        """        
+        """
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         slant_range_time = image_info["slantRangeTime"]
@@ -398,13 +433,15 @@ class S1IWSwath:
             int: number of overlapping lines.
         """
         # TODO fix with correct burst count
-        if burst_idx < 2 or burst_idx > 9:
-            raise ValueError("Invalid burst index (must be between 2 and 9)")
+        if burst_idx < 2 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 2 and {self.burst_count})"
+            )
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        lines_per_burst = int(burst_info["linesPerBurst"])
+        # lines_per_burst = int(burst_info["linesPerBurst"])
         burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_1 = isoparse(burst_1["azimuthTime"])
         burst_2 = burst_info["burstList"]["burst"][burst_idx]
@@ -412,7 +449,7 @@ class S1IWSwath:
 
         diff_az_time = (
             az_time_1 - az_time_2
-        ).total_seconds() + lines_per_burst * azimuth_time_interval
+        ).total_seconds() + self.lines_per_burst * azimuth_time_interval
         return diff_az_time / azimuth_time_interval
 
 
@@ -580,6 +617,7 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
             with rasterio.open(file_out, "w", **out_prof) as dst:
                 dst.write(wped, 1)
 
+
 # TODO: rewrite to work on secondary SLCs
 def fast_esd(ifgs, overlap):
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
@@ -625,13 +663,13 @@ def fast_esd(ifgs, overlap):
             ramp = slope * x + off
             return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
 
-
         # TODO: improve by downweighting points far from mid overlap ?
         naz, nrg = ifgs[0].shape
         for i, ifg in enumerate(ifgs):
             log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
             esd_ramp = make_ramp(i).astype(np.complex64)
             ifg *= esd_ramp
+
 
 def stitch_bursts(bursts, overlap):
     """Stitch bursts in the single look radar geometry
@@ -644,19 +682,19 @@ def stitch_bursts(bursts, overlap):
         ValueError: list is empty
     """
     # if not isinstance(overlap, int):
-        # log.warning("overlap must be an integer, rounding to the lowest integer.")
+    # log.warning("overlap must be an integer, rounding to the lowest integer.")
     H = int(overlap / 2)
     naz, nrg = bursts[0].shape
     nburst = len(bursts)
     if nburst >= 2:
         siz = (naz - H) * 2 + (nburst - 2) * (naz - 2 * H)
     elif nburst == 1:
-        siz = (naz - H)
+        siz = naz - H
     else:
         raise ValueError("Empty burst list")
 
     log.info("Stitching bursts to make a continuous image")
-    arr = np.zeros((siz, nrg), dtype = bursts[0].dtype)
+    arr = np.zeros((siz, nrg), dtype=bursts[0].dtype)
     off = 0
     for i in range(nburst):
         if i == 0:
@@ -665,9 +703,10 @@ def stitch_bursts(bursts, overlap):
         elif i == nburst - 1:
             arr[-naz + H :] = bursts[i][-naz + H :]
         else:
-            arr[off : off + (naz - 2*H)] = bursts[i][H:-H]
-            off += (naz - 2*H)
+            arr[off : off + (naz - 2 * H)] = bursts[i][H:-H]
+            off += naz - 2 * H
     return arr
+
 
 def presum(img, m, n):
     """m by n presumming of an image
@@ -982,3 +1021,16 @@ def boxcar(img, dimaz, dimrg):
     else:
         imgout = uflt(img.real, size=ws)
     return imgout
+
+
+def preprocess_insar_iw(
+    dir_primary,
+    dir_secondary,
+    nc_out,
+    dir_dem="/tmp",
+    iw=1,
+    min_burst=1,
+    max_burst=None,
+    force_write=False,
+):
+    pass
