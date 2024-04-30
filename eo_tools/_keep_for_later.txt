@@ -1,3 +1,5 @@
+# old version of ESD
+
 def fast_esd(ifgs, overlap, crop_overlap=True):
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
@@ -64,6 +66,10 @@ def fast_esd(ifgs, overlap, crop_overlap=True):
                 ifg[: int(overlap / 2) + 1] = nodataval
             if i < len(ifgs) - 1:
                 ifg[-int(overlap / 2) - 1 :] = nodataval
+
+# resampling functions using remap (commented)
+# not using because float32 is not accurate enough for resampling
+# if opencv adds the relative coordinate parameter this could be an option
 
 def align(arr_mst, arr_slv, az, rg, order=3):
     log.info("Warp slave to master geometry.")
@@ -177,3 +183,75 @@ def resample(arr, file_dem, file_out, az, rg, order=3, write_phase=False):
         out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(wped, 1)
+
+
+# attempt at using xarray to create intermediate data
+# writing netcdf either results in too large files or takes too much time (zip compression too slow)
+
+naz = prm.lines_per_burst
+nrg = prm.samples_per_burst
+
+nburst = prm.burst_count
+
+burst_min = 1
+burst_max = 3
+burst_coords = [f"burst_{n}" for n in range(burst_min, burst_max + 1)]
+time_coords = [prm.start_time, sec.start_time]
+
+
+log.info("Creating raster dataset")
+real_da = xr.DataArray(
+    np.zeros((2, len(burst_coords), naz, nrg), dtype="float32"),
+    dims=("time", "burst", "az", "rg"),
+    coords={
+        "time": time_coords,
+        "burst": burst_coords,
+        "az": np.arange(naz),
+        "rg": np.arange(nrg),
+    },
+)
+imag_da = xr.DataArray(
+    np.zeros((2, len(burst_coords), naz, nrg), dtype="float32"),
+    dims=("time", "burst", "az", "rg"),
+    coords={
+        "time": time_coords,
+        "burst": burst_coords,
+        "az": np.arange(naz),
+        "rg": np.arange(nrg),
+    },
+)
+
+
+dataset = xr.Dataset(
+    {"real": real_da, "imag": imag_da}
+)
+# dataset = xr.Dataset()
+# dataset.update()
+
+
+# # storing lookup tables along with rasters
+az_da = xr.DataArray(
+    az_p2g,
+    dims=("row", "col"),
+    coords={"row": np.arange(nl), "col": np.arange(nc)},
+    name=f"az_burst_{burst_idx}",
+)
+rg_da = xr.DataArray(
+    rg_p2g,
+    dims=("row", "col"),
+    coords={"row": np.arange(nl), "col": np.arange(nc)},
+    name=f"rg_burst_{burst_idx}",
+)
+
+# using a dict because lookuptables can have different shapes
+az_da_dict[f"az_burst_{burst_idx}"] = az_da
+rg_da_dict[f"rg_burst_{burst_idx}"] = rg_da
+
+dataset["real"].loc[prm.start_time, f"burst_{burst_idx}"] = arr_p.real
+dataset["imag"].loc[prm.start_time, f"burst_{burst_idx}"] = arr_p.imag
+dataset["real"].loc[sec.start_time, f"burst_{burst_idx}"] = (arr_s2p * pha_topo).real
+dataset["imag"].loc[sec.start_time, f"burst_{burst_idx}"] = (arr_s2p * pha_topo).imag
+
+# add LUTs
+dataset.update(az_da_dict)    
+dataset.update(rg_da_dict)    

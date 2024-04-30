@@ -112,7 +112,6 @@ class S1IWSwath:
         self.state_vectors["vz"] = np.array(
             [float(it["VZ"]["#text"]) for it in orbdata]
         )
-        # TODO: burst_count as a class attribute
 
     def fetch_dem_burst(
         self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=20, force_download=False
@@ -134,8 +133,6 @@ class S1IWSwath:
                 f"Invalid burst index (must be between 1 and {self.burst_count})"
             )
 
-        # burst_info = self.meta["product"]["swathTiming"]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
         first_line = (burst_idx - 1) * self.lines_per_burst
 
         name_dem = f"dem-b{burst_idx}-{self.pth_tiff.stem}.tiff"
@@ -1023,14 +1020,3 @@ def boxcar(img, dimaz, dimrg):
     return imgout
 
 
-def preprocess_insar_iw(
-    dir_primary,
-    dir_secondary,
-    nc_out,
-    dir_dem="/tmp",
-    iw=1,
-    min_burst=1,
-    max_burst=None,
-    force_write=False,
-):
-    pass
