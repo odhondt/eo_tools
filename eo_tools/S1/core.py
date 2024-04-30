@@ -450,7 +450,6 @@ class S1IWSwath:
         return diff_az_time / azimuth_time_interval
 
 
-@timeit
 def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     log.info("Projecting secondary coordinates onto primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
@@ -530,7 +529,6 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
     return az_s2p, rg_s2p
 
 
-@timeit
 def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
     log.info("Warp secondary to primary geometry.")
 
@@ -832,7 +830,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
 
 
 # TODO produce right composite crs for each DEM
-@timeit
 def lla_to_ecef(lat, lon, alt, dem_crs):
     from pyproj import Transformer
     from joblib import Parallel, delayed
@@ -871,7 +868,6 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     return dem_x, dem_y, dem_z
 
 
-@timeit
 @njit(parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):

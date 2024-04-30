@@ -3,6 +3,8 @@ from eo_tools.S1.core import S1IWSwath, coregister, align, stitch_bursts
 import numpy as np
 import xarray as xr
 import rasterio as rio
+from rioxarray.merge import merge_arrays
+import warnings
 import os
 
 import logging
@@ -14,11 +16,11 @@ def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
     dir_out,
-    dir_dem="/tmp",
-    iw=1,
-    pol="vv",
     min_burst=1,
     max_burst=None,
+    iw=1,
+    pol="vv",
+    dir_dem="/tmp",
     # force_write=False,
 ):
     """Pre-process S1 InSAR subswaths pairs
@@ -95,8 +97,8 @@ def preprocess_insar_iw(
         pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
         pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-        az_da = _make_da_from_dem(az_p2g, file_dem, up)
-        rg_da = _make_da_from_dem(rg_p2g, file_dem, up)
+        az_da = _make_da_from_dem(az_p2g, file_dem)
+        rg_da = _make_da_from_dem(rg_p2g, file_dem)
         luts_az.append(az_da)
         luts_rg.append(rg_da)
 
@@ -114,6 +116,7 @@ def preprocess_insar_iw(
         count=4,
         nodata=0,
     )
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     with rio.open(f"{dir_out}/slc_pair.tif", "w", **profile) as ds:
         ds.write(img_prm.real, 1)
         ds.write(img_prm.imag, 2)
@@ -164,12 +167,8 @@ def _make_da_from_dem(arr, file_dem):
     return da
 
 
-from rioxarray.merge import merge_arrays
-
-# xr.set_options(keep_attrs=True)
-
-
 def _merge_luts(lines_per_burst, luts_az, luts_rg, file_out, overlap, offset=4):
+    log.info("Mosaicking LUT")
     off = 0
     H = int(overlap / 2)
     # phi_out = presum(np.nan_to_num(img), 2, 8)
@@ -181,7 +180,6 @@ def _merge_luts(lines_per_burst, luts_az, luts_rg, file_out, overlap, offset=4):
         az_mst.data[~cnd] = np.nan
         rg_mst.data[~cnd] = np.nan
 
-        # does the job but not very elegant
         if i == 0:
             off2 = off
         else:
@@ -191,7 +189,9 @@ def _merge_luts(lines_per_burst, luts_az, luts_rg, file_out, overlap, offset=4):
             off += naz - H
         else:
             off += naz - 2 * H
-        to_merge.append(xr.concat((az_mst, rg_mst), 0))
+        lut_da = xr.concat((az_mst, rg_mst), "band")
+        lut_da.rio.write_nodata(np.nan)
+        to_merge.append(lut_da)
 
     merged = merge_arrays(to_merge)
-    merged.rio.to_raster("/data/res/test_merge_az.tif")
+    merged.rio.to_raster(file_out)
