@@ -3,6 +3,7 @@ from eo_tools.S1.core import S1IWSwath, coregister, align, stitch_bursts
 import numpy as np
 import xarray as xr
 import rasterio as rio
+from rasterio.windows import Window
 from rioxarray.merge import merge_arrays
 import warnings
 import os
@@ -43,9 +44,13 @@ def preprocess_insar_iw(
     if not os.path.isdir(dir_out):
         os.mkdir(dir_out)
 
+    # TODO check burst indices are vlaid
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
+
+    naz = prm.lines_per_burst * prm.burst_count
+    nrg = prm.samples_per_burst
 
     up = 2
 
@@ -59,54 +64,65 @@ def preprocess_insar_iw(
     bursts_prm = []
     bursts_sec = []
     # process individual bursts
-    for burst_idx in range(min_burst, _max_burst + 1):
-        log.info(f"---- Processing burst {burst_idx} ----")
 
-        # compute geocoding LUTs for master and slave bursts
-        file_dem = prm.fetch_dem_burst(burst_idx, dir_dem, force_download=False)
-        az_p2g, rg_p2g = prm.geocode_burst(
-            file_dem, burst_idx=burst_idx, dem_upsampling=up
-        )
-        az_s2g, rg_s2g = sec.geocode_burst(
-            file_dem, burst_idx=burst_idx, dem_upsampling=up
-        )
+    prof_tmp = dict(
+        width=nrg,
+        height=naz,
+        count=1,
+        dtype="complex64",
+    )
+    with rio.open(f"{dir_out}/tmp_secondary.tif", "w", **prof_tmp) as dst:
 
-        nl, nc = az_p2g.shape
+        for burst_idx in range(min_burst, _max_burst + 1):
+            log.info(f"---- Processing burst {burst_idx} ----")
 
-        # read primary and secondary burst raster
-        arr_p = prm.read_burst(burst_idx, True)
-        arr_s = sec.read_burst(burst_idx, True)
+            # compute geocoding LUTs for master and slave bursts
+            file_dem = prm.fetch_dem_burst(burst_idx, dir_dem, force_download=False)
+            az_p2g, rg_p2g = prm.geocode_burst(
+                file_dem, burst_idx=burst_idx, dem_upsampling=up
+            )
+            az_s2g, rg_s2g = sec.geocode_burst(
+                file_dem, burst_idx=burst_idx, dem_upsampling=up
+            )
 
-        # deramp secondary
-        pdb_s = sec.deramp_burst(burst_idx)
-        arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)
+            # read primary and secondary burst raster
+            arr_p = prm.read_burst(burst_idx, True)
+            arr_s = sec.read_burst(burst_idx, True)
 
-        # project slave LUT into master grid
-        az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+            # deramp secondary
+            pdb_s = sec.deramp_burst(burst_idx)
+            arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)
 
-        # warp raster slave and deramping phase
-        arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=3)
-        pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=3)
+            # project slave LUT into master grid
+            az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
-        # reramp slave
-        arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
+            # warp raster slave and deramping phase
+            arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=3)
+            pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=3)
 
-        # compute topographic phases
-        rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
-        pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-        pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-        pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+            # reramp slave
+            arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
 
-        az_da = _make_da_from_dem(az_p2g, file_dem)
-        rg_da = _make_da_from_dem(rg_p2g, file_dem)
-        luts_az.append(az_da)
-        luts_rg.append(rg_da)
+            # compute topographic phases
+            rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
+            pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+            pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+            pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-        arr_s2p = arr_s2p * pha_topo
-        bursts_prm.append(arr_p)
-        bursts_sec.append(arr_s)
+            az_da = _make_da_from_dem(az_p2g, file_dem)
+            rg_da = _make_da_from_dem(rg_p2g, file_dem)
+            luts_az.append(az_da)
+            luts_rg.append(rg_da)
+
+            arr_s2p = arr_s2p * pha_topo
+
+            first_line = (burst_idx - 1) * prm.lines_per_burst
+            dst.write(arr_s2p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst))
+            # bursts_prm.append(arr_p)
+            # bursts_sec.append(arr_s)
 
     # stitching bursts
+    # TODO: write a function that reads primary and secondary bursts and writes one pair file by blocks
     img_prm = stitch_bursts(bursts_prm, overlap)
     img_sec = stitch_bursts(bursts_sec, overlap)
     profile = dict(
@@ -166,6 +182,8 @@ def _make_da_from_dem(arr, file_dem):
     da.attrs["_FillValue"] = np.nan
     return da
 
+def _stitch_bursts(file_prm, file_sec, file_out, lines_per_burst, burst_count, overlap):
+    pass
 
 def _merge_luts(lines_per_burst, luts_az, luts_rg, file_out, overlap, offset=4):
     log.info("Mosaicking LUT")
@@ -190,6 +208,7 @@ def _merge_luts(lines_per_burst, luts_az, luts_rg, file_out, overlap, offset=4):
         else:
             off += naz - 2 * H
         lut_da = xr.concat((az_mst, rg_mst), "band")
+        lut_da.attrs["_FillValue"] = np.nan
         lut_da.rio.write_nodata(np.nan)
         to_merge.append(lut_da)
 
