@@ -44,8 +44,12 @@ def preprocess_insar_iw(
     if not os.path.isdir(dir_out):
         os.mkdir(dir_out)
 
-    tmp_prm = f"{dir_out}/tmp_prm.tif"
-    tmp_sec = f"{dir_out}/tmp_secondary.tif"
+    if max_burst - min_burst > 1:
+        tmp_prm = f"{dir_out}/tmp_prm.tif"
+        tmp_sec = f"{dir_out}/tmp_secondary.tif"
+    else:
+        tmp_prm = f"{dir_out}/primary.tif"
+        tmp_sec = f"{dir_out}/secondary.tif"
 
     # TODO check burst indices are vlaid
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
@@ -70,6 +74,7 @@ def preprocess_insar_iw(
     prof_tmp = dict(width=nrg, height=naz, count=1, dtype="complex64", driver="GTiff")
     # process individual bursts
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # TODO: try clipping and offsetting LUTs before creating the DataArrays
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
@@ -148,10 +153,11 @@ def preprocess_insar_iw(
         luts_az, luts_rg, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4
     )
 
-    if os.path.isfile(tmp_prm):
-        os.remove(tmp_prm)
-    if os.path.isfile(tmp_sec):
-        os.remove(tmp_sec)
+    if max_burst - min_burst > 1:
+        if os.path.isfile(tmp_prm):
+            os.remove(tmp_prm)
+        if os.path.isfile(tmp_sec):
+            os.remove(tmp_sec)
 
 
 def slc2geo(slc_file, lut_file, out_file, mlt_az, mlt_rg):
@@ -189,8 +195,8 @@ def _make_da_from_dem(arr, dem_prof):
         dims=("band", "y", "x"),
         # attrs=dem_up_ds.attrs,
     )
-    da.rio.set_crs(dem_prof["crs"])
-    da.rio.write_transform(dem_prof["transform"])
+    da.rio.write_crs(dem_prof["crs"], inplace=True)
+    da.rio.write_transform(dem_prof["transform"], inplace=True)
     da.attrs["_FillValue"] = np.nan
     return da
 
@@ -245,13 +251,11 @@ def _merge_luts(files_az, files_rg, file_out, lines_per_burst, overlap, offset=4
     to_merge = []
     for i, (file_az, file_rg) in enumerate(zip(files_az, files_rg)):
         # az_mst, rg_mst = luts_az[i].copy(), luts_rg[i].copy()
-        az = xr.open_dataset(file_az, engine="rasterio")
-        rg = xr.open_dataset(file_rg, engine="rasterio")
+        az = xr.open_dataset(file_az, engine="rasterio")["band_data"][0]
+        rg = xr.open_dataset(file_rg, engine="rasterio")["band_data"][0]
         cnd = (az >= H - offset) & (az < naz - H + offset)
-        # az.data[~cnd] = np.nan
-        az["band_data"][~cnd] = np.nan
-        # rg.data[~cnd] = np.nan
-        rg["band_data"][~cnd] = np.nan
+        az.data[~cnd] = np.nan
+        rg.data[~cnd] = np.nan
 
         if i == 0:
             off2 = off
