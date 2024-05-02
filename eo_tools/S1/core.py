@@ -232,7 +232,7 @@ class S1IWSwath:
         rg_geo[~valid] = np.nan
         az_geo[~valid] = np.nan
 
-        return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape)
+        return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
