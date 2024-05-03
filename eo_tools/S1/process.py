@@ -8,6 +8,7 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from scipy.ndimage import map_coordinates
+from eo_tools.S1.util import presum
 
 import logging
 
@@ -45,7 +46,7 @@ def preprocess_insar_iw(
     if not os.path.isdir(dir_out):
         os.mkdir(dir_out)
 
-    if max_burst - min_burst > 1:
+    if max_burst > min_burst:
         tmp_prm = f"{dir_out}/tmp_prm.tif"
         tmp_sec = f"{dir_out}/tmp_secondary.tif"
     else:
@@ -71,7 +72,7 @@ def preprocess_insar_iw(
         prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
     )
     # stitching bursts
-    if max_burst - min_burst > 1:
+    if max_burst > min_burst:
         _stitch_bursts(
             tmp_sec,
             f"{dir_out}/secondary.tif",
@@ -92,14 +93,16 @@ def preprocess_insar_iw(
     # )
     _merge_luts2(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
 
-    if max_burst - min_burst > 1:
+    if max_burst > min_burst:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
 
 
-def slc2geo(slc_file, lut_file, out_file, mlt_az, mlt_rg):
+def slc2geo(
+    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=True
+):
     """Geocode slc file using a lookup table with optional multilooking.
 
     Args:
@@ -109,14 +112,52 @@ def slc2geo(slc_file, lut_file, out_file, mlt_az, mlt_rg):
         mlt_az (int): number of looks in the azimuth direction
         mlt_rg (int): number of looks in the range direction
     """
-    
+
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
+        prof_src = ds_slc.profile.copy()
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
-    
+        prof_dst = ds_lut.profile.copy()
 
-    pass
+    nodata = prof_src["nodata"]
+
+    valid = (lut[0] != np.nan) & (lut[1] != np.nan)
+
+    if (mlt_az == 1) & (mlt_rg == 1):
+        arr_ = arr[0]
+    else:
+        arr_ = presum(arr[0], mlt_az, mlt_rg)
+
+    # arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
+    arr_out = np.zeros_like(lut[0], dtype=prof_src["dtype"])
+    arr_out[valid] = map_coordinates(
+        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order
+    )
+
+    prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
+    if write_phase:
+        phi = np.angle(arr_out)
+        # TODO: change nodata
+        prof_dst.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
+        with rio.open(out_file, "w", **prof_dst) as dst:
+            dst.write(phi, 1)
+    else:
+        with rio.open(out_file, "w", **prof_dst) as dst:
+            dst.write(arr_out, 1)
+
+
+def interferogram(file_prm, file_sec, file_out):
+    with rio.open(file_prm) as ds_prm:
+        prm = ds_prm.read(1)
+        prof = ds_prm.profile
+    with rio.open(file_sec) as ds_sec:
+        sec = ds_sec.read(1)
+    ifg = prm * sec.conj()
+
+    with rio.open(file_out, "w", **prof) as dst:
+        dst.write(ifg, 1)
+        print(dst.profile)
 
 
 def _process_bursts(
