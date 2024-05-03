@@ -7,6 +7,7 @@ from rasterio.windows import Window
 from rioxarray.merge import merge_arrays
 import warnings
 import os
+from scipy.ndimage import map_coordinates
 
 import logging
 
@@ -18,7 +19,7 @@ def preprocess_insar_iw(
     dir_secondary,
     dir_out,
     min_burst=1,
-    max_burst=None,
+    max_burst=1,
     iw=1,
     pol="vv",
     dir_dem="/tmp",
@@ -61,24 +62,76 @@ def preprocess_insar_iw(
 
     up = 2
 
-    if max_burst is not None:
-        _max_burst = max_burst
-    else:
-        _max_burst = min_burst + 1
+    # if max_burst is not None:
+    # _max_burst = max_burst
+    # else:
+    # _max_burst = min_burst + 1
 
-    luts_az = []
-    luts_rg = []
-    # bursts_prm = []
-    # bursts_sec = []
+    luts = _process_bursts(
+        prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
+    )
+    # stitching bursts
+    if max_burst - min_burst > 1:
+        _stitch_bursts(
+            tmp_sec,
+            f"{dir_out}/secondary.tif",
+            prm.lines_per_burst,
+            max_burst - min_burst + 1,
+            overlap,
+        )
+        _stitch_bursts(
+            tmp_prm,
+            f"{dir_out}/primary.tif",
+            prm.lines_per_burst,
+            max_burst - min_burst + 1,
+            overlap,
+        )
 
+    # _merge_luts(
+    # luts_az, luts_rg, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4
+    # )
+    _merge_luts2(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
+
+    if max_burst - min_burst > 1:
+        if os.path.isfile(tmp_prm):
+            os.remove(tmp_prm)
+        if os.path.isfile(tmp_sec):
+            os.remove(tmp_sec)
+
+
+def slc2geo(slc_file, lut_file, out_file, mlt_az, mlt_rg):
+    """Geocode slc file using a lookup table with optional multilooking.
+
+    Args:
+        slc_file (str): file in the slc geometry
+        lut_file (str): file containing a lookup table
+        out_file (str): output file
+        mlt_az (int): number of looks in the azimuth direction
+        mlt_rg (int): number of looks in the range direction
+    """
+    
+    with rio.open(slc_file) as ds_slc:
+        arr = ds_slc.read()
+    with rio.open(lut_file) as ds_lut:
+        lut = ds_lut.read()
+    
+
+    pass
+
+
+def _process_bursts(
+    prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
+):
+    luts = []
     prof_tmp = dict(width=nrg, height=naz, count=1, dtype="complex64", driver="GTiff")
     # process individual bursts
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # TODO: try clipping and offsetting LUTs before creating the DataArrays
+    # TODO: first try to concatenate before creating da (concat not lazy in xarray)
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
-            for burst_idx in range(min_burst, _max_burst + 1):
+            for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
                 # compute geocoding LUTs for master and slave bursts
@@ -114,13 +167,17 @@ def preprocess_insar_iw(
                 pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-                az_da = _make_da_from_dem(az_p2g, dem_profile)
-                rg_da = _make_da_from_dem(rg_p2g, dem_profile)
-                az_da.rio.to_raster(f"{dir_out}/az_{burst_idx}.tif")
-                rg_da.rio.to_raster(f"{dir_out}/rg_{burst_idx}.tif")
-                luts_az.append(f"{dir_out}/az_{burst_idx}.tif")
-                luts_rg.append(f"{dir_out}/rg_{burst_idx}.tif")
-
+                # az_da = _make_da_from_dem(az_p2g, dem_profile)
+                # rg_da = _make_da_from_dem(rg_p2g, dem_profile)
+                lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+                lut_da.rio.to_raster(
+                    f"{dir_out}/lut_{burst_idx}.tif"
+                )  # , windowed=True)  # , tiled=True)
+                # az_da.rio.to_raster(f"{dir_out}/az_{burst_idx}.tif")
+                # rg_da.rio.to_raster(f"{dir_out}/rg_{burst_idx}.tif")
+                luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+                # luts_az.append(f"{dir_out}/az_{burst_idx}.tif")
+                # luts_rg.append(f"{dir_out}/rg_{burst_idx}.tif")
 
                 arr_s2p = arr_s2p * pha_topo
 
@@ -129,79 +186,16 @@ def preprocess_insar_iw(
                     arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
                 )
                 ds_sec.write(
-                    arr_s2p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+                    arr_s2p,
+                    1,
+                    window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-
-    # stitching bursts
-    if max_burst - min_burst > 1:
-        _stitch_bursts(
-            tmp_sec,
-            f"{dir_out}/secondary.tif",
-            prm.lines_per_burst,
-            max_burst - min_burst + 1,
-            overlap,
-        )
-        _stitch_bursts(
-            tmp_prm,
-            f"{dir_out}/primary.tif",
-            prm.lines_per_burst,
-            max_burst - min_burst + 1,
-            overlap,
-        )
-
-    _merge_luts(
-        luts_az, luts_rg, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4
-    )
-
-    if max_burst - min_burst > 1:
-        if os.path.isfile(tmp_prm):
-            os.remove(tmp_prm)
-        if os.path.isfile(tmp_sec):
-            os.remove(tmp_sec)
+    return luts
 
 
-def slc2geo(slc_file, lut_file, out_file, mlt_az, mlt_rg):
-    """Geocode slc file using a lookup table with optional multilooking.
-
-    Args:
-        slc_file (str): file in the slc geometry
-        lut_file (str): file containing a lookup table
-        out_file (str): output file
-        mlt_az (int): number of looks in the azimuth direction
-        mlt_rg (int): number of looks in the range direction
-    """
-    pass
-
-
-def _make_da_from_dem(arr, dem_prof):
-
-    from rasterio.enums import Resampling
-    from rasterio import Affine as A
-    # dem_ds = xr.open_dataset(file_dem, engine="rasterio")
-    # new_width = dem_ds.rio.width * up
-    # new_height = dem_ds.rio.height * up
-    # new_width = arr.shape[1]
-    # new_height = arr.shape[0]
-
-    # upsample dem
-    # dem_up_ds = dem_ds.rio.reproject(
-    #     dem_ds.rio.crs,
-    #     shape=(int(new_height), int(new_width)),
-    #     resampling=Resampling.bilinear,
-    # )
-    da = xr.DataArray(
-        data=arr[None],
-        # coords=dem_up_ds.coords,
-        dims=("band", "y", "x"),
-        # attrs=dem_up_ds.attrs,
-    )
-    da.rio.write_crs(dem_prof["crs"], inplace=True)
-    da.rio.write_transform(dem_prof["transform"], inplace=True)
-    da.attrs["_FillValue"] = np.nan
-    return da
-
-
-def _stitch_bursts(file_in, file_out, lines_per_burst, burst_count, overlap, off_burst=1):
+def _stitch_bursts(
+    file_in, file_out, lines_per_burst, burst_count, overlap, off_burst=1
+):
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     H = int(overlap / 2)
     naz = lines_per_burst
@@ -235,11 +229,44 @@ def _stitch_bursts(file_in, file_out, lines_per_burst, burst_count, overlap, off
 
                 for j in range(src.count):
                     arr = src.read(
-                        j + 1, window=Window(0, (i + off_burst - 1) * naz + off_src, nrg, nlines)
+                        j + 1,
+                        window=Window(
+                            0, (i + off_burst - 1) * naz + off_src, nrg, nlines
+                        ),
                     )
                     # print(f"read line {(i - 1 + off_burst) * naz + off_src} to line {off_dst}")
-                    dst.write(arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1)
+                    dst.write(
+                        arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
+                    )
                 off_dst += nlines
+
+
+def _make_da_from_dem(arr, dem_prof):
+
+    # dem_ds = xr.open_dataset(file_dem, engine="rasterio")
+    # new_width = dem_ds.rio.width * up
+    # new_height = dem_ds.rio.height * up
+    # new_width = arr.shape[1]
+    # new_height = arr.shape[0]
+
+    # upsample dem
+    # dem_up_ds = dem_ds.rio.reproject(
+    #     dem_ds.rio.crs,
+    #     shape=(int(new_height), int(new_width)),
+    #     resampling=Resampling.bilinear,
+    # )
+    da = xr.DataArray(
+        # data=arr[None],
+        data=arr,
+        # coords=dem_up_ds.coords,
+        dims=("band", "y", "x"),
+        # attrs=dem_up_ds.attrs,
+    )
+    # dem_prof.update({"count": 2})
+    da.rio.write_crs(dem_prof["crs"], inplace=True)
+    da.rio.write_transform(dem_prof["transform"], inplace=True)
+    da.attrs["_FillValue"] = np.nan
+    return da
 
 
 def _merge_luts(files_az, files_rg, file_out, lines_per_burst, overlap, offset=4):
@@ -250,7 +277,6 @@ def _merge_luts(files_az, files_rg, file_out, lines_per_burst, overlap, offset=4
     naz = lines_per_burst
     to_merge = []
     for i, (file_az, file_rg) in enumerate(zip(files_az, files_rg)):
-        # az_mst, rg_mst = luts_az[i].copy(), luts_rg[i].copy()
         az = xr.open_dataset(file_az, engine="rasterio")["band_data"][0]
         rg = xr.open_dataset(file_rg, engine="rasterio")["band_data"][0]
         cnd = (az >= H - offset) & (az < naz - H + offset)
@@ -272,4 +298,35 @@ def _merge_luts(files_az, files_rg, file_out, lines_per_burst, overlap, offset=4
         to_merge.append(lut_da)
 
     merged = merge_arrays(to_merge)
-    merged.rio.to_raster(file_out)
+    merged.rio.to_raster(file_out, windowed=True)  # tiled=True)
+
+
+def _merge_luts2(files_lut, file_out, lines_per_burst, overlap, offset=4):
+    log.info("Merging LUT")
+    off = 0
+    H = int(overlap / 2)
+    naz = lines_per_burst
+    to_merge = []
+    for i, file_lut in enumerate(files_lut):
+        lut = xr.open_dataset(file_lut, engine="rasterio")["band_data"]
+        cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
+        # lut.data[0, ~cnd] = np.nan
+        # lut.data[1, ~cnd] = np.nan
+        lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
+
+        if i == 0:
+            off2 = off
+        else:
+            off2 = off - H
+        lut[0] += off2
+        # lut.data[0] += off2
+        if i == 0:
+            off += naz - H
+        else:
+            off += naz - 2 * H
+        lut.attrs["_FillValue"] = np.nan
+        lut.rio.write_nodata(np.nan)
+        to_merge.append(lut)
+
+    merged = merge_arrays(to_merge)
+    merged.rio.to_raster(file_out, windowed=True)
