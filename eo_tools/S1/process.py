@@ -100,6 +100,7 @@ def preprocess_insar_iw(
             os.remove(tmp_sec)
 
 
+# TODO: add magnitude option
 def slc2geo(
     slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=True
 ):
@@ -190,10 +191,9 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     # normalize complex coherences
     pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
 
-    if not magnitude:
-        coh = prm * sec.conj() / pows
-    else:
-        coh = np.abs(prm * sec.conj()) / pows
+    coh = boxcar(prm * sec.conj(), box_size, box_size) / pows
+    if magnitude:
+        coh = np.abs(coh)
 
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
