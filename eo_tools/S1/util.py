@@ -28,10 +28,15 @@ def boxcar(img, dimaz, dimrg):
     ws = np.ones(ndim)
     ws[0] = dimaz
     ws[1] = dimrg
-    if np.iscomplexobj(img):
-        imgout = uflt(img.real, size=ws) + 1j * uflt(img.imag, size=ws)
+    msk = np.isnan(img)
+    img_ = img.copy()
+    img_[msk] = 0
+    if np.iscomplexobj(img_):
+        imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
+        imgout[msk] = np.nan + 1j*np.nan
     else:
-        imgout = uflt(img.real, size=ws)
+        imgout = uflt(img_.real, size=ws)
+        imgout[msk] = np.nan
     return imgout
 
 
