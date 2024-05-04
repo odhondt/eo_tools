@@ -542,10 +542,12 @@ def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
     else:
         nodata_src = np.nan
 
-    msk_dst = arr_s != nodata_dst
-    msk_src = arr_p != nodata_src
+    # msk_dst = arr_s != nodata_dst
+    msk_dst = ~np.isnan(arr_s)
+    msk_src = ~np.isnan(arr_p)
+    # msk_src = arr_p != nodata_src
     arr_out = np.full_like(arr_p, dtype=arr_s.dtype, fill_value=nodata_dst)
-    msk_out = np.zeros_like(msk_src, dtype=bool)
+    msk_out = np.ones_like(msk_src, dtype=bool)
     coords = np.vstack((az_s2p[msk_src], rg_s2p[msk_src]))
     arr_out[msk_src] = map_coordinates(
         arr_s,
@@ -584,7 +586,8 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
     height = az_p2g.shape[0]
     wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
     msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
-    valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
+    # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
+    valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
     wped[valid] = map_coordinates(arr, (az_p2g[valid], rg_p2g[valid]), order=order)
     msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
 
