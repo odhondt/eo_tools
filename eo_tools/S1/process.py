@@ -113,6 +113,7 @@ def slc2geo(
         mlt_rg (int): number of looks in the range direction
     """
 
+    import matplotlib.pyplot as plt
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
@@ -120,26 +121,41 @@ def slc2geo(
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
 
-    nodata = prof_src["nodata"]
+    if prof_src["count"] != 1:
+        raise ValueError("Only single band rasters are supported.")
 
-    valid = (lut[0] != np.nan) & (lut[1] != np.nan)
+    valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
 
     if (mlt_az == 1) & (mlt_rg == 1):
-        arr_ = arr[0]
+        arr_ = arr[0].copy()
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
-    # arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
-    arr_out = np.zeros_like(lut[0], dtype=prof_src["dtype"])
+    # remove nan because of map_coordinates
+    msk = np.isnan(arr_)
+    arr_[msk] = 0
+
+    if np.iscomplexobj(arr_):
+        arr_out = np.full_like(lut[0], np.nan + 1j*np.nan, dtype=prof_src["dtype"])
+    else:
+        arr_out = np.full_like(lut[0], np.nan, dtype=prof_src["dtype"])
+    msk_out = np.ones_like(lut[0], dtype=bool)
+
     arr_out[valid] = map_coordinates(
         arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order
     )
+    msk_out[valid] = map_coordinates(
+        msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
+    )
+    if np.iscomplexobj(arr_out):
+        arr_out[msk_out] = np.nan + 1j*np.nan
+    else:
+        arr_out[msk_out] = np.nan
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
         phi = np.angle(arr_out)
-        # TODO: change nodata
-        prof_dst.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
+        prof_dst.update({"dtype": phi.dtype, "count": 1})
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
@@ -155,16 +171,50 @@ def interferogram(file_prm, file_sec, file_out):
         sec = ds_sec.read(1)
     ifg = prm * sec.conj()
 
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
-        print(dst.profile)
+
+def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
+    from eo_tools.S1.util import boxcar
+    with rio.open(file_prm) as ds_prm:
+        prm = ds_prm.read(1)
+        prof = ds_prm.profile
+    with rio.open(file_sec) as ds_sec:
+        sec = ds_sec.read(1)
+    
+
+    def avg_ampl(arr, box_size):
+        return np.sqrt(boxcar((arr*arr.conj()).real, box_size, box_size))
+
+    # normalize complex coherences
+    pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
+
+    if not magnitude:
+        coh = prm * sec.conj() / pows
+    else:
+        coh = np.abs(prm * sec.conj()) / pows
+
+
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    prof.update(dict(dtype=coh.dtype))
+    print(prof)
+    with rio.open(file_out, "w", **prof) as dst:
+        dst.write(coh, 1)
 
 
 def _process_bursts(
     prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
 ):
     luts = []
-    prof_tmp = dict(width=nrg, height=naz, count=1, dtype="complex64", driver="GTiff")
+    prof_tmp = dict(
+        width=nrg,
+        height=naz,
+        count=1,
+        dtype="complex64",
+        driver="GTiff",
+        nodata=np.nan,
+    )
     # process individual bursts
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # TODO: try clipping and offsetting LUTs before creating the DataArrays
@@ -250,7 +300,8 @@ def _stitch_bursts(
         else:
             raise ValueError("Empty burst list")
 
-        prof = dict(width=nrg, height=siz, dtype=src.profile["dtype"], count=src.count)
+        prof = src.profile.copy()
+        prof.update(dict(width=nrg, height=siz))
         with rio.open(file_out, "w", **prof) as dst:
 
             log.info("Stitching bursts to make a continuous image")
@@ -259,11 +310,9 @@ def _stitch_bursts(
                 if i == 0:
                     nlines = naz - H
                     off_src = 0
-                    # off += nlines
                 elif i == burst_count - 1:
                     nlines = naz - H
                     off_src = H
-                    # off += nlines
                 else:
                     nlines = naz - 2 * H
                     off_src = H
@@ -275,7 +324,6 @@ def _stitch_bursts(
                             0, (i + off_burst - 1) * naz + off_src, nrg, nlines
                         ),
                     )
-                    # print(f"read line {(i - 1 + off_burst) * naz + off_src} to line {off_dst}")
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
