@@ -71,6 +71,7 @@ def preprocess_insar_iw(
     luts = _process_bursts(
         prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
     )
+    _apply_fast_esd(tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap)
     # stitching bursts
     if max_burst > min_burst:
         _stitch_bursts(
@@ -283,6 +284,63 @@ def _process_bursts(
                 )
     return luts
 
+def _apply_fast_esd(tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap):
+    x = np.arange(naz)
+    xdown, xup = overlap / 2, naz - 1 - overlap / 2
+    def make_ramp(phase_diffs, idx):
+        if idx == 0:
+            ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
+        elif idx == len(phase_diffs):
+            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx - 1] / 2
+        else:
+            ydown, yup = -phase_diffs[idx - 1] / 2, phase_diffs[idx] / 2
+        slope = (yup - ydown) / (xup - xdown)
+        off = ydown - slope * xdown
+        ramp = slope * x + off
+        return np.exp(1j * (ramp[:, None] + np.zeros((nrg))))
+
+    with rio.open(tmp_prm_file, "r") as ds_prm:
+        with rio.open(tmp_sec_file, "r+") as ds_sec:
+            # computing cross interferograms in overlapping areas
+            log.info("Fast ESD: computing cross interferograms")
+            phase_diffs = []
+            for burst_idx in range(min_burst, max_burst):
+                first_line_tail = (burst_idx - min_burst + 1) * naz - overlap
+                first_line_head = (burst_idx - min_burst) * naz
+                # read last lines of current burst
+                tail_p = ds_prm.read(
+                    indexes=1, window=Window(0, first_line_tail, nrg, overlap)
+                )
+                tail_s = ds_sec.read(
+                    indexes=1,
+                    window=Window(0, first_line_tail, nrg, overlap),
+                )
+                # read first lines of next burst
+                head_p = ds_prm.read(
+                    indexes=1, window=Window(0, first_line_head, nrg, overlap)
+                )
+                head_s = ds_sec.read(
+                    indexes=1,
+                    window=Window(0, first_line_head, nrg, overlap),
+                )
+                cross_ifg = tail_p * tail_s.conj() * head_p.conj() * head_s
+                dphi_clx = cross_ifg[~np.isnan(cross_ifg)]
+                phase_diffs.append(np.angle(dphi_clx.mean()))
+
+            # making phase ramps and applying to secondary 
+            log.info("Fast ESD: applying phase corrections")
+            for burst_idx in range(min_burst, max_burst + 1):
+                first_line = (burst_idx - min_burst) * naz
+                arr_s = ds_sec.read(
+                    indexes=1,
+                    window=Window(0, first_line, nrg, naz),
+                )
+                esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst).astype(np.complex64)
+                ds_sec.write(
+                    arr_s*esd_ramp,
+                    1,
+                    window=Window(0, first_line, nrg, naz),
+                ) 
 
 def _stitch_bursts(
     file_in, file_out, lines_per_burst, burst_count, overlap, off_burst=1
