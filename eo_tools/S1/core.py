@@ -338,12 +338,12 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
 
-    def read_burst(self, burst_idx=1, remove_border_noise=True):
+    def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
         Args:
             burst_idx (int, optional): burst number. Defaults to 1.
-            remove_border_noise (bool, optional): Sets non-valid pixels to NaN. Defaults to True.
+            remove_invalid (bool, optional): Sets non-valid pixels to NaN. Defaults to True.
 
         Returns:
             ndarray: Complex raster
@@ -368,11 +368,12 @@ class S1IWSwath:
             )
             / self.beta_nought
         )
-        # TODO: instead of logic, use geometric information for nodata?
-        arr[arr == 0 + 1j * 0] = nodataval
+        
+        # not sure about that, should we consider these holes as NaN?
+        # leaving as is for now, to avoid propagating NaN in filtering / resampling
+        # arr[arr == 0 + 1j * 0] = nodataval
 
-        # also force to nan in azimuth gaps and remove mask based nans
-        if remove_border_noise:
+        if remove_invalid:
             fs_str = burst_data["firstValidSample"]["#text"]
             ls_str = burst_data["lastValidSample"]["#text"]
             first_sample_arr = np.array((fs_str).split(" "), dtype="int")

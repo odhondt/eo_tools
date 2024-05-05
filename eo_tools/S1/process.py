@@ -198,7 +198,10 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     # normalize complex coherences
     pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
 
-    coh = boxcar(prm * sec.conj(), box_size, box_size) / pows
+    valid = pows > 0 & ~np.isnan(pows)
+
+    coh = np.full_like(prm, np.nan + 1j*np.nan ,dtype=prm.dtype)
+    coh[valid] = boxcar(prm * sec.conj(), box_size, box_size)[valid] / pows[valid]
     if magnitude:
         coh = np.abs(coh)
 
