@@ -71,7 +71,9 @@ def preprocess_insar_iw(
     luts = _process_bursts(
         prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
     )
-    _apply_fast_esd(tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap)
+    _apply_fast_esd(
+        tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap
+    )
     # stitching bursts
     if max_burst > min_burst:
         _stitch_bursts(
@@ -114,8 +116,8 @@ def slc2geo(
         mlt_az (int): number of looks in the azimuth direction
         mlt_rg (int): number of looks in the range direction
     """
+    log.info("Geocoding image from the SLC radar geometry.")
 
-    import matplotlib.pyplot as plt
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
@@ -138,7 +140,7 @@ def slc2geo(
     arr_[msk] = 0
 
     if np.iscomplexobj(arr_):
-        arr_out = np.full_like(lut[0], np.nan + 1j*np.nan, dtype=prof_src["dtype"])
+        arr_out = np.full_like(lut[0], np.nan + 1j * np.nan, dtype=prof_src["dtype"])
     else:
         arr_out = np.full_like(lut[0], np.nan, dtype=prof_src["dtype"])
     msk_out = np.ones_like(lut[0], dtype=bool)
@@ -150,7 +152,7 @@ def slc2geo(
         msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
     )
     if np.iscomplexobj(arr_out):
-        arr_out[msk_out] = np.nan + 1j*np.nan
+        arr_out[msk_out] = np.nan + 1j * np.nan
     else:
         arr_out[msk_out] = np.nan
 
@@ -166,6 +168,7 @@ def slc2geo(
 
 
 def interferogram(file_prm, file_sec, file_out):
+    log.info("Computing interferogram")
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
         prof = ds_prm.profile
@@ -177,17 +180,20 @@ def interferogram(file_prm, file_sec, file_out):
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
 
+
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
+    log.info("Computing coherence")
+
     from eo_tools.S1.util import boxcar
+
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
         prof = ds_prm.profile
     with rio.open(file_sec) as ds_sec:
         sec = ds_sec.read(1)
-    
 
     def avg_ampl(arr, box_size):
-        return np.sqrt(boxcar((arr*arr.conj()).real, box_size, box_size))
+        return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
 
     # normalize complex coherences
     pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
@@ -196,10 +202,8 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     if magnitude:
         coh = np.abs(coh)
 
-
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     prof.update(dict(dtype=coh.dtype))
-    print(prof)
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(coh, 1)
 
@@ -284,9 +288,13 @@ def _process_bursts(
                 )
     return luts
 
-def _apply_fast_esd(tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap):
+
+def _apply_fast_esd(
+    tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap
+):
     x = np.arange(naz)
     xdown, xup = overlap / 2, naz - 1 - overlap / 2
+
     def make_ramp(phase_diffs, idx):
         if idx == 0:
             ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
@@ -306,7 +314,7 @@ def _apply_fast_esd(tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, 
             phase_diffs = []
             for burst_idx in range(min_burst, max_burst):
                 first_line_tail = (burst_idx - min_burst + 1) * naz - overlap
-                first_line_head = (burst_idx - min_burst) * naz
+                first_line_head = (burst_idx - min_burst + 1) * naz
                 # read last lines of current burst
                 tail_p = ds_prm.read(
                     indexes=1, window=Window(0, first_line_tail, nrg, overlap)
@@ -323,11 +331,13 @@ def _apply_fast_esd(tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, 
                     indexes=1,
                     window=Window(0, first_line_head, nrg, overlap),
                 )
-                cross_ifg = tail_p * tail_s.conj() * head_p.conj() * head_s
+                ifg1 = tail_p * tail_s.conj()
+                ifg2 = head_p * head_s.conj()
+                cross_ifg = ifg1 * ifg2.conj()
                 dphi_clx = cross_ifg[~np.isnan(cross_ifg)]
                 phase_diffs.append(np.angle(dphi_clx.mean()))
 
-            # making phase ramps and applying to secondary 
+            # making phase ramps and applying to secondary
             log.info("Fast ESD: applying phase corrections")
             for burst_idx in range(min_burst, max_burst + 1):
                 first_line = (burst_idx - min_burst) * naz
@@ -335,12 +345,15 @@ def _apply_fast_esd(tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, 
                     indexes=1,
                     window=Window(0, first_line, nrg, naz),
                 )
-                esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst).astype(np.complex64)
+                esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst).astype(
+                    np.complex64
+                )
                 ds_sec.write(
-                    arr_s*esd_ramp,
-                    1,
+                    arr_s * esd_ramp,
+                    indexes=1,
                     window=Window(0, first_line, nrg, naz),
-                ) 
+                )
+
 
 def _stitch_bursts(
     file_in, file_out, lines_per_burst, burst_count, overlap, off_burst=1
