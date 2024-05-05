@@ -71,9 +71,11 @@ def preprocess_insar_iw(
     luts = _process_bursts(
         prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
     )
-    _apply_fast_esd(
-        tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap
-    )
+
+    if max_burst > min_burst:
+        _apply_fast_esd(
+            tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap
+        )
     # stitching bursts
     if max_burst > min_burst:
         _stitch_bursts(
@@ -96,11 +98,19 @@ def preprocess_insar_iw(
     # )
     _merge_luts2(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
 
+    log.info("Cleaning temporary files")
     if max_burst > min_burst:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
+    for i in range(min_burst, max_burst + 1):
+        fname = f"{dir_out}/lut{i}.tif"
+        if os.path.isfile(fname):
+            os.remove(fname)
+
+    log.info("Execution finished")
+
 
 
 # TODO: add magnitude option
