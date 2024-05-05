@@ -15,18 +15,18 @@ import logging
 log = logging.getLogger(__name__)
 
 
+# TODO: make class and attach different paths (primary, secondary, lut) ?
 def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
     dir_out,
     min_burst=1,
-    max_burst=1,
+    max_burst=1,  # TODO: automatic max burst
     iw=1,
     pol="vv",
     dir_dem="/tmp",
-    # force_write=False,
 ):
-    """Pre-process S1 InSAR subswaths pairs
+    """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
     Args:
         dir_primary (str): directory containing the primary product of the pair
@@ -36,12 +36,8 @@ def preprocess_insar_iw(
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
         min_burst (int, optional): First burst to process. Defaults to 1.
-        max_burst (int, optional): Last burst to process. Defaults to None.
-        # force_write (bool, optional): Force overwriting results. Defaults to False.
+        max_burst (int, optional): Last burst to process. Defaults to 1.
     """
-    # compute LUTS and SLC stack for each burst
-    # stitch SLC
-    # mosaic LUTs
 
     if not os.path.isdir(dir_out):
         os.mkdir(dir_out)
@@ -53,7 +49,7 @@ def preprocess_insar_iw(
         tmp_prm = f"{dir_out}/primary.tif"
         tmp_sec = f"{dir_out}/secondary.tif"
 
-    # TODO check burst indices are vlaid
+    # TODO check burst indices are valid
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
@@ -61,22 +57,18 @@ def preprocess_insar_iw(
     naz = prm.lines_per_burst * (max_burst - min_burst + 1)
     nrg = prm.samples_per_burst
 
-    up = 2
-
-    # if max_burst is not None:
-    # _max_burst = max_burst
-    # else:
-    # _max_burst = min_burst + 1
+    up = 2  # TODO: add as a parameter?
 
     luts = _process_bursts(
         prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
     )
 
+    # TODO: make optional?
     if max_burst > min_burst:
         _apply_fast_esd(
             tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap
         )
-    # stitching bursts
+
     if max_burst > min_burst:
         _stitch_bursts(
             tmp_sec,
@@ -119,8 +111,11 @@ def slc2geo(
         slc_file (str): file in the slc geometry
         lut_file (str): file containing a lookup table
         out_file (str): output file
-        mlt_az (int): number of looks in the azimuth direction
-        mlt_rg (int): number of looks in the range direction
+        mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
+        mlt_rg (int): number of looks in the range direction. Defaults to 1.
+        order (int): order of the polynomial kernel for resampling. Default to 3.
+    Note:
+        Multilooking is recommended as it reduces the spatial resolution but also filters speckle.
     """
     log.info("Geocoding image from the SLC radar geometry.")
 
@@ -217,6 +212,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         dst.write(coh, 1)
 
 
+# Auxiliary functions which are not supposed to be used outside of the processor
 def _process_bursts(
     prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
 ):
@@ -271,9 +267,7 @@ def _process_bursts(
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
                 lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(
-                    f"{dir_out}/lut_{burst_idx}.tif"
-                )
+                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif")
                 luts.append(f"{dir_out}/lut_{burst_idx}.tif")
 
                 arr_s2p = arr_s2p * pha_topo
