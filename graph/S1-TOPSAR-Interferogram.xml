@@ -21,7 +21,7 @@
         <cohWinAz>3</cohWinAz>
         <cohWinRg>10</cohWinRg>
         <squarePixel>true</squarePixel>
-        <subtractTopographicPhase>false</subtractTopographicPhase>
+        <subtractTopographicPhase>true</subtractTopographicPhase>
         <demName>SRTM 1Sec HGT</demName>
         <externalDEMFile/>
         <externalDEMNoDataValue>-9999</externalDEMNoDataValue>
