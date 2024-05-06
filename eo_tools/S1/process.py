@@ -8,7 +8,7 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from scipy.ndimage import map_coordinates
-from eo_tools.S1.util import presum
+from eo_tools.S1.util import presum, boxcar
 
 import logging
 
@@ -147,15 +147,15 @@ def slc2geo(
     """Reprojects slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
-        slc_file (str): file in the slc geometry
-        lut_file (str): file containing a lookup table
+        slc_file (str): file in the SLC radar geometry
+        lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
         order (int): order of the polynomial kernel for resampling. Defaults to 3.
         write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
     Note:
-        Multilooking is recommended as it reduces the spatial resolution but also mitigates speckle effects.
+        Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
     log.info("Geocoding image from the SLC radar geometry.")
 
@@ -232,9 +232,17 @@ def interferogram(file_prm, file_sec, file_out):
 
 # TODO optional chunk processing
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
+    """Computes the complex coherence from on two SLC image files.
+
+    Args:
+        file_prm (str): GeoTiff file of the primary SLC image
+        file_sec (str): GeoTiff file of the secondary SLC image
+        file_out (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
+    """    
     log.info("Computing coherence")
 
-    from eo_tools.S1.util import boxcar
 
     def avg_ampl(arr, box_size):
         return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
