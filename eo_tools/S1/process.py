@@ -26,7 +26,10 @@ def preprocess_insar_iw(
     max_burst=None,
     dir_dem="/tmp",
     apply_fast_esd=True,
+    warp_polynomial_order=3,
     dem_upsampling=2,
+    dem_buffer_arc_sec=20,
+    dem_force_download=False
 ):
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -41,7 +44,11 @@ def preprocess_insar_iw(
         max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
+        warp_polynomial_order (int, optional): polynomial order used to align secondary SLC. Defaults to 3.
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM.
+        dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
+
     Notes:
         DEM-assisted coregistration is performed to align the secondary with the master. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
@@ -101,6 +108,9 @@ def preprocess_insar_iw(
         min_burst,
         max_burst_,
         dem_upsampling,
+        dem_buffer_arc_sec,
+        dem_force_download,
+        order=warp_polynomial_order
     )
 
     if max_burst_ > min_burst & apply_fast_esd:
@@ -142,7 +152,7 @@ def preprocess_insar_iw(
 
 # TODO: add magnitude option
 def slc2geo(
-    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=False
+    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=False, magnitude_only=False
 ):
     """Reprojects slc file to a geographic grid using a lookup table with optional multilooking.
 
@@ -154,11 +164,11 @@ def slc2geo(
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
         order (int): order of the polynomial kernel for resampling. Defaults to 3.
         write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
+        magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
     Note:
         Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
     log.info("Geocoding image from the SLC radar geometry.")
-
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
@@ -200,12 +210,18 @@ def slc2geo(
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
         phi = np.angle(arr_out)
-        prof_dst.update({"dtype": phi.dtype, "count": 1})
+        prof_dst.update({"dtype": phi.dtype})
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
-        with rio.open(out_file, "w", **prof_dst) as dst:
-            dst.write(arr_out, 1)
+        if magnitude_only:
+            mag = np.abs(arr_out)
+            prof_dst.update({"dtype": mag.dtype})
+            with rio.open(out_file, "w", **prof_dst) as dst:
+                dst.write(mag, 1)
+        else:
+            with rio.open(out_file, "w", **prof_dst) as dst:
+                dst.write(arr_out, 1)
 
 
 # TODO optional chunk processing
@@ -216,7 +232,7 @@ def interferogram(file_prm, file_sec, file_out):
         file_prm (str): GeoTiff file of the primary SLC image
         file_sec (str): GeoTiff file of the secondary SLC image
         file_out (str): output file
-    """    
+    """
     log.info("Computing interferogram")
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
@@ -240,9 +256,8 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         file_out (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
-    """    
+    """
     log.info("Computing coherence")
-
 
     def avg_ampl(arr, box_size):
         return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
@@ -271,7 +286,20 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 def _process_bursts(
-    prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
+    prm,
+    sec,
+    tmp_prm,
+    tmp_sec,
+    dir_out,
+    dir_dem,
+    naz,
+    nrg,
+    min_burst,
+    max_burst,
+    dem_upsampling,
+    dem_buffer_arc_sec,
+    dem_force_download,
+    order
 ):
     luts = []
     prof_tmp = dict(
@@ -293,10 +321,18 @@ def _process_bursts(
                 # compute geocoding LUTs (lookup tables) for master and slave bursts
                 file_dem = prm.fetch_dem_burst(burst_idx, dir_dem, force_download=False)
                 az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=up
+                    file_dem,
+                    burst_idx=burst_idx,
+                    dem_upsampling=dem_upsampling,
+                    buffer_arc_sec=dem_buffer_arc_sec,
+                    force_download=dem_force_download,
                 )
                 az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=up
+                    file_dem,
+                    burst_idx=burst_idx,
+                    dem_upsampling=dem_upsampling,
+                    buffer_arc_sec=dem_buffer_arc_sec,
+                    force_download=dem_force_download,
                 )
 
                 # read primary and secondary burst rasters
@@ -311,8 +347,8 @@ def _process_bursts(
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
                 # warp raster secondary and deramping phase
-                arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=3)
-                pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=3)
+                arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=order)
+                pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
 
                 # reramp slave
                 arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
