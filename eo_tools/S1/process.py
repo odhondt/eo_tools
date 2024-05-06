@@ -29,7 +29,7 @@ def preprocess_insar_iw(
     warp_polynomial_order=3,
     dem_upsampling=2,
     dem_buffer_arc_sec=20,
-    dem_force_download=False
+    dem_force_download=False,
 ):
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -110,7 +110,7 @@ def preprocess_insar_iw(
         dem_upsampling,
         dem_buffer_arc_sec,
         dem_force_download,
-        order=warp_polynomial_order
+        order=warp_polynomial_order,
     )
 
     if max_burst_ > min_burst & apply_fast_esd:
@@ -152,7 +152,14 @@ def preprocess_insar_iw(
 
 # TODO: add magnitude option
 def slc2geo(
-    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=False, magnitude_only=False
+    slc_file,
+    lut_file,
+    out_file,
+    mlt_az=1,
+    mlt_rg=1,
+    order=3,
+    write_phase=False,
+    magnitude_only=False,
 ):
     """Reprojects slc file to a geographic grid using a lookup table with optional multilooking.
 
@@ -178,6 +185,9 @@ def slc2geo(
 
     if prof_src["count"] != 1:
         raise ValueError("Only single band rasters are supported.")
+
+    if not np.iscomplexobj(arr_out) and write_phase:
+        raise ValueError("Cannot compute phase of a real array.")
 
     valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
 
@@ -226,7 +236,7 @@ def slc2geo(
 
 # TODO optional chunk processing
 def interferogram(file_prm, file_sec, file_out):
-    """Computes an interferogram from on two SLC image files.
+    """Compute an interferogram from two SLC image files.
 
     Args:
         file_prm (str): GeoTiff file of the primary SLC image
@@ -247,8 +257,28 @@ def interferogram(file_prm, file_sec, file_out):
 
 
 # TODO optional chunk processing
+def amplitude(file_in, file_out):
+    """Compute the amplitude of a complex-valued image.
+
+    Args:
+        file_in (str): GeoTiff file of the primary SLC image
+        file_out (str): output file
+    """
+    log.info("Computing amplitude")
+    with rio.open(file_in) as ds_prm:
+        prm = ds_prm.read(1)
+        prof = ds_prm.profile
+    amp = np.abs(prm)
+
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    with rio.open(file_out, "w", **prof) as dst:
+        prof.update({"dtype": amp.dtype})
+        dst.write(amp, 1)
+
+
+# TODO optional chunk processing
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
-    """Computes the complex coherence from on two SLC image files.
+    """Compute the complex coherence from two SLC image files.
 
     Args:
         file_prm (str): GeoTiff file of the primary SLC image
@@ -271,7 +301,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     # normalize complex coherences
     pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
 
-    valid = pows > 0 & ~np.isnan(pows)
+    valid = (pows > 0) & ~np.isnan(pows)
 
     coh = np.full_like(prm, np.nan + 1j * np.nan, dtype=prm.dtype)
     coh[valid] = boxcar(prm * sec.conj(), box_size, box_size)[valid] / pows[valid]
@@ -299,7 +329,7 @@ def _process_bursts(
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
-    order
+    order,
 ):
     luts = []
     prof_tmp = dict(
