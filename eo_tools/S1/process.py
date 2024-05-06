@@ -199,14 +199,8 @@ def slc2geo(
 
 
     # remove nan because of map_coordinates
-    # arr_ = np.arange(arr_.shape[1])[None] + np.zeros(arr_.shape[0])[:,None]
     msk = np.isnan(arr_)
     arr_[msk] = 0
-
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10, 10))
-    plt.imshow(lut[0], interpolation="none")
-    plt.colorbar(fraction=0.046, pad=0.04)
 
     if np.iscomplexobj(arr_):
         nodata =  np.nan + 1j * np.nan
