@@ -34,7 +34,7 @@ def process_InSAR(
     clear_tmp_files=True,
     erosion_width=15,
     resume=False,
-    # apply_ESD=False -- maybe for later
+    apply_ESD=False
 ):
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -176,6 +176,7 @@ def process_InSAR(
                     burst_mst_max=burst_mst_max,
                     burst_slv_min=burst_slv_min,
                     burst_slv_max=burst_slv_max,
+                    apply_ESD=apply_ESD
                 )
 
             name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
@@ -375,9 +376,13 @@ def TOPS_coregistration(
     burst_mst_max=9,
     burst_slv_min=1,
     burst_slv_max=9,
+    apply_ESD=False
 ):
     """Helper function to compute TOPS coregistration"""
-    graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
+    if not apply_ESD:
+        graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
+    else:
+        graph_coreg_path = "../graph/S1-TOPSAR-Coregistration-ESD.xml"
     wfl_coreg = Workflow(graph_coreg_path)
     wfl_coreg["Read"].parameters["file"] = file_mst
     wfl_coreg["Read(2)"].parameters["file"] = file_slv
