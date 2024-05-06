@@ -172,9 +172,6 @@ class S1IWSwath:
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
-        # samples_per_burst = int(burst_info["samplesPerBurst"])
-        # burst_count = int(burst_info["burstList"]["@count"])
         if burst_idx > self.burst_count or burst_idx < 1:
             raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
@@ -193,8 +190,6 @@ class S1IWSwath:
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
         dt_az = float(azimuth_time_interval)
-        # naz = int(lines_per_burst)
-        # nrg = int(samples_per_burst)
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
 
@@ -554,6 +549,7 @@ def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
         arr_s,
         coords,
         order=order,
+        cval = nodata_dst,
         prefilter=False,
     )
     msk_out[msk_src] = map_coordinates(
@@ -589,7 +585,7 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
     msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
     # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
     valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    wped[valid] = map_coordinates(arr, (az_p2g[valid], rg_p2g[valid]), order=order)
+    wped[valid] = map_coordinates(arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order)
     msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
 
     wped[~valid] = nodataval

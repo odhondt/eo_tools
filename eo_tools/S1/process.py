@@ -161,7 +161,7 @@ def slc2geo(
     write_phase=False,
     magnitude_only=False,
 ):
-    """Reprojects slc file to a geographic grid using a lookup table with optional multilooking.
+    """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
         slc_file (str): file in the SLC radar geometry
@@ -175,7 +175,7 @@ def slc2geo(
     Note:
         Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
-    log.info("Geocoding image from the SLC radar geometry.")
+    log.info("Project image with the lookup table.")
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
@@ -186,7 +186,7 @@ def slc2geo(
     if prof_src["count"] != 1:
         raise ValueError("Only single band rasters are supported.")
 
-    if not np.iscomplexobj(arr_out) and write_phase:
+    if not np.iscomplexobj(arr) and write_phase:
         raise ValueError("Cannot compute phase of a real array.")
 
     valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
@@ -196,18 +196,28 @@ def slc2geo(
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
+
+
     # remove nan because of map_coordinates
+    # arr_ = np.arange(arr_.shape[1])[None] + np.zeros(arr_.shape[0])[:,None]
     msk = np.isnan(arr_)
     arr_[msk] = 0
 
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10, 10))
+    plt.imshow(lut[0], interpolation="none")
+    plt.colorbar(fraction=0.046, pad=0.04)
+
     if np.iscomplexobj(arr_):
-        arr_out = np.full_like(lut[0], np.nan + 1j * np.nan, dtype=prof_src["dtype"])
+        nodata =  np.nan + 1j * np.nan
+        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
     else:
-        arr_out = np.full_like(lut[0], np.nan, dtype=prof_src["dtype"])
+        nodata =  np.nan
+        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
     msk_out = np.ones_like(lut[0], dtype=bool)
 
     arr_out[valid] = map_coordinates(
-        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order
+        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order, cval=nodata
     )
     msk_out[valid] = map_coordinates(
         msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
@@ -220,13 +230,14 @@ def slc2geo(
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
         phi = np.angle(arr_out)
-        prof_dst.update({"dtype": phi.dtype})
+        prof_dst.update({"dtype": phi.dtype.name})
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
         if magnitude_only:
             mag = np.abs(arr_out)
-            prof_dst.update({"dtype": mag.dtype})
+            prof_dst.update({"dtype": mag.dtype.name})
+            print(prof_dst)
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -271,8 +282,8 @@ def amplitude(file_in, file_out):
     amp = np.abs(prm)
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    prof.update({"dtype": amp.dtype.name})
     with rio.open(file_out, "w", **prof) as dst:
-        prof.update({"dtype": amp.dtype})
         dst.write(amp, 1)
 
 
@@ -309,7 +320,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         coh = np.abs(coh)
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    prof.update(dict(dtype=coh.dtype))
+    prof.update(dict(dtype=coh.dtype.name))
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(coh, 1)
 
@@ -349,20 +360,17 @@ def _process_bursts(
                 log.info(f"---- Processing burst {burst_idx} ----")
 
                 # compute geocoding LUTs (lookup tables) for master and slave bursts
-                file_dem = prm.fetch_dem_burst(burst_idx, dir_dem, force_download=False)
-                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-                    file_dem,
-                    burst_idx=burst_idx,
-                    dem_upsampling=dem_upsampling,
+                file_dem = prm.fetch_dem_burst(
+                    burst_idx,
+                    dir_dem,
                     buffer_arc_sec=dem_buffer_arc_sec,
                     force_download=dem_force_download,
                 )
+                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                )
                 az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-                    file_dem,
-                    burst_idx=burst_idx,
-                    dem_upsampling=dem_upsampling,
-                    buffer_arc_sec=dem_buffer_arc_sec,
-                    force_download=dem_force_download,
+                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
                 )
 
                 # read primary and secondary burst rasters
