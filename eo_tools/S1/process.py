@@ -20,81 +20,120 @@ def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
     dir_out,
-    min_burst=1,
-    max_burst=1,  # TODO: automatic max burst
     iw=1,
     pol="vv",
+    min_burst=1,
+    max_burst=None,
     dir_dem="/tmp",
+    apply_fast_esd=True,
+    dem_upsampling=2,
 ):
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
     Args:
-        dir_primary (str): directory containing the primary product of the pair
-        dir_secondary (str): _description_
-        dir_out (str): output directory
+        dir_primary (str): directory containing the primary SLC product of the pair.
+        dir_secondary (str): directory containing the secondary SLC product of the pair.
+        dir_out (str): output directory (creating it if does not exist).
         dir_dem (str, optional): directory where DEMs used for geocoding are stored. Defaults to "/tmp".
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
-        min_burst (int, optional): First burst to process. Defaults to 1.
-        max_burst (int, optional): Last burst to process. Defaults to 1.
+        min_burst (int, optional): first burst to process. Defaults to 1.
+        max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
+        apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
+        dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
+    Notes:
+        DEM-assisted coregistration is performed to align the secondary with the master. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
 
     if not os.path.isdir(dir_out):
         os.mkdir(dir_out)
 
-    if max_burst > min_burst:
-        tmp_prm = f"{dir_out}/tmp_prm.tif"
+    if iw not in [1, 2, 3]:
+        ValueError("iw must be 1, 2 or 3")
+
+    if pol not in ["vv", "vh"]:
+        ValueError("pol must be 'vv' or 'vh'")
+
+    prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
+    sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
+
+    # TODO make some checks on product orbits, burst_count
+
+    overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
+
+    if max_burst is None:
+        max_burst_ = prm.burst_count
+    else:
+        max_burst_ = max_burst
+
+    if max_burst_ > min_burst:
+        tmp_prm = f"{dir_out}/tmp_primary.tif"
         tmp_sec = f"{dir_out}/tmp_secondary.tif"
+    elif max_burst_ < min_burst:
+        raise ValueError("max_burst must be >= min_burst")
     else:
         tmp_prm = f"{dir_out}/primary.tif"
         tmp_sec = f"{dir_out}/secondary.tif"
 
-    # TODO check burst indices are valid
-    prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
-    sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
-    overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
-
-    naz = prm.lines_per_burst * (max_burst - min_burst + 1)
-    nrg = prm.samples_per_burst
-
-    up = 2  # TODO: add as a parameter?
-
-    luts = _process_bursts(
-        prm, sec, tmp_prm, tmp_sec, dir_out, dir_dem, naz, nrg, min_burst, max_burst, up
-    )
-
-    # TODO: make optional?
-    if max_burst > min_burst:
-        _apply_fast_esd(
-            tmp_prm, tmp_sec, min_burst, max_burst, prm.lines_per_burst, nrg, overlap
+    if (
+        max_burst_ > prm.burst_count
+        or max_burst_ < 1
+        or min_burst > prm.burst_count
+        or min_burst < 1
+    ):
+        raise ValueError(
+            f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
         )
 
-    if max_burst > min_burst:
+    naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
+    nrg = prm.samples_per_burst
+
+    luts = _process_bursts(
+        prm,
+        sec,
+        tmp_prm,
+        tmp_sec,
+        dir_out,
+        dir_dem,
+        naz,
+        nrg,
+        min_burst,
+        max_burst_,
+        dem_upsampling,
+    )
+
+    if max_burst_ > min_burst & apply_fast_esd:
+        _apply_fast_esd(
+            tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
+        )
+
+    if max_burst_ > min_burst:
         _stitch_bursts(
             tmp_sec,
             f"{dir_out}/secondary.tif",
             prm.lines_per_burst,
-            max_burst - min_burst + 1,
+            max_burst_ - min_burst + 1,
             overlap,
         )
         _stitch_bursts(
             tmp_prm,
             f"{dir_out}/primary.tif",
             prm.lines_per_burst,
-            max_burst - min_burst + 1,
+            max_burst_ - min_burst + 1,
             overlap,
         )
 
     _merge_luts(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
 
     log.info("Cleaning temporary files")
-    if max_burst > min_burst:
+    if max_burst_ > min_burst:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
-    for i in range(min_burst, max_burst + 1):
-        fname = f"{dir_out}/lut{i}.tif"
+    for i in range(min_burst, max_burst_ + 1):
+        fname = f"{dir_out}/lut_{i}.tif"
         if os.path.isfile(fname):
             os.remove(fname)
 
@@ -103,9 +142,9 @@ def preprocess_insar_iw(
 
 # TODO: add magnitude option
 def slc2geo(
-    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=True
+    slc_file, lut_file, out_file, mlt_az=1, mlt_rg=1, order=3, write_phase=False
 ):
-    """Geocode slc file using a lookup table with optional multilooking.
+    """Reprojects slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
         slc_file (str): file in the slc geometry
@@ -113,9 +152,10 @@ def slc2geo(
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
-        order (int): order of the polynomial kernel for resampling. Default to 3.
+        order (int): order of the polynomial kernel for resampling. Defaults to 3.
+        write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
     Note:
-        Multilooking is recommended as it reduces the spatial resolution but also filters speckle.
+        Multilooking is recommended as it reduces the spatial resolution but also mitigates speckle effects.
     """
     log.info("Geocoding image from the SLC radar geometry.")
 
@@ -168,7 +208,15 @@ def slc2geo(
             dst.write(arr_out, 1)
 
 
+# TODO optional chunk processing
 def interferogram(file_prm, file_sec, file_out):
+    """Computes an interferogram from on two SLC image files.
+
+    Args:
+        file_prm (str): GeoTiff file of the primary SLC image
+        file_sec (str): GeoTiff file of the secondary SLC image
+        file_out (str): output file
+    """    
     log.info("Computing interferogram")
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
@@ -182,19 +230,20 @@ def interferogram(file_prm, file_sec, file_out):
         dst.write(ifg, 1)
 
 
+# TODO optional chunk processing
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     log.info("Computing coherence")
 
     from eo_tools.S1.util import boxcar
+
+    def avg_ampl(arr, box_size):
+        return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
 
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
         prof = ds_prm.profile
     with rio.open(file_sec) as ds_sec:
         sec = ds_sec.read(1)
-
-    def avg_ampl(arr, box_size):
-        return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
 
     # normalize complex coherences
     pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
@@ -225,15 +274,15 @@ def _process_bursts(
         driver="GTiff",
         nodata=np.nan,
     )
-    # process individual bursts
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # process individual bursts
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
-                # compute geocoding LUTs for master and slave bursts
+                # compute geocoding LUTs (lookup tables) for master and slave bursts
                 file_dem = prm.fetch_dem_burst(burst_idx, dir_dem, force_download=False)
                 az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
                     file_dem, burst_idx=burst_idx, dem_upsampling=up
@@ -242,7 +291,7 @@ def _process_bursts(
                     file_dem, burst_idx=burst_idx, dem_upsampling=up
                 )
 
-                # read primary and secondary burst raster
+                # read primary and secondary burst rasters
                 arr_p = prm.read_burst(burst_idx, True)
                 arr_s = sec.read_burst(burst_idx, True)
 
