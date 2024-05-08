@@ -54,6 +54,8 @@ def process_InSAR(
         clear_tmp_files (bool, optional): Removes temporary files at the end (recommended). Defaults to True.
         erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
         resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
+        apply_ESD (bool, optional): enhanced spectral diversity to correct phase jumps between bursts. Defaults to False
+        subswaths (list, optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to `["IW1", "IW2", "IW3"]`
     Returns:
         out_dirs (list): Output directories containing COG files.
     Note:
