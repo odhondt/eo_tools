@@ -113,7 +113,7 @@ def preprocess_insar_iw(
         order=warp_polynomial_order,
     )
 
-    if max_burst_ > min_burst & apply_fast_esd:
+    if (max_burst_ > min_burst) & apply_fast_esd:
         _apply_fast_esd(
             tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
         )
@@ -147,10 +147,9 @@ def preprocess_insar_iw(
         if os.path.isfile(fname):
             os.remove(fname)
 
-    log.info("Execution finished")
+    log.info("Done")
 
 
-# TODO: add magnitude option
 def slc2geo(
     slc_file,
     lut_file,
@@ -211,7 +210,7 @@ def slc2geo(
     msk_out = np.ones_like(lut[0], dtype=bool)
 
     arr_out[valid] = map_coordinates(
-        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order, cval=nodata
+        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order, cval=nodata, prefilter=False
     )
     msk_out[valid] = map_coordinates(
         msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
@@ -294,8 +293,15 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """
     log.info("Computing coherence")
 
-    def avg_ampl(arr, box_size):
-        return np.sqrt(boxcar((arr * arr.conj()).real, box_size, box_size))
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size 
+        box_rg = box_size 
+
+    def avg_ampl(arr, box_az, box_rg):
+        return np.sqrt(boxcar((arr * arr.conj()).real, box_az, box_rg))
 
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
@@ -304,12 +310,12 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         sec = ds_sec.read(1)
 
     # normalize complex coherences
-    pows = avg_ampl(prm, box_size) * avg_ampl(sec, box_size)
+    pows = avg_ampl(prm, box_az, box_rg) * avg_ampl(sec, box_az, box_rg)
 
     valid = (pows > 0) & ~np.isnan(pows)
 
     coh = np.full_like(prm, np.nan + 1j * np.nan, dtype=prm.dtype)
-    coh[valid] = boxcar(prm * sec.conj(), box_size, box_size)[valid] / pows[valid]
+    coh[valid] = boxcar(prm * sec.conj(), box_az, box_rg)[valid] / pows[valid]
     if magnitude:
         coh = np.abs(coh)
 
@@ -373,7 +379,7 @@ def _process_bursts(
 
                 # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx)
-                arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)
+                arr_s_de = arr_s * np.exp(1j * pdb_s) #.astype(np.complex64)
 
                 # project slave LUT into master grid
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
@@ -383,7 +389,7 @@ def _process_bursts(
                 pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
 
                 # reramp slave
-                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
+                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p) #.astype(np.complex64)
 
                 # compute topographic phases
                 rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
