@@ -35,7 +35,8 @@ def process_InSAR(
     clear_tmp_files=True,
     erosion_width=15,
     resume=False,
-    apply_ESD=False
+    apply_ESD=False,
+    subswaths=["IW1", "IW2", "IW3"]
 ):
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -83,6 +84,7 @@ def process_InSAR(
     sel_subsw_mst = gdf_burst_mst["subswath"]
     sel_subsw_slv = gdf_burst_slv["subswath"]
     unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
+    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
     info_mst = identify(file_mst)
