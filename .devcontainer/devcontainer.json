@@ -2,7 +2,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",
-  "forwardPorts": ["titiler:8085"],
+  "forwardPorts": ["localhost:8085"],
   "customizations": {
     "vscode": {
         "extensions": [
