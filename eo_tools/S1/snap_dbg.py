@@ -143,7 +143,9 @@ def process_InSAR(
     out_dirs = []
     for p in pol:
         tmp_names = []
-        for subswath in unique_subswaths:
+        # TODO: uncomment after benchmarking
+        # for subswath in unique_subswaths:
+        for subswath in unique_subswaths[1:2]:
             log.info(f"---- Processing subswath {subswath} in {p} polarization")
 
             # identify bursts to process
@@ -173,13 +175,13 @@ def process_InSAR(
                     subswath=subswath,
                     pol=p,
                     orbit_type=orbit_type,
-                    burst_mst_min=burst_mst_min,
-                    burst_mst_max=burst_mst_max,
-                    burst_slv_min=burst_slv_min,
-                    burst_slv_max=burst_slv_max,
+                    burst_mst_min=4,
+                    burst_mst_max=6,
+                    burst_slv_min=4,
+                    burst_slv_max=6,
                     apply_ESD=apply_ESD
                 )
-
+            return 1
             name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
             path_insar = f"{name_insar}.dim"
             if not (os.path.exists(path_insar) and resume):
@@ -381,7 +383,7 @@ def TOPS_coregistration(
 ):
     """Helper function to compute TOPS coregistration"""
     if not apply_ESD:
-        graph_coreg_path = "../graph/S1-TOPSAR-Coregistration.xml"
+        graph_coreg_path = "../graph/S1-TOPSAR-Coregistration-dbg.xml"
     else:
         graph_coreg_path = "../graph/S1-TOPSAR-Coregistration-ESD.xml"
     wfl_coreg = Workflow(graph_coreg_path)
