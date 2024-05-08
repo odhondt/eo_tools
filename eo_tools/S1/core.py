@@ -201,17 +201,26 @@ class S1IWSwath:
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
         # TODO (optional) integrate other models to orbit interpolation
-        # interp_pos, interp_vel = sv_interpolator(state_vectors)
-        interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
+        interp_pos, interp_vel = sv_interpolator(state_vectors)
+        # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
         log.info("Interpolate orbits")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
+        # print(pos, vel)
+
         log.info("Terrain correction (index computation)")
         az_geo, dist_geo = range_doppler(
-            dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=0.00001
+            # removing first pos to get smaller numbers, is this useful?
+            dem_x.ravel() - pos[0, 0],
+            dem_y.ravel() - pos[0, 1],
+            dem_z.ravel() - pos[0, 2],
+            pos - pos[0],
+            vel,
+            tol=1e-8,
+            # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
         )
 
         # convert range - azimuth to pixel indices
@@ -278,8 +287,8 @@ class S1IWSwath:
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
-        _, orb_v = sv_interpolator_poly(state_vectors)
-        # _, orb_v = sv_interpolator(state_vectors)
+        # _, orb_v = sv_interpolator_poly(state_vectors)
+        _, orb_v = sv_interpolator(state_vectors)
         t_mid = t0_az + az_dt * self.lines_per_burst / 2.0
         v_mid = orb_v(t_mid)
         ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
@@ -363,7 +372,7 @@ class S1IWSwath:
             )
             / self.beta_nought
         )
-        
+
         # not sure about that, should we consider these holes as NaN?
         # leaving as is for now, to avoid propagating NaN in filtering / resampling
         # arr[arr == 0 + 1j * 0] = nodataval
@@ -549,7 +558,7 @@ def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
         arr_s,
         coords,
         order=order,
-        cval = nodata_dst,
+        cval=nodata_dst,
         prefilter=False,
     )
     msk_out[msk_src] = map_coordinates(
@@ -585,7 +594,9 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
     msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
     # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
     valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    wped[valid] = map_coordinates(arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order)
+    wped[valid] = map_coordinates(
+        arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
+    )
     msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
 
     wped[~valid] = nodataval
@@ -703,9 +714,6 @@ def stitch_bursts(bursts, overlap):
     return arr
 
 
-
-
-
 # utility functions
 
 
@@ -803,6 +811,7 @@ def load_dem_coords(file_dem, upscale_factor=2):
                 int(ds.width * upscale_factor),
             ),
             resampling=Resampling.bilinear,
+            # resampling=Resampling.cubic,
         )[0]
 
         # scale image transform
@@ -826,7 +835,7 @@ def load_dem_coords(file_dem, upscale_factor=2):
         lat = lat_[None, :] + np.zeros_like(alt)
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt, dem_prof
+    return lat, lon, alt.astype("float64"), dem_prof
 
 
 # TODO produce right composite crs for each DEM
@@ -946,6 +955,3 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         r_zd[i] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return i_zd, r_zd
-
-
-
