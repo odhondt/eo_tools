@@ -29,13 +29,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# TODO: make a function that applies to whole processing chain as in S1.py
-# TODO: use xarray to store in a hierarchical and structured fashion
-
-
-# TODO: make Product class that contains metadata
 # TODO: Goldstein, coherence, LOS displacement
-# TODO: docstrings
 class S1IWSwath:
     """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
     - DEM retrieval (only SRTM 1sec for now)
