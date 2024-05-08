@@ -152,6 +152,10 @@ def show_insar_phi(input_path):
         file_in = input_path
     else:
         raise FileExistsError(f"Problem reading file.")
+    
+    if not os.path.isfile(file_in):
+        raise FileExistsError("Problem reading file or file does not exist.")
+
     # palette used by SNAP for insar phase
     palette = [
         [110, 60, 170],
@@ -206,6 +210,8 @@ def show_insar_coh(input_path):
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
+    if not os.path.isfile(file_in):
+        raise FileExistsError("Problem reading file or file does not exist.")
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
     tjson = ttcog_get_tilejson(file_in, rescale="0,1")
@@ -241,6 +247,9 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     elif os.path.isfile(input_path):
         file_in = input_path
     else:
+        raise FileExistsError("Problem reading file or file does not exist.")
+
+    if not os.path.isfile(file_in):
         raise FileExistsError("Problem reading file or file does not exist.")
 
     if not dB:
