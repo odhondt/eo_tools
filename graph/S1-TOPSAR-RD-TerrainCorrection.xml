@@ -34,8 +34,8 @@
         <externalDEMFile/>					
         <externalDEMNoDataValue>-9999</externalDEMNoDataValue>					
         <externalDEMApplyEGM>true</externalDEMApplyEGM>					
-        <demResamplingMethod>BILINEAR_INTERPOLATION</demResamplingMethod>					
-        <imgResamplingMethod>BICUBIC_INTERPOLATION</imgResamplingMethod>					
+        <demResamplingMethod>BICUBIC_INTERPOLATION</demResamplingMethod>					
+        <imgResamplingMethod>BISINC_5_POINT_INTERPOLATION</imgResamplingMethod>					
         <pixelSpacingInMeter>20</pixelSpacingInMeter>					
         <pixelSpacingInDegree>0</pixelSpacingInDegree>					
         <mapProjection>GEOGCS["WGS84(DD)",DATUM["WGS84",SPHEROID["WGS84", 6378137.0, 298.257223563]],PRIMEM["Greenwich", 0.0],UNIT["degree", 0.017453292519943295],AXIS["Geodetic longitude", EAST],AXIS["Geodetic latitude", NORTH]]</mapProjection>					
