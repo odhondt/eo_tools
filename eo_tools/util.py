@@ -256,7 +256,6 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
         stats = ttcog_get_stats(file_in)["b1"]
     else:
         stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
-    print(stats)
 
     if vmin is None:
         vmin_ = float(stats["percentile_2"])

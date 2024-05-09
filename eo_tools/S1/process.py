@@ -223,14 +223,17 @@ def slc2geo(
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
         phi = np.angle(arr_out)
-        prof_dst.update({"dtype": phi.dtype.name})
+        nodata = -9999
+        phi[np.isnan(phi)] = nodata
+        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata})
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
         if magnitude_only:
             mag = np.abs(arr_out)
-            prof_dst.update({"dtype": mag.dtype.name})
-            print(prof_dst)
+            nodata = 0
+            mag[np.isnan(mag)] = nodata
+            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata})
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -309,13 +312,15 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     with rio.open(file_sec) as ds_sec:
         sec = ds_sec.read(1)
 
-    # normalize complex coherences
-    pows = avg_ampl(prm, box_az, box_rg) * avg_ampl(sec, box_az, box_rg)
-
-    valid = (pows > 0) & ~np.isnan(pows)
-
     coh = np.full_like(prm, np.nan + 1j * np.nan, dtype=prm.dtype)
-    coh[valid] = boxcar(prm * sec.conj(), box_az, box_rg)[valid] / pows[valid]
+    log.info("coherence: cross-correlation")
+    coh = prm * sec.conj()
+    coh = boxcar(coh, box_az, box_rg)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        log.info("coherence: normalizing")
+        coh /= avg_ampl(prm, box_az, box_rg)
+        coh /= avg_ampl(sec, box_az, box_rg)
+
     if magnitude:
         coh = np.abs(coh)
 
@@ -546,7 +551,7 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     naz = lines_per_burst
     to_merge = []
     for i, file_lut in enumerate(files_lut):
-        lut = xr.open_dataset(file_lut, engine="rasterio")["band_data"]
+        lut = xr.open_dataset(file_lut, engine="rasterio", cache=False)["band_data"]
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
 
@@ -563,5 +568,5 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         lut.rio.write_nodata(np.nan)
         to_merge.append(lut)
 
-    merged = merge_arrays(to_merge)
+    merged = merge_arrays(to_merge, parse_coordinates=False)
     merged.rio.to_raster(file_out, windowed=True)
