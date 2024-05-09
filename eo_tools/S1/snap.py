@@ -21,7 +21,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO add iw option
 def process_InSAR(
     file_mst,
     file_slv,
