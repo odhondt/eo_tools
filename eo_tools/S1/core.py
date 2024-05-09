@@ -29,6 +29,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 # TODO: Goldstein, coherence, LOS displacement
 class S1IWSwath:
     """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
@@ -202,8 +203,6 @@ class S1IWSwath:
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
-
-        # print(pos, vel)
 
         log.info("Terrain correction (index computation)")
         az_geo, dist_geo = range_doppler(
@@ -628,7 +627,6 @@ def fast_esd(ifgs, overlap):
     Notes:
         Based on ideas introduced in:
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
-
     """
 
     import matplotlib.pyplot as plt

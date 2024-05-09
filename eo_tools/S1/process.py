@@ -195,22 +195,24 @@ def slc2geo(
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
-
-
     # remove nan because of map_coordinates
     msk = np.isnan(arr_)
     arr_[msk] = 0
 
     if np.iscomplexobj(arr_):
-        nodata =  np.nan + 1j * np.nan
+        nodata = np.nan + 1j * np.nan
         arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
     else:
-        nodata =  np.nan
+        nodata = np.nan
         arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
     msk_out = np.ones_like(lut[0], dtype=bool)
 
     arr_out[valid] = map_coordinates(
-        arr_, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=order, cval=nodata, prefilter=False
+        arr_,
+        (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg),
+        order=order,
+        cval=nodata,
+        prefilter=False,
     )
     msk_out[valid] = map_coordinates(
         msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
@@ -300,8 +302,8 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         box_az = box_size[0]
         box_rg = box_size[1]
     else:
-        box_az = box_size 
-        box_rg = box_size 
+        box_az = box_size
+        box_rg = box_size
 
     def avg_ampl(arr, box_az, box_rg):
         return np.sqrt(boxcar((arr * arr.conj()).real, box_az, box_rg))
@@ -316,7 +318,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     log.info("coherence: cross-correlation")
     coh = prm * sec.conj()
     coh = boxcar(coh, box_az, box_rg)
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         log.info("coherence: normalizing")
         coh /= avg_ampl(prm, box_az, box_rg)
         coh /= avg_ampl(sec, box_az, box_rg)
@@ -384,7 +386,7 @@ def _process_bursts(
 
                 # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx)
-                arr_s_de = arr_s * np.exp(1j * pdb_s) #.astype(np.complex64)
+                arr_s_de = arr_s * np.exp(1j * pdb_s)  # .astype(np.complex64)
 
                 # project slave LUT into master grid
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
@@ -394,7 +396,7 @@ def _process_bursts(
                 pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
 
                 # reramp slave
-                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p) #.astype(np.complex64)
+                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p)  # .astype(np.complex64)
 
                 # compute topographic phases
                 rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
@@ -423,6 +425,10 @@ def _process_bursts(
 def _apply_fast_esd(
     tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap
 ):
+    """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
+    Based on ideas introduced in:
+    Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
+    """
     x = np.arange(naz)
     xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
