@@ -2,15 +2,18 @@
 
 A dockerized toolbox for easy programmatic processing of remote sensing imagery from various public sources.
 
-## New feature: native TOPS InSAR processor
+## New feature: standalone TOPS InSAR processor
 - **Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.**
 - A new processor for IW subswath can be called (see `s1-easy-tops-insar.ipynb` in the `notebook` folder.)
 - Bursts can also be processed individually using the `S1.core` module for more flexibility. Results can be further processed as in-memory arrays or written as GeoTiff files. An example of such processing is found in `s1-tops-core-demo.ipynb`
 - More features will be added in the near future such as:
+    - Better memory and multi-core handling (probably using `dask`)
     - Full product processing with optional AOI selection
-    - Better memory and multi-core handling (probably through the `dask` backend)
+    - Multi-temporal stacks
 - In a more distant future:
-    - Tools for change detection, polarimetry, speckle filtering
+    - Tools for change detection, polarimetry, speckle filtering, DEM generation
+
+<img src="./data/ex_amp.png" width="200">
 
 
 ## Overview
