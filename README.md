@@ -21,7 +21,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 </p>
 
 ## Overview
-- Because this project is in active development the the API is likely to change. 
+- Because this project is in active development the API is likely to change. 
 - Currently, the available features are:
     - Sentinel-1
         - InSAR processor (running SNAP graphs through PyroSAR) computing the coherence, phase and intensities of an interferometric pair of SLC products
@@ -44,3 +44,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
     - Clone into the location of your choice.
     - Volumes paths can (and should) be changed in `docker-compose.yml`.
     - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks can be used.
+
+## Notice
+
+This project was originally forked from: https://github.com/eo2cube/s1_processor/, however as now 99% of the code is original, I have detached the fork.
