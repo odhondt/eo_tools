@@ -10,6 +10,7 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
     - Better memory and multi-core handling (probably using `dask`)
     - Full product (all subswaths and polarization) processing with optional AOI selection
     - Multi-temporal stacks
+    - Radiometric terrain correction
 - In a more distant future:
     - Tools for change detection, polarimetry, speckle filtering, DEM generation
 
