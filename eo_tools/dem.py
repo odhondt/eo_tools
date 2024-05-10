@@ -55,7 +55,7 @@ def retrieve_dem(
         with memfile.open(**prof) as mem:
             # Populate the input file with numpy array
             mem.write(arr_merge)
-            arr_crop, trans_crop = rasterio.mask.mask(mem, [shp], crop=True)
+            arr_crop, trans_crop = rasterio.mask.mask(mem, [shp], crop=True, all_touched=True)
             prof_out = mem.profile.copy()
             prof_out.update(
                 {

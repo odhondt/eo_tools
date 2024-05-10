@@ -117,6 +117,22 @@ def ttcog_get_tilejson(url, **kwargs):
     ).json()
     return r
 
+def palette_phi():
+    palette = [
+        [110, 60, 170],
+        [210, 60, 160],
+        [255, 110, 70],
+        [200, 200, 50],
+        [80, 245, 100],
+        [25, 200, 180],
+        [60, 130, 220],
+        [100, 70, 190],
+    ]
+
+    palette_norm = [np.array(it) / 255 for it in palette]
+    interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
+    cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
+    return json.dumps({x: y for x, y in zip(range(256), cmap_hex)})
 
 def show_insar_phi(input_path):
     # def visualize_insar_phase(input_path):
@@ -136,6 +152,10 @@ def show_insar_phi(input_path):
         file_in = input_path
     else:
         raise FileExistsError(f"Problem reading file.")
+    
+    if not os.path.isfile(file_in):
+        raise FileExistsError("Problem reading file or file does not exist.")
+
     # palette used by SNAP for insar phase
     palette = [
         [110, 60, 170],
@@ -190,6 +210,8 @@ def show_insar_coh(input_path):
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
+    if not os.path.isfile(file_in):
+        raise FileExistsError("Problem reading file or file does not exist.")
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
     tjson = ttcog_get_tilejson(file_in, rescale="0,1")
@@ -227,11 +249,13 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
+    if not os.path.isfile(file_in):
+        raise FileExistsError("Problem reading file or file does not exist.")
+
     if not dB:
         stats = ttcog_get_stats(file_in)["b1"]
     else:
         stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
-    print(stats)
 
     if vmin is None:
         vmin_ = float(stats["percentile_2"])
