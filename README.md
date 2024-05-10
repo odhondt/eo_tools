@@ -14,9 +14,9 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
     - Tools for change detection, polarimetry, speckle filtering, DEM generation
 
 <p float="left">
-    <img src="./data/ex_amp.png" width="400">
-    <img src="./data/ex_phi.png" width="400">
-    <img src="./data/ex_coh.png" width="400">
+    <img src="./data/ex_amp.png" width="350">
+    <img src="./data/ex_phi.png" width="350">
+    <img src="./data/ex_coh.png" width="350">
 </p>
 
 ## Overview
