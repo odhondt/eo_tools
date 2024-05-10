@@ -13,7 +13,7 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
 - In a more distant future:
     - Tools for change detection, polarimetry, speckle filtering, DEM generation
 
-Here is an example of amplitude, coherence and phase computed using this framework:
+Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
     <img src="./data/ex_amp.png" width="300">
     <img src="./data/ex_phi.png" width="300">
