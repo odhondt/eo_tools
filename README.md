@@ -48,6 +48,6 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 ## Notice
 
 - This project was originally forked from: https://github.com/eo2cube/s1_processor/, however since 99% of the code is now original, I have detached the fork.
-- Visulization functions are using https://developmentseed.org/titiler/
-- Product discovery and download are using https://github.com/CS-SI/eodag
+- Visulization functions are using TiTiler https://developmentseed.org/titiler/
+- Product discovery and download are using EODAG https://github.com/CS-SI/eodag
 - The old S1 processor uses pyroSAR https://github.com/johntruckenbrodt/pyroSAR which executes graphs with ESA's SNAP software https://github.com/senbox-org
