@@ -25,8 +25,8 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 - Because this project is in active development the API is likely to change. 
 - Currently, the available features are:
     - Sentinel-1
-        - New InSAR processor (see previous section)
-        - InSAR processor (running SNAP graphs through PyroSAR) computing the coherence, phase and intensities of an interferometric pair of SLC products
+        - New standalone InSAR processor (see previous section)
+        - Legacy InSAR processor (running SNAP graphs through PyroSAR) computing the coherence, phase and intensities of an interferometric pair of SLC products
         - Write the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file
         - Display these rasters on top of a folium map in a jupyter notebook
     - Sentinel-2
