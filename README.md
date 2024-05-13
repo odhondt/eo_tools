@@ -46,6 +46,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
     - Clone into the location of your choice.
     - Volumes paths can (and should) be changed in `docker-compose.yml`.
     - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks can be used.
+- Alternatively, it should also be possible to start the container from the main directory with `docker-compose up -d` in a terminal and attach to the container with any editor supporting docker.
 
 ## Notice
 
