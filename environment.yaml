@@ -26,3 +26,5 @@ dependencies:
   - netcdf4
   - rioxarray
   - numba
+  - dask
+  - bottleneck
