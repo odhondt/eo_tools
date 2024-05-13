@@ -117,6 +117,7 @@ def ttcog_get_tilejson(url, **kwargs):
     ).json()
     return r
 
+
 def palette_phi():
     palette = [
         [110, 60, 170],
@@ -133,6 +134,7 @@ def palette_phi():
     interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
     cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
     return json.dumps({x: y for x, y in zip(range(256), cmap_hex)})
+
 
 def show_insar_phi(input_path):
     # def visualize_insar_phase(input_path):
@@ -152,7 +154,7 @@ def show_insar_phi(input_path):
         file_in = input_path
     else:
         raise FileExistsError(f"Problem reading file.")
-    
+
     if not os.path.isfile(file_in):
         raise FileExistsError("Problem reading file or file does not exist.")
 
@@ -361,6 +363,16 @@ def show_cog(url, folium_map=None, **kwargs):
         folium.Map: raster visualization on an interactive map
     """
 
+    # workaround to enforce GDAL not using VSI cache (otherwise preview may not be updated)
+    if 'rescale' in kwargs:
+        low, high = kwargs['rescale'].split(',')
+        low = float(low)
+        high = float(high)
+        eps = np.random.uniform(1e-8, 1e-9)  # Generating a small random number
+        kwargs['rescale'] = f"{low + eps}, {high}"
+    else:
+        raise ValueError("Missing 'rescale' argument. Please provide as follows: rescale='low_value, high_value'")
+
     info = ttcog_get_info(url)
     bounds = info["bounds"]
     tjson = ttcog_get_tilejson(url, **kwargs)
@@ -371,6 +383,8 @@ def show_cog(url, folium_map=None, **kwargs):
         )
     else:
         m = folium_map
+
+
 
     folium.TileLayer(
         tiles=tjson["tiles"][0], attr="COG", overlay=True, name=url
