@@ -9,6 +9,7 @@ import warnings
 import os
 from scipy.ndimage import map_coordinates
 from eo_tools.S1.util import presum, boxcar
+from memory_profiler import profile
 
 import logging
 
@@ -286,6 +287,7 @@ def amplitude(file_in, file_out):
 
 
 # TODO optional chunk processing
+@profile
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """Compute the complex coherence from two SLC image files.
 
@@ -330,6 +332,62 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     prof.update(dict(dtype=coh.dtype.name))
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(coh, 1)
+
+def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
+    """Compute the complex coherence from two SLC image files.
+
+    Args:
+        file_prm (str): GeoTiff file of the primary SLC image
+        file_sec (str): GeoTiff file of the secondary SLC image
+        file_out (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
+    """
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+    from rasterio.errors import NotGeoreferencedWarning
+    from eo_tools.S1.util import boxcar
+    import warnings
+
+    log.info("Computing coherence")
+
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size
+        box_rg = box_size
+
+    ds_prm = xr.open_dataset(file_prm, lock=False, chunks="auto", engine="rasterio")
+    ds_sec = xr.open_dataset(file_sec, lock=False, chunks="auto", engine="rasterio")
+
+    # accessing dask arrays
+    prm = ds_prm["band_data"][0].data
+    sec = ds_sec["band_data"][0].data
+
+    process_args = dict(
+        dimaz=box_az, dimrg=box_rg, dtype="float32", depth=(box_az, box_rg)
+    )
+
+    coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args)
+    coh /= np.sqrt(da.map_overlap(boxcar, (prm * prm.conj()).real, **process_args))
+    coh /= np.sqrt(da.map_overlap(boxcar, (sec * sec.conj()).real, **process_args))
+
+    if magnitude:
+        coh = np.abs(coh)
+    # else:
+        # nodataval = np.nan + 1j * np.nan
+
+    nodataval = np.nan
+    da_coh = xr.DataArray(
+        data=coh[None],
+        dims=("band", "y", "x"),
+    )
+    da_coh.rio.write_nodata(nodataval)
+
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    da_coh.rio.to_raster(file_out)
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
