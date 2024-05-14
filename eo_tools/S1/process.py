@@ -10,6 +10,8 @@ import os
 from scipy.ndimage import map_coordinates
 from eo_tools.S1.util import presum, boxcar
 from memory_profiler import profile
+import dask.array as da
+from rasterio.errors import NotGeoreferencedWarning
 
 import logging
 
@@ -287,7 +289,6 @@ def amplitude(file_in, file_out):
 
 
 # TODO optional chunk processing
-@profile
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """Compute the complex coherence from two SLC image files.
 
@@ -333,6 +334,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(coh, 1)
 
+
 def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """Compute the complex coherence from two SLC image files.
 
@@ -343,12 +345,6 @@ def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
     """
-    import dask.array as da
-    import numpy as np
-    import xarray as xr
-    from rasterio.errors import NotGeoreferencedWarning
-    from eo_tools.S1.util import boxcar
-    import warnings
 
     log.info("Computing coherence")
 
@@ -367,19 +363,27 @@ def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     sec = ds_sec["band_data"][0].data
 
     process_args = dict(
-        dimaz=box_az, dimrg=box_rg, dtype="float32", depth=(box_az, box_rg)
+        dimaz=box_az,
+        dimrg=box_rg,
+        depth=(box_az, box_rg),
     )
 
-    coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args)
-    coh /= np.sqrt(da.map_overlap(boxcar, (prm * prm.conj()).real, **process_args))
-    coh /= np.sqrt(da.map_overlap(boxcar, (sec * sec.conj()).real, **process_args))
+    coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args, dtype="complex64")
+
+    np.seterr(divide="ignore", invalid="ignore")
+    coh /= np.sqrt(
+        da.map_overlap(boxcar, (prm * prm.conj()).real, **process_args, dtype="float32")
+    )
+    coh /= np.sqrt(
+        da.map_overlap(boxcar, (sec * sec.conj()).real, **process_args, dtype="float32")
+    )
 
     if magnitude:
         coh = np.abs(coh)
-    # else:
-        # nodataval = np.nan + 1j * np.nan
+        nodataval = np.nan
+    else:
+        nodataval = np.nan + 1j * np.nan
 
-    nodataval = np.nan
     da_coh = xr.DataArray(
         data=coh[None],
         dims=("band", "y", "x"),
