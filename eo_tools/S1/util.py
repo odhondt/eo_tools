@@ -1,5 +1,6 @@
 import numpy as np
-import scipy.ndimage.filters as flt
+# import scipy.ndimage.filters as flt
+from scipy.ndimage import convolve
 
 
 def boxcar(img, dimaz, dimrg):
@@ -22,14 +23,12 @@ def boxcar(img, dimaz, dimrg):
     The filter is always along 2 dimensions (azimuth, range), please
     ensure to provide a valid image.
     """
-    from scipy.ndimage import convolve
-    uflt = flt.uniform_filter
+    # uflt = flt.uniform_filter
     ndim = len(img.shape)
     ws = np.ones(ndim)
     ws[0] = dimaz
     ws[1] = dimrg
     msk = np.isnan(img)
-    # msk = median_filter(msk, 3)
     img_ = img.copy()
     img_[msk] = 0
     ker = np.ones((dimaz, dimrg)) / (dimaz*dimrg)

@@ -4,6 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.12
+  - pytest
   - gdal
   - rasterio
   - pyroSAR
@@ -26,3 +27,6 @@ dependencies:
   - netcdf4
   - rioxarray
   - numba
+  - dask
+  - bottleneck
+  # - memory_profiler
