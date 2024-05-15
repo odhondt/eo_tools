@@ -778,9 +778,8 @@ def sv_interpolator_poly(state_vectors):
 
 
 # TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
-def auto_dem(file_dem, gcps, buffer_arc_sec=20, force_download=False):
+def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
     minmax = lambda x: (x.min(), x.max())
-    # TODO round off to integer pixels
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
     off = buffer_arc_sec / 3600
