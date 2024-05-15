@@ -109,7 +109,7 @@ class S1IWSwath:
         )
 
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=20, force_download=False
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
     ):
         """Downloads the DEM for a given burst
 
