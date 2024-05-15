@@ -13,9 +13,6 @@ from eo_tools.S1.util import presum, boxcar
 # from memory_profiler import profile
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
-import dask
-dask.config.set({'logging.distributed': 'error'})
-
 import logging
 
 log = logging.getLogger(__name__)
@@ -320,27 +317,26 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     prm = ds_prm["band_data"][0].data
     sec = ds_sec["band_data"][0].data
 
+
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
         depth=(box_az, box_rg),
     )
 
+
     coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args, dtype="complex64")
 
-    # with np.errstate(divide="ignore", invalid="ignore"):
-    with warnings.catch_warnings():
-        # warnings.filterwarnings('ignore', 'divide', RuntimeWarning)
-        coh /= np.sqrt(
-            da.map_overlap(
-                boxcar, (prm * prm.conj()).real, **process_args, dtype="float32"
-            )
+    coh /= np.sqrt(
+        da.map_overlap(
+            boxcar, np.nan_to_num((prm * prm.conj()).real), **process_args, dtype="float32"
         )
-        coh /= np.sqrt(
-            da.map_overlap(
-                boxcar, (sec * sec.conj()).real, **process_args, dtype="float32"
-            )
+    )
+    coh /= np.sqrt(
+        da.map_overlap(
+            boxcar, np.nan_to_num((sec * sec.conj()).real), **process_args, dtype="float32"
         )
+    )
 
     if magnitude:
         coh = np.abs(coh)
