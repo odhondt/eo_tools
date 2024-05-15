@@ -298,52 +298,6 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
     """
-    log.info("Computing coherence")
-
-    if isinstance(box_size, list):
-        box_az = box_size[0]
-        box_rg = box_size[1]
-    else:
-        box_az = box_size
-        box_rg = box_size
-
-    def avg_ampl(arr, box_az, box_rg):
-        return np.sqrt(boxcar((arr * arr.conj()).real, box_az, box_rg))
-
-    with rio.open(file_prm) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile
-    with rio.open(file_sec) as ds_sec:
-        sec = ds_sec.read(1)
-
-    coh = np.full_like(prm, np.nan + 1j * np.nan, dtype=prm.dtype)
-    log.info("coherence: cross-correlation")
-    coh = prm * sec.conj()
-    coh = boxcar(coh, box_az, box_rg)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log.info("coherence: normalizing")
-        coh /= avg_ampl(prm, box_az, box_rg)
-        coh /= avg_ampl(sec, box_az, box_rg)
-
-    if magnitude:
-        coh = np.abs(coh)
-
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    prof.update(dict(dtype=coh.dtype.name))
-    with rio.open(file_out, "w", **prof) as dst:
-        dst.write(coh, 1)
-
-
-def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
-    """Compute the complex coherence from two SLC image files.
-
-    Args:
-        file_prm (str): GeoTiff file of the primary SLC image
-        file_sec (str): GeoTiff file of the secondary SLC image
-        file_out (str): output file
-        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
-        magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
-    """
 
     log.info("Computing coherence")
 
