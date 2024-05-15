@@ -31,7 +31,7 @@ def preprocess_insar_iw(
     apply_fast_esd=True,
     warp_polynomial_order=3,
     dem_upsampling=2,
-    dem_buffer_arc_sec=20,
+    dem_buffer_arc_sec=40,
     dem_force_download=False,
 ):
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
