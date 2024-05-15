@@ -9,9 +9,12 @@ import warnings
 import os
 from scipy.ndimage import map_coordinates
 from eo_tools.S1.util import presum, boxcar
+
 # from memory_profiler import profile
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
+import dask
+dask.config.set({'logging.distributed': 'error'})
 
 import logging
 
@@ -327,7 +330,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     # with np.errstate(divide="ignore", invalid="ignore"):
     with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', 'invalid value encountered in divide', RuntimeWarning)
+        # warnings.filterwarnings('ignore', 'divide', RuntimeWarning)
         coh /= np.sqrt(
             da.map_overlap(
                 boxcar, (prm * prm.conj()).real, **process_args, dtype="float32"
