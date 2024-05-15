@@ -1,7 +1,7 @@
 name: eo_tools
 channels:
-  - conda-forge
   - defaults
+  - conda-forge
 dependencies:
   - python=3.12
   - gdal
@@ -28,4 +28,4 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  - memory_profiler
+  # - memory_profiler

@@ -9,7 +9,7 @@ import warnings
 import os
 from scipy.ndimage import map_coordinates
 from eo_tools.S1.util import presum, boxcar
-from memory_profiler import profile
+# from memory_profiler import profile
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 
@@ -288,7 +288,6 @@ def amplitude(file_in, file_out):
         dst.write(amp, 1)
 
 
-# TODO optional chunk processing
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """Compute the complex coherence from two SLC image files.
 
@@ -355,8 +354,10 @@ def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         box_az = box_size
         box_rg = box_size
 
-    ds_prm = xr.open_dataset(file_prm, lock=False, chunks="auto", engine="rasterio")
-    ds_sec = xr.open_dataset(file_sec, lock=False, chunks="auto", engine="rasterio")
+    open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True)
+
+    ds_prm = xr.open_dataset(file_prm, **open_args)
+    ds_sec = xr.open_dataset(file_sec, **open_args)
 
     # accessing dask arrays
     prm = ds_prm["band_data"][0].data
@@ -370,13 +371,19 @@ def coh_dask(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args, dtype="complex64")
 
-    np.seterr(divide="ignore", invalid="ignore")
-    coh /= np.sqrt(
-        da.map_overlap(boxcar, (prm * prm.conj()).real, **process_args, dtype="float32")
-    )
-    coh /= np.sqrt(
-        da.map_overlap(boxcar, (sec * sec.conj()).real, **process_args, dtype="float32")
-    )
+    # with np.errstate(divide="ignore", invalid="ignore"):
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 'invalid value encountered in divide', RuntimeWarning)
+        coh /= np.sqrt(
+            da.map_overlap(
+                boxcar, (prm * prm.conj()).real, **process_args, dtype="float32"
+            )
+        )
+        coh /= np.sqrt(
+            da.map_overlap(
+                boxcar, (sec * sec.conj()).real, **process_args, dtype="float32"
+            )
+        )
 
     if magnitude:
         coh = np.abs(coh)
