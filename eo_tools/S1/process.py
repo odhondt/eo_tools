@@ -100,8 +100,8 @@ def preprocess_insar_iw(
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
     nrg = prm.samples_per_burst
 
-    # luts = _process_bursts(
-    luts = _process_bursts_dask(
+    luts = _process_bursts(
+    # luts = _process_bursts_dask(
         prm,
         sec,
         tmp_prm,
@@ -466,7 +466,7 @@ def _process_bursts(
 
                 # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx)
-                arr_s_de = arr_s * np.exp(1j * pdb_s)  # .astype(np.complex64)
+                arr_s_de = arr_s * np.exp(1j * pdb_s)
 
                 # project slave LUT into master grid
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
@@ -476,7 +476,7 @@ def _process_bursts(
                 pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
 
                 # reramp slave
-                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p)  # .astype(np.complex64)
+                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p)
 
                 # compute topographic phases
                 rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
