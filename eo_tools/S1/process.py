@@ -364,7 +364,6 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 # Auxiliary functions which are not supposed to be used outside of the processor
 
 
-@profile
 def _process_bursts(
     prm,
     sec,
@@ -454,7 +453,6 @@ def _process_bursts(
     return luts
 
 
-@profile
 def _process_bursts_dask(
     prm,
     sec,
