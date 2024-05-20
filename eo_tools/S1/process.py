@@ -101,7 +101,7 @@ def preprocess_insar_iw(
     nrg = prm.samples_per_burst
 
     luts = _process_bursts(
-    # luts = _process_bursts_dask(
+        # luts = _process_bursts_dask(
         prm,
         sec,
         tmp_prm,
@@ -152,51 +152,6 @@ def preprocess_insar_iw(
             os.remove(fname)
 
     log.info("Done")
-
-
-# fast parallel bicubic resampling
-@njit(parallel=True, nogil=True, fastmath=True)
-def remap(img, rr, cc):
-
-    # bicubic kernel
-    def ker(x):
-        ax = np.abs(x)
-        if ax < 1:
-            return 1.5 * ax**3 - 2.5 * ax**2 + 1
-        elif (ax >= 1) & (ax < 2):
-            return -0.5 * ax**3 + 2.5 * ax**2 - 4 * ax + 2
-        else:
-            return 0.0
-
-    if rr.shape != cc.shape:
-        raise ValueError("Coordinate arrays must have the same shape.")
-
-    arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
-
-    for idx in prange(len(rr.flat)):
-        r = rr.flat[idx]
-        c = cc.flat[idx]
-
-        # change boundaries if using other kernels
-        rmin = np.floor(r) - 1
-        rmax = np.ceil(r) + 1
-        cmin = np.floor(c) - 1
-        cmax = np.ceil(c) + 1
-
-        if np.isnan(r) | np.isnan(c):
-            continue
-        is_in_image = (r >= 0) & (r < img.shape[0]) & (c >= 0) & (c < img.shape[1])
-        if not is_in_image:
-            continue
-        val = 0.0
-        for i in range(int(rmin), int(rmax) + 1):
-            for j in range(int(cmin), int(cmax) + 1):
-                # using nearest neighbor on image border
-                i2 = np.minimum(np.maximum(0, i), img.shape[0] - 1)
-                j2 = np.minimum(np.maximum(0, j), img.shape[1] - 1)
-                val += ker(r - i) * ker(c - j) * img[i2, j2]
-        arr_out.flat[idx] = val
-    return arr_out
 
 
 def slc2geo(
@@ -266,10 +221,6 @@ def slc2geo(
     msk_out[valid] = map_coordinates(
         msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
     )
-
-    # arr_out[valid] = remap(
-    # arr_.real, lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg
-    # )  # + 1j * remap(arr_.imag, lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg)
 
     if np.iscomplexobj(arr_out):
         arr_out[msk_out] = np.nan + 1j * np.nan
@@ -361,7 +312,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True)
 
-    #TODO use rioxarray.open_rasterio instead
+    # TODO use rioxarray.open_rasterio instead
     ds_prm = xr.open_dataset(file_prm, **open_args)
     ds_sec = xr.open_dataset(file_sec, **open_args)
 
@@ -768,7 +719,7 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     naz = lines_per_burst
     to_merge = []
     for i, file_lut in enumerate(files_lut):
-        #TODO use rioxarray.open_rasterio instead
+        # TODO use rioxarray.open_rasterio instead
         lut = xr.open_dataset(file_lut, engine="rasterio", cache=False)["band_data"]
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
