@@ -361,6 +361,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True)
 
+    #TODO use rioxarray.open_rasterio instead
     ds_prm = xr.open_dataset(file_prm, **open_args)
     ds_sec = xr.open_dataset(file_sec, **open_args)
 
@@ -767,6 +768,7 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     naz = lines_per_burst
     to_merge = []
     for i, file_lut in enumerate(files_lut):
+        #TODO use rioxarray.open_rasterio instead
         lut = xr.open_dataset(file_lut, engine="rasterio", cache=False)["band_data"]
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)

@@ -6,6 +6,8 @@ import xarray as xr
 import dask.array as da
 from eo_tools.S1.process import coherence
 
+
+# TODO create dataArrays instead of datasets
 @pytest.fixture
 def create_test_data():
     # Create temporary GeoTiff files for testing
