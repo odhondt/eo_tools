@@ -1,10 +1,10 @@
+from unittest.mock import patch, MagicMock
 import pytest
 import tempfile
 import os
 import numpy as np
 import xarray as xr
-import dask.array as da
-from eo_tools.S1.process import coherence
+from eo_tools.S1.process import coherence, _merge_luts
 
 
 # TODO create dataArrays instead of datasets
@@ -24,7 +24,19 @@ def create_test_data():
         sec_ds.to_netcdf(sec_file)
         yield prm_file, sec_file, out_file
 
+
 def test_coherence(create_test_data):
     prm_file, sec_file, out_file = create_test_data
     coherence(prm_file, sec_file, out_file)
     assert os.path.exists(out_file)
+
+
+def test_merge_luts():
+    lines = 1507
+    overlap = 165
+    luts = ["./data/lut_5.tif", "./data/lut_6.tif"]
+    fout = "/tmp/merged.tif"
+    _merge_luts(luts, fout, lines, overlap, 4)
+    da = xr.open_dataset(fout)["band_data"]
+    assert da.dims == ("band", "y", "x")
+    assert da.shape == (2, 3328, 6773)
