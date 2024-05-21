@@ -101,7 +101,6 @@ def preprocess_insar_iw(
     nrg = prm.samples_per_burst
 
     luts = _process_bursts(
-        # luts = _process_bursts_dask(
         prm,
         sec,
         tmp_prm,
@@ -363,7 +362,6 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
-@profile
 def _process_bursts(
     prm,
     sec,
@@ -417,7 +415,6 @@ def _process_bursts(
 
                 # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx)
-                # arr_s_de = arr_s * np.exp(1j * pdb_s)
                 arr_s *= np.exp(1j * pdb_s)
 
                 # project slave LUT into master grid
@@ -425,13 +422,10 @@ def _process_bursts(
 
                 # warp raster secondary and deramping phase
                 arr_s = align(arr_p, arr_s, az_s2p, rg_s2p, order=order)
-                # arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=order)
                 pdb_s = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
-                # pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
 
                 # reramp slave
                 arr_s *= np.exp(-1j * pdb_s)
-                # arr_s2p = arr_s2p * np.exp(-1j * pdb_s)
 
                 # compute topographic phases
                 rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
@@ -444,7 +438,6 @@ def _process_bursts(
                 luts.append(f"{dir_out}/lut_{burst_idx}.tif")
 
                 arr_s *= pha_topo
-                # arr_s2p = arr_s2p * pha_topo
 
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
                 ds_prm.write(
@@ -456,8 +449,6 @@ def _process_bursts(
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
     return luts
-
-
 
 
 def _apply_fast_esd(
