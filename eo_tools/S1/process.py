@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 import rasterio as rio
 from rasterio.windows import Window
+import rioxarray as riox
 from rioxarray.merge import merge_arrays
 import warnings
 import os
@@ -434,7 +435,7 @@ def _process_bursts(
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
                 lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif")
+                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
                 luts.append(f"{dir_out}/lut_{burst_idx}.tif")
 
                 arr_s *= pha_topo
@@ -569,25 +570,28 @@ def _stitch_bursts(
 
 def _make_da_from_dem(arr, dem_prof):
 
-    da = xr.DataArray(
+    darr = xr.DataArray(
         data=arr,
         dims=("band", "y", "x"),
     )
-    da.rio.write_crs(dem_prof["crs"], inplace=True)
-    da.rio.write_transform(dem_prof["transform"], inplace=True)
-    da.attrs["_FillValue"] = np.nan
-    return da
+    darr = darr.chunk(chunks="auto")
+    darr.rio.write_crs(dem_prof["crs"], inplace=True)
+    darr.rio.write_transform(dem_prof["transform"], inplace=True)
+    darr.attrs["_FillValue"] = np.nan
+    return darr
 
 
 def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
+
     log.info("Merging LUT")
     off = 0
     H = int(overlap / 2)
     naz = lines_per_burst
     to_merge = []
+    # with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
     for i, file_lut in enumerate(files_lut):
-        # TODO use rioxarray.open_rasterio instead
-        lut = xr.open_dataset(file_lut, engine="rasterio", cache=False)["band_data"]
+        # lut = riox.open_rasterio(file_lut, cache=False, chunks=True, lock=False)
+        lut = riox.open_rasterio(file_lut, cache=False)
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
 
@@ -605,4 +609,4 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         to_merge.append(lut)
 
     merged = merge_arrays(to_merge, parse_coordinates=False)
-    merged.rio.to_raster(file_out, windowed=True)
+    merged.rio.to_raster(file_out)  # , windowed=False, tiled=True)
