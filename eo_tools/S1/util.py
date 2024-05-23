@@ -1,6 +1,8 @@
 import numpy as np
+
 # import scipy.ndimage.filters as flt
 from scipy.ndimage import convolve
+from numba import njit, prange, cfunc
 
 
 def boxcar(img, dimaz, dimrg):
@@ -31,11 +33,11 @@ def boxcar(img, dimaz, dimrg):
     msk = np.isnan(img)
     img_ = img.copy()
     img_[msk] = 0
-    ker = np.ones((dimaz, dimrg)) / (dimaz*dimrg)
+    ker = np.ones((dimaz, dimrg)) / (dimaz * dimrg)
     if np.iscomplexobj(img_):
         # imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
         imgout = convolve(img_.real, ker) + 1j * convolve(img_.imag, ker)
-        imgout[msk] = np.nan + 1j*np.nan
+        imgout[msk] = np.nan + 1j * np.nan
     else:
         # imgout = uflt(img_.real, size=ws)
         imgout = convolve(img_, ker)
@@ -74,3 +76,101 @@ def presum(img, m, n):
     for j in range(1, n):
         t += s[:, j::n]
     return t / float(m * n)
+
+
+# fast parallel resampling
+# TODO: add 6-point bicubic and truncated sinc
+@cfunc("double(double)")
+def _ker_near(x):
+    ax = np.abs(x)
+    if ax < 0.5:
+        return 1.0
+    elif ax == 0.5:
+        return 0.5
+    else:
+        return 0.0
+
+
+@cfunc("double(double)")
+def _ker_lin(x):
+    ax = np.abs(x)
+    if ax < 1:
+        return 1.0 - ax
+    else:
+        return 0.0
+
+
+@cfunc("double(double)")
+def _ker_cub(x):
+    ax = np.abs(x)
+    if ax < 1:
+        return 1.5 * ax**3 - 2.5 * ax**2 + 1
+    elif (ax >= 1) & (ax < 2):
+        return -0.5 * ax**3 + 2.5 * ax**2 - 4 * ax + 2
+    else:
+        return 0.0
+
+
+# @cfunc("double(double)")
+# def _ker_cub6(x):
+#     a = -0.5
+#     b = 0.5
+#     ax = np.abs(x)
+#     ax2 = ax**2
+#     ax3 = ax**3
+    # if ax < 1:
+    #     return (a + b + 2) * ax3 - (a + b + 3) * ax2 + 1
+    # elif (ax >= 1) & (ax < 2):
+    #     return a * ax3 - (5 * a - b) * ax2 + (8 * a - 3 * b) * ax - (4 * a - 2 * b)
+    # elif (ax >= 2) & (ax < 3):
+    #     return b * ax3 - 8 * b * ax2 + 21 * b * ax - 18 * b
+    # else:
+    #     return 0.0
+
+
+@njit(parallel=True, nogil=True, fastmath=True)
+def remap(img, rr, cc, interpolation="bicubic"):
+
+    if rr.shape != cc.shape:
+        raise ValueError("Coordinate arrays must have the same shape.")
+
+    arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
+    if interpolation == "nearest":
+        ker = _ker_near
+        H = 0
+    elif interpolation == "bilinear":
+        ker = _ker_lin
+        H = 0
+    elif interpolation == "bicubic":
+        ker = _ker_cub
+        H = 1
+    elif interpolation == "bicubic6":
+        ker = _ker_cub6
+        H = 2
+    else:
+        raise ValueError("Unknown interpolation type.")
+
+    for idx in prange(len(rr.flat)):
+        r = rr.flat[idx]
+        c = cc.flat[idx]
+
+        # change boundaries if using other kernels
+        rmin = np.floor(r) - H
+        rmax = np.ceil(r) + H
+        cmin = np.floor(c) - H
+        cmax = np.ceil(c) + H
+
+        if np.isnan(r) | np.isnan(c):
+            continue
+        is_in_image = (r >= 0) & (r < img.shape[0]) & (c >= 0) & (c < img.shape[1])
+        if not is_in_image:
+            continue
+        val = 0.0
+        for i in range(int(rmin), int(rmax) + 1):
+            for j in range(int(cmin), int(cmax) + 1):
+                # using nearest neighbor on image border
+                i2 = np.minimum(np.maximum(0, i), img.shape[0] - 1)
+                j2 = np.minimum(np.maximum(0, j), img.shape[1] - 1)
+                val += ker(r - i) * ker(c - j) * img[i2, j2]
+        arr_out.flat[idx] = val
+    return arr_out
