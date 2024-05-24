@@ -193,7 +193,7 @@ def slc2geo(
     if not np.iscomplexobj(arr) and write_phase:
         raise ValueError("Cannot compute phase of a real array.")
 
-    valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
+    # valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
 
     if (mlt_az == 1) & (mlt_rg == 1):
         arr_ = arr[0].copy()
