@@ -7,9 +7,10 @@ from scipy.interpolate import CubicHermiteSpline
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
+from eo_tools.S1.util import remap
 from shapely.geometry import box
 from rasterio.enums import Resampling
-from numba import njit, jit, prange
+from numba import njit, prange
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
 
@@ -21,8 +22,6 @@ from zipfile import ZipFile
 # WARP_RELATIVE_MAP only in dev version for now
 
 # benchmark & debug
-from eo_tools.bench import timeit
-import matplotlib.pyplot as plt
 
 
 import logging
@@ -526,44 +525,11 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     return az_s2p, rg_s2p
 
-
-def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
+def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     log.info("Warp secondary to primary geometry.")
-
-    if np.iscomplexobj(arr_s):
-        nodata_dst = np.nan + 1j * np.nan
-    else:
-        nodata_dst = np.nan
-
-    if np.iscomplexobj(arr_p):
-        nodata_src = np.nan + 1j * np.nan
-    else:
-        nodata_src = np.nan
-
-    # msk_dst = arr_s != nodata_dst
-    msk_dst = ~np.isnan(arr_s)
-    msk_src = ~np.isnan(arr_p)
-    # msk_src = arr_p != nodata_src
-    arr_out = np.full_like(arr_p, dtype=arr_s.dtype, fill_value=nodata_dst)
-    msk_out = np.ones_like(msk_src, dtype=bool)
-    coords = np.vstack((az_s2p[msk_src], rg_s2p[msk_src]))
-    arr_out[msk_src] = map_coordinates(
-        arr_s,
-        coords,
-        order=order,
-        cval=nodata_dst,
-        prefilter=False,
-    )
-    msk_out[msk_src] = map_coordinates(
-        msk_dst,
-        coords,
-        order=0,
-    )
-    arr_out[~msk_out] = np.nan
-    return arr_out.reshape(arr_p.shape)
+    return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
-# TODO: auto-upsampling factor, rename, mask nan in coordinates, no mask resampling
 def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
 
     # replace nan to work with map_coordinates
@@ -853,7 +819,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
         (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
         for b in range(0, len(lon), chunk)
     ]
-    chunked = Parallel(n_jobs=8, prefer="threads")(
+    chunked = Parallel(n_jobs=-1, prefer="threads")(
         delayed(tf.transform)(*b) for b in wgs_pts
     )
     dem_x = np.zeros_like(lon)

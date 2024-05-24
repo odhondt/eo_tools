@@ -4,13 +4,12 @@ import numpy as np
 import xarray as xr
 import rasterio as rio
 from rasterio.windows import Window
+import rioxarray as riox
 from rioxarray.merge import merge_arrays
 import warnings
 import os
-from scipy.ndimage import map_coordinates
-from eo_tools.S1.util import presum, boxcar
+from eo_tools.S1.util import presum, boxcar, remap
 
-# from memory_profiler import profile
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
@@ -29,7 +28,7 @@ def preprocess_insar_iw(
     max_burst=None,
     dir_dem="/tmp",
     apply_fast_esd=True,
-    warp_polynomial_order=3,
+    warp_kernel="bicubic",
     dem_upsampling=2,
     dem_buffer_arc_sec=40,
     dem_force_download=False,
@@ -47,7 +46,7 @@ def preprocess_insar_iw(
         max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
-        warp_polynomial_order (int, optional): polynomial order used to align secondary SLC. Defaults to 3.
+        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -113,9 +112,8 @@ def preprocess_insar_iw(
         dem_upsampling,
         dem_buffer_arc_sec,
         dem_force_download,
-        order=warp_polynomial_order,
+        kernel=warp_kernel,
     )
-
     if (max_burst_ > min_burst) & apply_fast_esd:
         _apply_fast_esd(
             tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
@@ -152,14 +150,13 @@ def preprocess_insar_iw(
 
     log.info("Done")
 
-
 def slc2geo(
     slc_file,
     lut_file,
     out_file,
     mlt_az=1,
     mlt_rg=1,
-    order=3,
+    kernel="bicubic",
     write_phase=False,
     magnitude_only=False,
 ):
@@ -171,7 +168,7 @@ def slc2geo(
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
-        order (int): order of the polynomial kernel for resampling. Defaults to 3.
+        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
     Note:
@@ -191,39 +188,12 @@ def slc2geo(
     if not np.iscomplexobj(arr) and write_phase:
         raise ValueError("Cannot compute phase of a real array.")
 
-    valid = ~np.isnan(lut[0]) & ~np.isnan(lut[1])
-
     if (mlt_az == 1) & (mlt_rg == 1):
         arr_ = arr[0].copy()
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
-    # remove nan because of map_coordinates
-    msk = np.isnan(arr_)
-    arr_[msk] = 0
-
-    if np.iscomplexobj(arr_):
-        nodata = np.nan + 1j * np.nan
-        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
-    else:
-        nodata = np.nan
-        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
-    msk_out = np.ones_like(lut[0], dtype=bool)
-
-    arr_out[valid] = map_coordinates(
-        arr_,
-        (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg),
-        order=order,
-        cval=nodata,
-        prefilter=False,
-    )
-    msk_out[valid] = map_coordinates(
-        msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
-    )
-    if np.iscomplexobj(arr_out):
-        arr_out[msk_out] = np.nan + 1j * np.nan
-    else:
-        arr_out[msk_out] = np.nan
+    arr_out = remap(arr_, lut[0] / mlt_az, lut[1] / mlt_rg, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
@@ -310,6 +280,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True)
 
+    # TODO use rioxarray.open_rasterio instead
     ds_prm = xr.open_dataset(file_prm, **open_args)
     ds_sec = xr.open_dataset(file_sec, **open_args)
 
@@ -317,24 +288,28 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     prm = ds_prm["band_data"][0].data
     sec = ds_sec["band_data"][0].data
 
-
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
         depth=(box_az, box_rg),
     )
 
-
     coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args, dtype="complex64")
 
     coh /= np.sqrt(
         da.map_overlap(
-            boxcar, np.nan_to_num((prm * prm.conj()).real), **process_args, dtype="float32"
+            boxcar,
+            np.nan_to_num((prm * prm.conj()).real),
+            **process_args,
+            dtype="float32",
         )
     )
     coh /= np.sqrt(
         da.map_overlap(
-            boxcar, np.nan_to_num((sec * sec.conj()).real), **process_args, dtype="float32"
+            boxcar,
+            np.nan_to_num((sec * sec.conj()).real),
+            **process_args,
+            dtype="float32",
         )
     )
 
@@ -355,6 +330,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
+
 def _process_bursts(
     prm,
     sec,
@@ -369,7 +345,7 @@ def _process_bursts(
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
-    order,
+    kernel,
 ):
     luts = []
     prof_tmp = dict(
@@ -408,36 +384,36 @@ def _process_bursts(
 
                 # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx)
-                arr_s_de = arr_s * np.exp(1j * pdb_s)  # .astype(np.complex64)
+                arr_s *= np.exp(1j * pdb_s)
 
                 # project slave LUT into master grid
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
                 # warp raster secondary and deramping phase
-                arr_s2p = align(arr_p, arr_s_de, az_s2p, rg_s2p, order=order)
-                pdb_s2p = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
+                arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+                pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
 
                 # reramp slave
-                arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p)  # .astype(np.complex64)
+                arr_s *= np.exp(-1j * pdb_s)
 
                 # compute topographic phases
-                rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
+                rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
                 pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
                 pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
                 lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif")
+                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
                 luts.append(f"{dir_out}/lut_{burst_idx}.tif")
 
-                arr_s2p = arr_s2p * pha_topo
+                arr_s *= pha_topo
 
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
                 ds_prm.write(
                     arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
                 )
                 ds_sec.write(
-                    arr_s2p,
+                    arr_s,
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
@@ -562,24 +538,28 @@ def _stitch_bursts(
 
 def _make_da_from_dem(arr, dem_prof):
 
-    da = xr.DataArray(
+    darr = xr.DataArray(
         data=arr,
         dims=("band", "y", "x"),
     )
-    da.rio.write_crs(dem_prof["crs"], inplace=True)
-    da.rio.write_transform(dem_prof["transform"], inplace=True)
-    da.attrs["_FillValue"] = np.nan
-    return da
+    darr = darr.chunk(chunks="auto")
+    darr.rio.write_crs(dem_prof["crs"], inplace=True)
+    darr.rio.write_transform(dem_prof["transform"], inplace=True)
+    darr.attrs["_FillValue"] = np.nan
+    return darr
 
 
 def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
+
     log.info("Merging LUT")
     off = 0
     H = int(overlap / 2)
     naz = lines_per_burst
     to_merge = []
+    # with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
     for i, file_lut in enumerate(files_lut):
-        lut = xr.open_dataset(file_lut, engine="rasterio", cache=False)["band_data"]
+        # lut = riox.open_rasterio(file_lut, cache=False, chunks=True, lock=False)
+        lut = riox.open_rasterio(file_lut, cache=False)
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
 
@@ -597,4 +577,4 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         to_merge.append(lut)
 
     merged = merge_arrays(to_merge, parse_coordinates=False)
-    merged.rio.to_raster(file_out, windowed=True)
+    merged.rio.to_raster(file_out)  # , windowed=False, tiled=True)

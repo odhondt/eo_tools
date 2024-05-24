@@ -177,9 +177,10 @@ def show_insar_phi(input_path):
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
 
+    eps = np.random.uniform(1e-8, 1e-9)
     tjson = ttcog_get_tilejson(
         file_in,
-        rescale=f"{-np.pi},{np.pi}",
+        rescale=f"{-np.pi+eps},{np.pi}",
         resampling="nearest",  # please make sure COG has been made with 'nearest'
         colormap=json.dumps({x: y for x, y in zip(range(256), cmap_hex)}),
     )
@@ -216,7 +217,8 @@ def show_insar_coh(input_path):
         raise FileExistsError("Problem reading file or file does not exist.")
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
-    tjson = ttcog_get_tilejson(file_in, rescale="0,1")
+    eps = np.random.uniform(1e-8, 1e-9)
+    tjson = ttcog_get_tilejson(file_in, rescale=f"{0+eps},1")
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -228,7 +230,6 @@ def show_insar_coh(input_path):
     return m
 
 
-# TODO: add dB
 def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     """Visualize intensity on a map.
 
@@ -270,16 +271,16 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
         vmax_ = vmax
     info = ttcog_get_info(file_in)
     bounds = info["bounds"]
+    eps = np.random.uniform(1e-8, 1e-9)
     if dB:
         tjson = ttcog_get_tilejson(
             file_in,
-            rescale=f"{vmin_},{vmax_}",
-            resampling="average",
+            rescale=f"{vmin_+eps},{vmax_}",
             expression="10*log10(b1)",
         )
     else:
         tjson = ttcog_get_tilejson(
-            file_in, rescale=f"{vmin_},{vmax_}", resampling="average"
+            file_in, rescale=f"{vmin_+eps},{vmax_}"
         )
 
     m = folium.Map(
