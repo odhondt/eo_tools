@@ -176,8 +176,8 @@ def _remap(img, rr, cc, kernel="bicubic"):
         for i in range(int(rmin), int(rmax) + 1):
             for j in range(int(cmin), int(cmax) + 1):
                 # using nearest neighbor on image border
-                i2 = np.minimum(np.maximum(0, i), img.shape[0] - 1)
-                j2 = np.minimum(np.maximum(0, j), img.shape[1] - 1)
+                i2 = min(max(0, i), img.shape[0] - 1)
+                j2 = min(max(0, j), img.shape[1] - 1)
                 val += ker(r - i) * ker(c - j) * img[i2, j2]
         arr_out.flat[idx] = val
     return arr_out
