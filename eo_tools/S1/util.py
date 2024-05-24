@@ -111,21 +111,23 @@ def _ker_cub(x):
         return 0.0
 
 
-# @cfunc("double(double)")
-# def _ker_cub6(x):
-#     a = -0.5
-#     b = 0.5
-#     ax = np.abs(x)
-#     ax2 = ax**2
-#     ax3 = ax**3
-    # if ax < 1:
-    #     return (a + b + 2) * ax3 - (a + b + 3) * ax2 + 1
-    # elif (ax >= 1) & (ax < 2):
-    #     return a * ax3 - (5 * a - b) * ax2 + (8 * a - 3 * b) * ax - (4 * a - 2 * b)
-    # elif (ax >= 2) & (ax < 3):
-    #     return b * ax3 - 8 * b * ax2 + 21 * b * ax - 18 * b
-    # else:
-    #     return 0.0
+@cfunc("double(double)")
+def _ker_cub6(x):
+    """6-point bicubic kernel described in Keys81"""
+    a = -0.5
+    b = 0.5
+    ax = np.abs(x)
+    ax2 = ax**2
+    ax3 = ax**3
+    if ax < 1:
+        return 4 * ax3 / 3 - 7 * ax2 / 3 + 1
+    elif (ax >= 1) & (ax < 2):
+        return -7 * ax3 / 12 + 3 * ax2 - 59 * ax / 12 + 15 / 6
+    elif (ax >= 2) & (ax < 3):
+        return ax3 / 12 - 2 * ax2 / 3 + 21 * ax / 12 - 3 / 2
+    else:
+        return 0.0
+
 
 
 @njit(parallel=True, nogil=True, fastmath=True)
