@@ -91,7 +91,7 @@ def test_process_bursts(
     nrg = prm.samples_per_burst
     dem_upsampling = 1.8
     dem_buffer_arc_sec = 40
-    order = 3
+    warp_kernel = "bicubic"
     dem_force_download = True
 
     # Call the function
@@ -109,7 +109,7 @@ def test_process_bursts(
         dem_upsampling,
         dem_buffer_arc_sec,
         dem_force_download,
-        order,
+        warp_kernel,
     )
     # Assertions
     assert len(luts) == max_burst - min_burst + 1

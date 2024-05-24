@@ -1,6 +1,5 @@
 import numpy as np
 
-# import scipy.ndimage.filters as flt
 from scipy.ndimage import convolve
 from numba import njit, prange, cfunc
 
@@ -79,7 +78,7 @@ def presum(img, m, n):
 
 
 # fast parallel resampling
-# TODO: add 6-point bicubic and truncated sinc
+# TODO: add truncated sinc
 @cfunc("double(double)")
 def _ker_near(x):
     ax = np.abs(x)
@@ -135,7 +134,8 @@ def remap(img, rr, cc, kernel="bicubic"):
     else:
         return _remap(img, rr, cc, kernel)
 
-@njit(parallel=True, nogil=True, fastmath=True)
+
+@njit(parallel=True, nogil=True)
 def _remap(img, rr, cc, kernel="bicubic"):
 
     if rr.shape != cc.shape:

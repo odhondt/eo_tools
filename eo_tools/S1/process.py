@@ -9,7 +9,8 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from scipy.ndimage import map_coordinates
-from eo_tools.S1.util import presum, boxcar
+from eo_tools.S1.util import presum, boxcar, remap
+from eo_tools.bench import timeit
 from numba import njit, prange
 
 from memory_profiler import profile
@@ -31,7 +32,7 @@ def preprocess_insar_iw(
     max_burst=None,
     dir_dem="/tmp",
     apply_fast_esd=True,
-    warp_polynomial_order=3,
+    warp_kernel="bicubic",
     dem_upsampling=2,
     dem_buffer_arc_sec=40,
     dem_force_download=False,
@@ -49,7 +50,7 @@ def preprocess_insar_iw(
         max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
-        warp_polynomial_order (int, optional): polynomial order used to align secondary SLC. Defaults to 3.
+        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -115,7 +116,7 @@ def preprocess_insar_iw(
         dem_upsampling,
         dem_buffer_arc_sec,
         dem_force_download,
-        order=warp_polynomial_order,
+        kernel=warp_kernel,
     )
     if (max_burst_ > min_burst) & apply_fast_esd:
         _apply_fast_esd(
@@ -153,14 +154,14 @@ def preprocess_insar_iw(
 
     log.info("Done")
 
-
+@timeit
 def slc2geo(
     slc_file,
     lut_file,
     out_file,
     mlt_az=1,
     mlt_rg=1,
-    order=3,
+    kernel="bicubic",
     write_phase=False,
     magnitude_only=False,
 ):
@@ -172,7 +173,7 @@ def slc2geo(
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
-        order (int): order of the polynomial kernel for resampling. Defaults to 3.
+        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
     Note:
@@ -199,33 +200,7 @@ def slc2geo(
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
-    # remove nan because of map_coordinates
-    msk = np.isnan(arr_)
-    arr_[msk] = 0
-
-    if np.iscomplexobj(arr_):
-        nodata = np.nan + 1j * np.nan
-        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
-    else:
-        nodata = np.nan
-        arr_out = np.full_like(lut[0], nodata, dtype=prof_src["dtype"])
-    msk_out = np.ones_like(lut[0], dtype=bool)
-
-    arr_out[valid] = map_coordinates(
-        arr_,
-        (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg),
-        order=order,
-        cval=nodata,
-        prefilter=False,
-    )
-    msk_out[valid] = map_coordinates(
-        msk, (lut[0][valid] / mlt_az, lut[1][valid] / mlt_rg), order=0
-    )
-
-    if np.iscomplexobj(arr_out):
-        arr_out[msk_out] = np.nan + 1j * np.nan
-    else:
-        arr_out[msk_out] = np.nan
+    arr_out = remap(arr_, lut[0] / mlt_az, lut[1] / mlt_rg, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
     if write_phase:
@@ -377,7 +352,7 @@ def _process_bursts(
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
-    order,
+    kernel,
 ):
     luts = []
     prof_tmp = dict(
@@ -422,8 +397,8 @@ def _process_bursts(
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
                 # warp raster secondary and deramping phase
-                arr_s = align(arr_p, arr_s, az_s2p, rg_s2p, order=order)
-                pdb_s = align(arr_p, pdb_s, az_s2p, rg_s2p, order=order)
+                arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+                pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
 
                 # reramp slave
                 arr_s *= np.exp(-1j * pdb_s)

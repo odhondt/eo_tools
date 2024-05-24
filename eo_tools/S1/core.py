@@ -529,7 +529,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
 @timeit
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
-
+    log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
