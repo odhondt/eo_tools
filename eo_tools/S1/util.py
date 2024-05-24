@@ -129,29 +129,29 @@ def _ker_cub6(x):
         return 0.0
 
 
-def remap(img, rr, cc, interpolation="bicubic"):
+def remap(img, rr, cc, kernel="bicubic"):
     if np.iscomplexobj(img):
-        return _remap(img.real, rr, cc, interpolation) + 1j * _remap(img.imag, rr, cc, interpolation)
+        return _remap(img.real, rr, cc, kernel) + 1j * _remap(img.imag, rr, cc, kernel)
     else:
-        return _remap(img, rr, cc, interpolation)
+        return _remap(img, rr, cc, kernel)
 
 @njit(parallel=True, nogil=True, fastmath=True)
-def _remap(img, rr, cc, interpolation="bicubic"):
+def _remap(img, rr, cc, kernel="bicubic"):
 
     if rr.shape != cc.shape:
         raise ValueError("Coordinate arrays must have the same shape.")
 
     arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
-    if interpolation == "nearest":
+    if kernel == "nearest":
         ker = _ker_near
         H = 0
-    elif interpolation == "bilinear":
+    elif kernel == "bilinear":
         ker = _ker_lin
         H = 0
-    elif interpolation == "bicubic":
+    elif kernel == "bicubic":
         ker = _ker_cub
         H = 1
-    elif interpolation == "bicubic6":
+    elif kernel == "bicubic6":
         ker = _ker_cub6
         H = 2
     else:
