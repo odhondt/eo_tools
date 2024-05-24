@@ -10,7 +10,7 @@ from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
 from shapely.geometry import box
 from rasterio.enums import Resampling
-from numba import njit, jit, prange
+from numba import njit, prange
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
 
@@ -22,8 +22,6 @@ from zipfile import ZipFile
 # WARP_RELATIVE_MAP only in dev version for now
 
 # benchmark & debug
-from eo_tools.bench import timeit
-import matplotlib.pyplot as plt
 
 
 import logging
@@ -527,7 +525,6 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     return az_s2p, rg_s2p
 
-@timeit
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)

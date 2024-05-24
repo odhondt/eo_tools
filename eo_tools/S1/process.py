@@ -8,12 +8,8 @@ import rioxarray as riox
 from rioxarray.merge import merge_arrays
 import warnings
 import os
-from scipy.ndimage import map_coordinates
 from eo_tools.S1.util import presum, boxcar, remap
-from eo_tools.bench import timeit
-from numba import njit, prange
 
-from memory_profiler import profile
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
@@ -154,7 +150,6 @@ def preprocess_insar_iw(
 
     log.info("Done")
 
-@timeit
 def slc2geo(
     slc_file,
     lut_file,
