@@ -3,6 +3,7 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
+from math import floor, ceil
 from scipy.interpolate import CubicHermiteSpline
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
@@ -525,6 +526,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     return az_s2p, rg_s2p
 
+
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
@@ -748,6 +750,15 @@ def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
+
+    # DEM dependent
+    step = 1 / 3600
+
+    xmin = floor(xmin / step) * step
+    xmax = ceil(xmax / step) * step
+    ymin = floor(ymin / step) * step
+    ymax = ceil(ymax / step) * step
+
     off = buffer_arc_sec / 3600
     shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
 
@@ -771,7 +782,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
             resampling=Resampling.bilinear,
             # resampling=Resampling.cubic,
         )[0]
-
         # scale image transform
         dem_prof = ds.profile.copy()
         dem_trans = ds.transform * ds.transform.scale(
