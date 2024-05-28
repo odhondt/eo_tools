@@ -13,11 +13,11 @@ dependencies:
   - pystac
   - geopandas
   - pandas
+  # - eodag
   - ipykernel
   - ipywidgets
   - black
   - scikit-image
-  - eodag
   - ipyleaflet
   - folium
   - tqdm
@@ -29,4 +29,7 @@ dependencies:
   - numba
   - dask
   - bottleneck
+  - pip:
+    - titiler.application
+    - eodag
   # - memory_profiler

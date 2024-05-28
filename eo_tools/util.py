@@ -9,8 +9,13 @@ import json
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
 from eo_tools.S2 import make_s2_rgb, make_s2_color
-
 import httpx
+
+import subprocess
+import signal
+import os
+import time
+import socket
 
 
 # check for geometrical overlap
@@ -90,8 +95,110 @@ def explore_products(products, aoi=None):
     return m
 
 
+class TileServerManager:
+    """Start / stop the Titiler app."""
+
+    _ENV_VARIABLE = "TILE_SERVER_PID"
+
+    @classmethod
+    def start(cls, port=8085, timeout=30):
+        # Check if the server is already running
+        if not cls._get_server_pid():
+            try:
+                # Check if the port is already in use
+                if cls._is_port_in_use(port):
+                    raise RuntimeError(
+                        f"Port {port} is already in use by another application."
+                    )
+
+                # Start the server
+                env = os.environ.copy()
+                process = subprocess.Popen(
+                    [
+                        "uvicorn",
+                        "titiler.application.main:app",
+                        "--host",
+                        "127.0.0.1",
+                        f"--port={port}",
+                        "--log-level",
+                        "info",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    preexec_fn=os.setsid,
+                    shell=False,
+                    env=env,
+                )
+
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    if process.poll() is not None:
+                        # If the process has exited, raise an error
+                        raise RuntimeError(
+                            f"Failed to start server on port {port}. Error: {process.stderr.read().decode()}"
+                        )
+
+                    if cls._is_port_in_use(port):
+                        # Server is up and running
+                        cls._set_server_pid(process.pid)
+                        print(f"Server started with PID: {process.pid} on port {port}")
+                        return
+                    time.sleep(1)
+
+                # Timeout reached, server didn't start
+                process.terminate()
+                raise RuntimeError(
+                    f"Timeout reached. Server failed to start on port {port} within {timeout} seconds."
+                )
+
+            except Exception as e:
+                print(f"Error starting server: {e}")
+        else:
+            print(f"Server is already running on port {port}.")
+
+    @classmethod
+    def stop(cls):
+        # Get the server PID
+        pid = cls._get_server_pid()
+        if pid:
+            # Stop the server process using the PID
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+                print(f"Server with PID {pid} stopped.")
+            except OSError as e:
+                print(f"Error stopping server with PID {pid}: {e}")
+            # Clear the PID from the environment variable
+            cls._clear_server_pid()
+        else:
+            print("Server is not running.")
+
+    @classmethod
+    def _get_server_pid(cls):
+        # Get the server PID from the environment variable
+        return os.getenv(cls._ENV_VARIABLE)
+
+    @classmethod
+    def _set_server_pid(cls, pid):
+        # Set the server PID in the environment variable
+        os.environ[cls._ENV_VARIABLE] = str(pid)
+
+    @classmethod
+    def _clear_server_pid(cls):
+        # Clear the server PID from the environment variable
+        os.environ.pop(cls._ENV_VARIABLE, None)
+
+    @staticmethod
+    def _is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def ttcog_get_stats(url, **kwargs):
-    titiler_endpoint = "http://localhost:8085"
+    if "port" in kwargs.keys():
+        port = kwargs["port"]
+    else:
+        port = 8085
+    titiler_endpoint = f"http://localhost:{port}"
     r = httpx.get(
         f"{titiler_endpoint}/cog/statistics",
         params={"url": url, **kwargs},
@@ -99,8 +206,8 @@ def ttcog_get_stats(url, **kwargs):
     return r
 
 
-def ttcog_get_info(url):
-    titiler_endpoint = "http://localhost:8085"
+def ttcog_get_info(url, port=8085):
+    titiler_endpoint = f"http://localhost:{port}"
     r = httpx.get(
         f"{titiler_endpoint}/cog/info",
         params={
@@ -111,7 +218,11 @@ def ttcog_get_info(url):
 
 
 def ttcog_get_tilejson(url, **kwargs):
-    titiler_endpoint = "http://localhost:8085"
+    if "port" in kwargs.keys():
+        port = kwargs["port"]
+    else:
+        port = 8085
+    titiler_endpoint = f"http://localhost:{port}"
     r = httpx.get(
         f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
     ).json()
@@ -136,7 +247,7 @@ def palette_phi():
     return json.dumps({x: y for x, y in zip(range(256), cmap_hex)})
 
 
-def show_insar_phi(input_path):
+def show_insar_phi(input_path, port=8085):
     # def visualize_insar_phase(input_path):
     """Visualize interferometric phase on a map with a cyclic colormap (similar to SNAP).
 
@@ -174,14 +285,15 @@ def show_insar_phi(input_path):
     interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
     cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
 
-    info = ttcog_get_info(file_in)
+    info = ttcog_get_info(file_in, port=port)
     bounds = info["bounds"]
 
     eps = np.random.uniform(1e-8, 1e-9)
     tjson = ttcog_get_tilejson(
         file_in,
+        port=port,
         rescale=f"{-np.pi+eps},{np.pi}",
-        resampling="nearest",  # please make sure COG has been made with 'nearest'
+        resampling="nearest",  # make sure COG has been made with 'nearest'
         colormap=json.dumps({x: y for x, y in zip(range(256), cmap_hex)}),
     )
 
@@ -196,7 +308,7 @@ def show_insar_phi(input_path):
     return m
 
 
-def show_insar_coh(input_path):
+def show_insar_coh(input_path, port=8085):
     """Visualize coherence on a map.
 
     Args:
@@ -215,10 +327,10 @@ def show_insar_coh(input_path):
 
     if not os.path.isfile(file_in):
         raise FileExistsError("Problem reading file or file does not exist.")
-    info = ttcog_get_info(file_in)
+    info = ttcog_get_info(file_in, port)
     bounds = info["bounds"]
     eps = np.random.uniform(1e-8, 1e-9)
-    tjson = ttcog_get_tilejson(file_in, rescale=f"{0+eps},1")
+    tjson = ttcog_get_tilejson(file_in, port=port, rescale=f"{0+eps},1")
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -230,7 +342,7 @@ def show_insar_coh(input_path):
     return m
 
 
-def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
+def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False, port=8085):
     """Visualize intensity on a map.
 
     Args:
@@ -256,9 +368,11 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
         raise FileExistsError("Problem reading file or file does not exist.")
 
     if not dB:
-        stats = ttcog_get_stats(file_in)["b1"]
+        stats = ttcog_get_stats(file_in, port=port)["b1"]
     else:
-        stats = ttcog_get_stats(file_in, expression="10*log10(b1)")["10*log10(b1)"]
+        stats = ttcog_get_stats(file_in, port=port, expression="10*log10(b1)")[
+            "10*log10(b1)"
+        ]
 
     if vmin is None:
         vmin_ = float(stats["percentile_2"])
@@ -269,19 +383,18 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
         vmax_ = float(stats["percentile_98"])
     else:
         vmax_ = vmax
-    info = ttcog_get_info(file_in)
+    info = ttcog_get_info(file_in, port=port)
     bounds = info["bounds"]
     eps = np.random.uniform(1e-8, 1e-9)
     if dB:
         tjson = ttcog_get_tilejson(
             file_in,
+            port=port,
             rescale=f"{vmin_+eps},{vmax_}",
             expression="10*log10(b1)",
         )
     else:
-        tjson = ttcog_get_tilejson(
-            file_in, rescale=f"{vmin_+eps},{vmax_}"
-        )
+        tjson = ttcog_get_tilejson(file_in, port=port, rescale=f"{vmin_+eps},{vmax_}")
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -295,7 +408,7 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False):
     return m
 
 
-def show_s2_rgb(input_dir, force_create=False):
+def show_s2_rgb(input_dir, force_create=False, port=8085):
     """Visualize Sentinel-2 RGB color image on a map
 
     Args:
@@ -310,9 +423,9 @@ def show_s2_rgb(input_dir, force_create=False):
         print("RGB.tif not found (or force_create==True). Creating the file.")
         make_s2_rgb(input_dir)
 
-    info = ttcog_get_info(rgb_path)
+    info = ttcog_get_info(rgb_path, port=port)
     bounds = info["bounds"]
-    tjson = ttcog_get_tilejson(rgb_path)
+    tjson = ttcog_get_tilejson(rgb_path, port=port)
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -323,7 +436,7 @@ def show_s2_rgb(input_dir, force_create=False):
     return m
 
 
-def show_s2_color(input_dir, name="RGB", force_create=False):
+def show_s2_color(input_dir, name="RGB", force_create=False, port=8085):
     """Visualize Sentinel-2 color image on a map
 
     Args:
@@ -339,9 +452,9 @@ def show_s2_color(input_dir, name="RGB", force_create=False):
         print(f"{name}.tif not found (or force_create==True). Creating the file.")
         make_s2_color(input_dir, name)
 
-    info = ttcog_get_info(im_path)
+    info = ttcog_get_info(im_path, port=port)
     bounds = info["bounds"]
-    tjson = ttcog_get_tilejson(im_path)
+    tjson = ttcog_get_tilejson(im_path, port=port)
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -353,7 +466,7 @@ def show_s2_color(input_dir, name="RGB", force_create=False):
     return m
 
 
-def show_cog(url, folium_map=None, **kwargs):
+def show_cog(url, folium_map=None, port=8085, **kwargs):
     """Low-level function to show local or remote raster COG on a folium map.
 
     Args:
@@ -363,20 +476,25 @@ def show_cog(url, folium_map=None, **kwargs):
     Returns:
         folium.Map: raster visualization on an interactive map
     """
-
+    # if "port" in kwargs.keys():
+    #     port = kwargs["port"]
+    # else:
+    #     port = 8085
     # workaround to enforce GDAL not using VSI cache (otherwise preview may not be updated)
-    if 'rescale' in kwargs:
-        low, high = kwargs['rescale'].split(',')
+    if "rescale" in kwargs:
+        low, high = kwargs["rescale"].split(",")
         low = float(low)
         high = float(high)
         eps = np.random.uniform(1e-8, 1e-9)  # Generating a small random number
-        kwargs['rescale'] = f"{low + eps}, {high}"
+        kwargs["rescale"] = f"{low + eps}, {high}"
     else:
-        raise ValueError("Missing 'rescale' argument. Please provide as follows: rescale='low_value, high_value'")
+        raise ValueError(
+            "Missing 'rescale' argument. Please provide as follows: rescale='low_value, high_value'"
+        )
 
-    info = ttcog_get_info(url)
+    info = ttcog_get_info(url, port=port)
     bounds = info["bounds"]
-    tjson = ttcog_get_tilejson(url, **kwargs)
+    tjson = ttcog_get_tilejson(url, port=port, **kwargs)
 
     if folium_map is None:
         m = folium.Map(
@@ -384,8 +502,6 @@ def show_cog(url, folium_map=None, **kwargs):
         )
     else:
         m = folium_map
-
-
 
     folium.TileLayer(
         tiles=tjson["tiles"][0], attr="COG", overlay=True, name=url
