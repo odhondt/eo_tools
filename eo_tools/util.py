@@ -153,8 +153,10 @@ class TileServerManager:
 
             except Exception as e:
                 print(f"Error starting server: {e}")
+                # re-raise for pytest
+                raise
         else:
-            print(f"Server is already running on port {port}.")
+            raise RuntimeError(f"Server is already running on port {port}.")
 
     @classmethod
     def stop(cls):
@@ -169,6 +171,7 @@ class TileServerManager:
                 print(f"Error stopping server with PID {pid}: {e}")
             # Clear the PID from the environment variable
             cls._clear_server_pid()
+            time.sleep(1)
         else:
             print("Server is not running.")
 
