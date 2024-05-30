@@ -113,6 +113,15 @@ class TileServerManager:
 
                 # Start the server
                 env = os.environ.copy()
+                env["WORKERS_PER_CORE"] = "1"
+                env["WEB_CONCURRENCY"] = "1"
+                env["CPL_TMPDIR"]="/tmp"
+                env["GDAL_CACHEMAX"]="75%"
+                env["GDAL_INGESTED_BYTES_AT_OPEN"]="32768"
+                env["GDAL_DISABLE_READDIR_ON_OPEN"]="EMPTY_DIR"
+                env["GDAL_HTTP_MERGE_CONSECUTIVE_RANGES"]="YES"
+                env["GDAL_HTTP_MULTIPLEX"]="YES"
+                env["GDAL_HTTP_VERSION"]="2"
                 process = subprocess.Popen(
                     [
                         "uvicorn",
