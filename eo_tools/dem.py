@@ -20,7 +20,7 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30"):
     Args:
         shp (shapely shape): Geometry of the area of interest
         file_out (str, optional): Output file.
-        dem_name (str, optional): One of the available collections ('3dep-seamless', 'alos-dem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'nasadem'). Defaults to "cop-dem-glo-30".
+        dem_name (str, optional): One of the available collections ('alos-dem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'nasadem'). Defaults to "cop-dem-glo-30".
         tmp_dir (str, optional): Temporary directory where the tiles to be merged and cropped will be stored. Defaults to "/tmp".
         clear_tmp_files (bool, optional): Delete original tiles. Set to False if these are to be reused.
     """
@@ -28,12 +28,22 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30"):
     log.info("Retrieve DEM")
     catalog = Client.open("https://planetarycomputer.microsoft.com/api/stac/v1")
 
+    data_keys = {
+        "nasadem": "elevation",
+        "cop-dem-glo-30": "data",
+        "cop-dem-glo-90": "data",
+        "alos-dem": "data",
+    }
+
+    if dem_name not in data_keys.keys():
+        raise ValueError(f"Unknown DEM. Values are {list(data_keys.keys())}.")
+
     search = catalog.search(collections=[dem_name], intersects=shp)
     items = search.item_collection()
 
     to_merge = []
-    for i in range(len(items)):
-        url = items[i].assets["elevation"].href
+    for item in items:
+        url = item.assets[data_keys[dem_name]].href
         da = riox.open_rasterio(url)
         to_merge.append(da)
 
