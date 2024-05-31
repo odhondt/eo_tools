@@ -150,6 +150,7 @@ def preprocess_insar_iw(
 
     log.info("Done")
 
+
 def slc2geo(
     slc_file,
     lut_file,
@@ -200,7 +201,19 @@ def slc2geo(
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
-        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata})
+        prof_dst.update(
+            {
+                "dtype": phi.dtype.name,
+                "nodata": nodata,
+                "driver": "COG",
+                "compress": "deflate",
+                "resampling": "nearest",
+            }
+        ) 
+        # removing incompatible options
+        prof_dst.pop("blockysize", None)
+        prof_dst.pop("tiled", None)
+        prof_dst.pop("interleave", None)
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
@@ -208,7 +221,19 @@ def slc2geo(
             mag = np.abs(arr_out)
             nodata = 0
             mag[np.isnan(mag)] = nodata
-            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata})
+            prof_dst.update(
+                {
+                    "dtype": mag.dtype.name,
+                    "nodata": nodata,
+                    "driver": "COG",
+                    "compress": "deflate",
+                    "resampling": "nearest",
+                }
+            )
+            # removing incompatible options
+            prof_dst.pop("blockysize", None)
+            prof_dst.pop("tiled", None)
+            prof_dst.pop("interleave", None)
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -330,6 +355,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
+
 
 def _process_bursts(
     prm,
