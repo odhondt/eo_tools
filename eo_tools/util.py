@@ -16,6 +16,16 @@ import signal
 import os
 import time
 import socket
+import psutil
+from multiprocessing import Process
+import logging
+
+# Create a logger for TileServerManager
+logger = logging.getLogger('TileServerManager')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(handler)
 
 
 # check for geometrical overlap
@@ -96,113 +106,77 @@ def explore_products(products, aoi=None):
 
 
 class TileServerManager:
-    """Start / stop the Titiler app."""
-
-    _ENV_VARIABLE = "TILE_SERVER_PID"
-
-    @classmethod
-    def start(cls, port=8085, timeout=30):
-        # Check if the server is already running
-        if not cls._get_server_pid():
-            try:
-                # Check if the port is already in use
-                if cls._is_port_in_use(port):
-                    raise RuntimeError(
-                        f"Port {port} is already in use by another application."
-                    )
-
-                # Start the server
-                env = os.environ.copy()
-                env["WORKERS_PER_CORE"] = "1"
-                env["WEB_CONCURRENCY"] = "1"
-                env["CPL_TMPDIR"]="/tmp"
-                env["GDAL_CACHEMAX"]="75%"
-                env["GDAL_INGESTED_BYTES_AT_OPEN"]="32768"
-                env["GDAL_DISABLE_READDIR_ON_OPEN"]="EMPTY_DIR"
-                env["GDAL_HTTP_MERGE_CONSECUTIVE_RANGES"]="YES"
-                env["GDAL_HTTP_MULTIPLEX"]="YES"
-                env["GDAL_HTTP_VERSION"]="2"
-                process = subprocess.Popen(
-                    [
-                        "uvicorn",
-                        "titiler.application.main:app",
-                        "--host",
-                        "127.0.0.1",
-                        f"--port={port}",
-                        "--log-level",
-                        "info",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    preexec_fn=os.setsid,
-                    shell=False,
-                    env=env,
-                )
-
-                start_time = time.time()
-                while time.time() - start_time < timeout:
-                    if process.poll() is not None:
-                        # If the process has exited, raise an error
-                        raise RuntimeError(
-                            f"Failed to start server on port {port}. Error: {process.stderr.read().decode()}"
-                        )
-
-                    if cls._is_port_in_use(port):
-                        # Server is up and running
-                        cls._set_server_pid(process.pid)
-                        print(f"Server started with PID: {process.pid} on port {port}")
-                        return
-                    time.sleep(1)
-
-                # Timeout reached, server didn't start
-                process.terminate()
-                raise RuntimeError(
-                    f"Timeout reached. Server failed to start on port {port} within {timeout} seconds."
-                )
-
-            except Exception as e:
-                print(f"Error starting server: {e}")
-                # re-raise for pytest
-                raise
-        else:
-            raise RuntimeError(f"Server is already running on port {port}.")
-
-    @classmethod
-    def stop(cls):
-        # Get the server PID
-        pid = cls._get_server_pid()
-        if pid:
-            # Stop the server process using the PID
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-                print(f"Server with PID {pid} stopped.")
-            except OSError as e:
-                print(f"Error stopping server with PID {pid}: {e}")
-            # Clear the PID from the environment variable
-            cls._clear_server_pid()
-            time.sleep(1)
-        else:
-            print("Server is not running.")
+    _env_var_name = 'TILE_SERVER_PID'
 
     @classmethod
     def _get_server_pid(cls):
-        # Get the server PID from the environment variable
-        return os.getenv(cls._ENV_VARIABLE)
+        pid = os.getenv(cls._env_var_name)
+        return int(pid) if pid else None
 
     @classmethod
     def _set_server_pid(cls, pid):
-        # Set the server PID in the environment variable
-        os.environ[cls._ENV_VARIABLE] = str(pid)
+        os.environ[cls._env_var_name] = str(pid)
 
     @classmethod
     def _clear_server_pid(cls):
-        # Clear the server PID from the environment variable
-        os.environ.pop(cls._ENV_VARIABLE, None)
+        if cls._env_var_name in os.environ:
+            del os.environ[cls._env_var_name]
 
-    @staticmethod
-    def _is_port_in_use(port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(("127.0.0.1", port)) == 0
+    @classmethod
+    def _run_server(cls, port):
+        command = [
+            "uvicorn", "titiler.application.main:app",
+            "--host", "127.0.0.1", "--port", str(port),
+            "--log-level", "info"
+        ]
+        logger.info(f"Starting server with command: {' '.join(command)}")
+        process = subprocess.Popen(command)
+        return process.pid
+
+    @classmethod
+    def start(cls, port=8085, timeout=30):
+        if cls._get_server_pid():
+            raise RuntimeError("Server is already running")
+
+        pid = cls._run_server(port)
+        cls._set_server_pid(pid)
+
+        # Wait for the server to start
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    logger.info(f"Server started with PID: {pid}")
+                    return
+            except OSError:
+                time.sleep(0.5)
+
+        cls.stop()
+        raise RuntimeError("Timeout reached: Server did not start in time")
+
+    @classmethod
+    def stop(cls):
+        pid = cls._get_server_pid()
+        if pid:
+            logger.info(f"Stopping server with PID: {pid}")
+            try:
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(1)  # Give the server time to stop
+
+                # Verify that the process is terminated
+                if psutil.pid_exists(pid):
+                    logger.warning(f"Server with PID: {pid} did not terminate, killing it")
+                    os.kill(pid, signal.SIGKILL)
+
+                # Final verification
+                if not psutil.pid_exists(pid):
+                    cls._clear_server_pid()
+                    logger.info("Server stopped")
+                else:
+                    logger.error(f"Failed to stop server with PID: {pid}")
+            except ProcessLookupError:
+                logger.warning(f"No process found with PID: {pid}")
+                cls._clear_server_pid()
 
 
 def ttcog_get_stats(url, **kwargs):
@@ -270,10 +244,8 @@ def show_insar_phi(input_path, port=8085):
         folium.Map: raster visualization on an interactive map
     """
     if os.path.isdir(input_path):
-        print("dir")
         file_in = f"{input_path}/phi.tif"
     elif os.path.isfile(input_path):
-        print("file")
         file_in = input_path
     else:
         raise FileExistsError(f"Problem reading file.")
@@ -488,10 +460,6 @@ def show_cog(url, folium_map=None, port=8085, **kwargs):
     Returns:
         folium.Map: raster visualization on an interactive map
     """
-    # if "port" in kwargs.keys():
-    #     port = kwargs["port"]
-    # else:
-    #     port = 8085
     # workaround to enforce GDAL not using VSI cache (otherwise preview may not be updated)
     if "rescale" in kwargs:
         low, high = kwargs["rescale"].split(",")
