@@ -11,22 +11,6 @@ from matplotlib.colors import to_hex
 from eo_tools.S2 import make_s2_rgb, make_s2_color
 import httpx
 
-import subprocess
-import signal
-import os
-import time
-import socket
-import psutil
-from multiprocessing import Process
-import logging
-
-# Create a logger for TileServerManager
-logger = logging.getLogger('TileServerManager')
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(handler)
-
 
 # check for geometrical overlap
 def has_overlap(geom1, geom2, tolerance=0.01):
@@ -105,101 +89,33 @@ def explore_products(products, aoi=None):
     return m
 
 
-class TileServerManager:
-    _env_var_name = 'TILE_SERVER_PID'
-
-    @classmethod
-    def _get_server_pid(cls):
-        pid = os.getenv(cls._env_var_name)
-        return int(pid) if pid else None
-
-    @classmethod
-    def _set_server_pid(cls, pid):
-        os.environ[cls._env_var_name] = str(pid)
-
-    @classmethod
-    def _clear_server_pid(cls):
-        if cls._env_var_name in os.environ:
-            del os.environ[cls._env_var_name]
-
-    @classmethod
-    def _run_server(cls, port):
-        command = [
-            "uvicorn", "titiler.application.main:app",
-            "--host", "127.0.0.1", "--port", str(port),
-            "--log-level", "info"
-        ]
-        logger.info(f"Starting server with command: {' '.join(command)}")
-        process = subprocess.Popen(command)
-        return process.pid
-
-    @classmethod
-    def start(cls, port=8085, timeout=30):
-        if cls._get_server_pid():
-            raise RuntimeError("Server is already running")
-
-        pid = cls._run_server(port)
-        cls._set_server_pid(pid)
-
-        # Wait for the server to start
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=1):
-                    logger.info(f"Server started with PID: {pid}")
-                    return
-            except OSError:
-                time.sleep(0.5)
-
-        cls.stop()
-        raise RuntimeError("Timeout reached: Server did not start in time")
-
-    @classmethod
-    def stop(cls):
-        pid = cls._get_server_pid()
-        if pid:
-            logger.info(f"Stopping server with PID: {pid}")
-            try:
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(1)  # Give the server time to stop
-
-                # Verify that the process is terminated
-                if psutil.pid_exists(pid):
-                    logger.warning(f"Server with PID: {pid} did not terminate, killing it")
-                    os.kill(pid, signal.SIGKILL)
-
-                # Final verification
-                if not psutil.pid_exists(pid):
-                    cls._clear_server_pid()
-                    logger.info("Server stopped")
-                else:
-                    logger.error(f"Failed to stop server with PID: {pid}")
-            except ProcessLookupError:
-                logger.warning(f"No process found with PID: {pid}")
-                cls._clear_server_pid()
-
-
 def ttcog_get_stats(url, **kwargs):
     if "port" in kwargs.keys():
         port = kwargs["port"]
     else:
         port = 8085
     titiler_endpoint = f"http://localhost:{port}"
-    r = httpx.get(
-        f"{titiler_endpoint}/cog/statistics",
-        params={"url": url, **kwargs},
-    ).json()
+    try:
+        r = httpx.get(
+            f"{titiler_endpoint}/cog/statistics",
+            params={"url": url, **kwargs},
+        ).json()
+    except:
+        raise RuntimeError("Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function.")
     return r
 
 
 def ttcog_get_info(url, port=8085):
     titiler_endpoint = f"http://localhost:{port}"
-    r = httpx.get(
-        f"{titiler_endpoint}/cog/info",
-        params={
-            "url": url,
-        },
-    ).json()
+    try:
+        r = httpx.get(
+            f"{titiler_endpoint}/cog/info",
+            params={
+                "url": url,
+            },
+        ).json()
+    except:
+        raise RuntimeError("Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function.")
     return r
 
 
@@ -209,9 +125,12 @@ def ttcog_get_tilejson(url, **kwargs):
     else:
         port = 8085
     titiler_endpoint = f"http://localhost:{port}"
-    r = httpx.get(
-        f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
-    ).json()
+    try:
+        r = httpx.get(
+            f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
+        ).json()
+    except:
+        raise RuntimeError("Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function.")
     return r
 
 
