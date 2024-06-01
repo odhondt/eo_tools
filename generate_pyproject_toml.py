@@ -56,7 +56,7 @@ def generate_pyproject_and_setup_cfg(package_versions):
             "name": "eo_tools",
             "version": "0.1.0",
             "description": "Description of your package",
-            "authors": [{"name": "<YOUR_NAME>", "email": "<YOUR_EMAIL>"}],
+            "authors": [{"name": "Olivier D'Hondt", "email": "dhondt.olivier@gmail.com"}],
         },
     }
 
@@ -65,8 +65,8 @@ def generate_pyproject_and_setup_cfg(package_versions):
             "name": "eo_tools",
             "version": "0.1.0",
             "description": "Description of your package",
-            "author": "<YOUR_NAME>",
-            "author_email": "<YOUR_EMAIL>",
+            "author": "Olivier D Hondt",
+            "author_email": "dhondt.olivier@gmail.com",
         },
         "options": {
             "packages": ["eo_tools"],
