@@ -43,8 +43,8 @@ def get_package_versions(env_snapshot_file, original_env_file):
     
     return package_versions
 
-# Function to generate the pyproject.toml and setup.cfg
-def generate_pyproject_and_setup_cfg(package_versions):
+# Function to generate the pyproject.toml
+def generate_pyproject_toml(package_versions):
     dependencies = [f"{pkg}=={ver}" for pkg, ver in package_versions.items()]
 
     pyproject = {
@@ -57,43 +57,24 @@ def generate_pyproject_and_setup_cfg(package_versions):
             "version": "0.1.0",
             "description": "Description of your package",
             "authors": [{"name": "Olivier D'Hondt", "email": "dhondt.olivier@gmail.com"}],
+            "dependencies": dependencies
         },
-    }
-
-    setup_cfg = {
-        "metadata": {
-            "name": "eo_tools",
-            "version": "0.1.0",
-            "description": "Description of your package",
-            "author": "Olivier D Hondt",
-            "author_email": "dhondt.olivier@gmail.com",
-        },
-        "options": {
-            "packages": ["eo_tools"],
-            "package_dir": {"": "eo_tools"},
-            "install_requires": dependencies,
-            "include_package_data": True,
+        "tool": {
+            "setuptools": {
+                "packages": ["eo_tools"],
+                "package-dir": {"": "eo_tools"},
+                "include-package-data": True
+            }
         }
     }
 
     with open('pyproject.toml', 'w') as f:
         toml.dump(pyproject, f)
 
-    with open('setup.cfg', 'w') as f:
-        for section, options in setup_cfg.items():
-            f.write(f"[{section}]\n")
-            for key, value in options.items():
-                if isinstance(value, list):
-                    value = '\n\t'.join(value)
-                    f.write(f"{key} =\n\t{value}\n")
-                else:
-                    f.write(f"{key} = {value}\n")
-            f.write("\n")
-
-    print("pyproject.toml and setup.cfg files have been generated.")
+    print("pyproject.toml file has been generated.")
 
 if __name__ == "__main__":
     original_env_file = 'environment.yaml'
     env_snapshot_file = export_environment()
     package_versions = get_package_versions(env_snapshot_file, original_env_file)
-    generate_pyproject_and_setup_cfg(package_versions)
+    generate_pyproject_toml(package_versions)
