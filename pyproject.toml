@@ -1,0 +1,12 @@
+[build-system]
+requires = [ "setuptools", "wheel",]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eo_tools"
+version = "0.1.0"
+description = "Description of your package"
+[[project.authors]]
+name = "<YOUR_NAME>"
+email = "<YOUR_EMAIL>"
+
