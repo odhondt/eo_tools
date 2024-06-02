@@ -12,5 +12,6 @@ name = "Olivier D'Hondt"
 email = "dhondt.olivier@gmail.com"
 
 [tool.setuptools]
+packages = [ "eo_tools",]
 include-package-data = true
 
