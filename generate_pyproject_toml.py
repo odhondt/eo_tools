@@ -45,7 +45,8 @@ def get_package_versions(env_snapshot_file, original_env_file):
 
 # Function to generate the pyproject.toml
 def generate_pyproject_toml(package_versions):
-    dependencies = [f"{pkg}=={ver}" for pkg, ver in package_versions.items()]
+    dependencies = [f"{pkg}" for pkg, ver in package_versions.items()]
+    # dependencies = [f"{pkg}=={ver}" for pkg, ver in package_versions.items()]
 
     pyproject = {
         "build-system": {
