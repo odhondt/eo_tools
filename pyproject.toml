@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eo_tools"
-version = "test"
+version = "2024.6.0"
 description = "Description of your package"
 dependencies = [ "python", "pytest", "gdal", "rasterio", "spatialist", "pip", "pystac", "pystac-client", "geopandas", "pandas", "ipykernel", "ipywidgets", "black", "scikit-image", "ipyleaflet", "folium", "tqdm", "xmltodict", "httpx", "xarray", "netcdf4", "rioxarray", "numba", "dask", "bottleneck",]
 [[project.authors]]
