@@ -7,7 +7,7 @@ dependencies:
   - pytest
   - gdal
   - rasterio
-  - pyroSAR
+  - pyrosar
   - spatialist
   - pip
   - pystac

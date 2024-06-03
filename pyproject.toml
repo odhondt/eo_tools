@@ -6,11 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "eo_tools"
 version = "0.1.0"
 description = "Description of your package"
-dependencies = [ "python==3.12.3", "pytest==7.4.0", "gdal==3.8.5", "rasterio==1.3.10", "spatialist==0.13.1", "pip==24.0", "pystac==1.10.1", "pystac-client==0.8.1", "geopandas==0.14.2", "pandas==2.1.4", "ipykernel==6.28.0", "ipywidgets==8.1.2", "black==24.3.0", "scikit-image==0.22.0", "ipyleaflet==0.17.4", "folium==0.14.0", "tqdm==4.66.4", "xmltodict==0.13.0", "httpx==0.26.0", "xarray==2023.6.0", "netcdf4==1.6.5", "rioxarray==0.15.5", "numba==0.59.1", "dask==2024.5.0", "bottleneck==1.3.7",]
+dependencies = [ "python==3.12.3", "pytest==7.4.0", "gdal==3.8.5", "rasterio==1.3.10", "pyrosar==0.24.0", "spatialist==0.13.1", "pip==24.0", "pystac==1.10.1", "pystac-client==0.8.1", "geopandas==0.14.2", "pandas==2.1.4", "ipykernel==6.28.0", "ipywidgets==8.1.2", "black==24.3.0", "scikit-image==0.22.0", "ipyleaflet==0.17.4", "folium==0.14.0", "tqdm==4.66.4", "xmltodict==0.13.0", "httpx==0.26.0", "xarray==2023.6.0", "netcdf4==1.6.5", "rioxarray==0.15.5", "numba==0.59.1", "dask==2024.5.0", "bottleneck==1.3.7", "titiler.application==0.18.3", "eodag==2.12.1",]
 [[project.authors]]
-name = "Olivier D'Hondt"
-email = "dhondt.olivier@gmail.com"
+name = "<YOUR_NAME>"
+email = "<YOUR_EMAIL>"
 
 [tool.setuptools]
 packages = [ "eo_tools",]
 include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "eo_tools"

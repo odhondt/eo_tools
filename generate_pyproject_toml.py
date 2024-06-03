@@ -1,6 +1,7 @@
-import subprocess
 import yaml
 import toml
+import subprocess
+import re
 
 # Function to run a shell command and capture the output
 def run_command(command):
@@ -10,43 +11,61 @@ def run_command(command):
         raise Exception(result.stderr)
     return result.stdout
 
-# Function to export current conda environment to a YAML file
-def export_environment():
-    env_snapshot_file = "environment_snapshot.yaml"
-    run_command(f"micromamba env export --no-build > {env_snapshot_file}")
-    return env_snapshot_file
+# Function to get the installed version of a package
+def get_installed_version(package_name):
+    try:
+        output = run_command(f"micromamba list ^{package_name}$")
+        line = output.strip().split('\n')[4]  # Skip the header lines
+        parts = line.split()
+        if len(parts) > 1:
+            return parts[1]
+    except Exception as e:
+        print(f"Could not find installed version for {package_name}: {e}")
+    return None
 
-# Function to get the package versions from the environment snapshot
-def get_package_versions(env_snapshot_file, original_env_file):
-    with open(env_snapshot_file, 'r') as f:
+def get_installed_version_pip(package_name):
+    try:
+        output = run_command(f"pip show {package_name}")
+        line = output.strip().split('\n')[1]  # Skip the first line
+        parts = line.split()
+        if len(parts) > 1:
+            return parts[1]
+    except Exception as e:
+        print(f"Could not find installed version for {package_name}: {e}")
+    return None
+
+# Function to parse the environment.yml file and extract package information with versions
+def parse_environment_file(env_file):
+    with open(env_file, 'r') as f:
         env_data = yaml.safe_load(f)
     
-    with open(original_env_file, 'r') as f:
-        original_env_data = yaml.safe_load(f)
-    
-    # Extract only the packages listed in the original environment file
-    package_versions = {}
-    for dep in original_env_data['dependencies']:
+    conda_packages = []
+    pip_packages = []
+
+    for dep in env_data['dependencies']:
         if isinstance(dep, str):
-            package_name = dep.split('=')[0]
-            for env_dep in env_data['dependencies']:
-                if isinstance(env_dep, str) and env_dep.startswith(package_name + '='):
-                    package_versions[package_name] = env_dep.split('=')[1]
+            package_name = dep.split('=')[0].lower()
+            version = get_installed_version(package_name)
+            print(package_name, version)
+            if version:
+                conda_packages.append(f"{package_name}=={version}")
+            else:
+                conda_packages.append(package_name)
         elif isinstance(dep, dict) and 'pip' in dep:
             for pip_dep in dep['pip']:
                 package_name = pip_dep.split('==')[0]
-                for env_dep in env_data['dependencies']:
-                    if isinstance(env_dep, dict) and 'pip' in env_dep:
-                        for env_pip_dep in env_dep['pip']:
-                            if env_pip_dep.startswith(package_name + '=='):
-                                package_versions[package_name] = env_pip_dep.split('==')[1]
+                version = get_installed_version_pip(package_name)
+                print(package_name, version)
+                if version:
+                    pip_packages.append(f"{package_name}=={version}")
+                else:
+                    pip_packages.append(pip_dep)
     
-    return package_versions
+    return conda_packages, pip_packages
 
 # Function to generate the pyproject.toml
-def generate_pyproject_toml(package_versions):
-    # dependencies = [f"{pkg}" for pkg, ver in package_versions.items()]
-    dependencies = [f"{pkg}=={ver}" for pkg, ver in package_versions.items()]
+def generate_pyproject_toml(conda_packages, pip_packages):
+    dependencies = conda_packages + pip_packages
 
     pyproject = {
         "build-system": {
@@ -57,13 +76,13 @@ def generate_pyproject_toml(package_versions):
             "name": "eo_tools",
             "version": "0.1.0",
             "description": "Description of your package",
-            "authors": [{"name": "Olivier D'Hondt", "email": "dhondt.olivier@gmail.com"}],
+            "authors": [{"name": "<YOUR_NAME>", "email": "<YOUR_EMAIL>"}],
             "dependencies": dependencies
         },
         "tool": {
             "setuptools": {
                 "packages": ["eo_tools"],
-                # "package-dir": {"": "eo_tools"},
+                "package-dir": {"": "eo_tools"},
                 "include-package-data": True
             }
         }
@@ -76,6 +95,5 @@ def generate_pyproject_toml(package_versions):
 
 if __name__ == "__main__":
     original_env_file = 'environment.yaml'
-    env_snapshot_file = export_environment()
-    package_versions = get_package_versions(env_snapshot_file, original_env_file)
-    generate_pyproject_toml(package_versions)
+    conda_packages, pip_packages = parse_environment_file(original_env_file)
+    generate_pyproject_toml(conda_packages, pip_packages)
