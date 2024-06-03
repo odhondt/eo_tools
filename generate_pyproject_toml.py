@@ -75,8 +75,8 @@ def generate_pyproject_toml(conda_packages, pip_packages):
         "project": {
             "name": "eo_tools",
             "version": "0.1.0",
-            "description": "Description of your package",
-            "authors": [{"name": "<YOUR_NAME>", "email": "<YOUR_EMAIL>"}],
+            "description": "A toolbox for easily searching, downloading & processing remote sensing imagery from various public sources. ",
+            "authors": [{"name": "Olivier D'Hondt", "email": "dhondt.olivier@gmail.com"}],
             "dependencies": dependencies
         },
         "tool": {
@@ -94,6 +94,6 @@ def generate_pyproject_toml(conda_packages, pip_packages):
     print("pyproject.toml file has been generated.")
 
 if __name__ == "__main__":
-    original_env_file = 'environment.yaml'
+    original_env_file = 'environment-cf.yaml'
     conda_packages, pip_packages = parse_environment_file(original_env_file)
     generate_pyproject_toml(conda_packages, pip_packages)

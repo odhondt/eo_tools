@@ -1,0 +1,33 @@
+name: eo_tools
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pytest
+  - gdal
+  - rasterio
+  - pyrosar
+  - spatialist
+  - pip
+  - pystac
+  - pystac-client
+  - geopandas
+  - pandas
+  - ipykernel
+  - ipywidgets
+  - black
+  - scikit-image
+  - ipyleaflet
+  - folium
+  - tqdm
+  - xmltodict
+  - httpx
+  - xarray
+  - netcdf4
+  - rioxarray
+  - numba
+  - dask
+  - bottleneck
+  - pip: # must be kept as is to generate .toml
+    - eodag
