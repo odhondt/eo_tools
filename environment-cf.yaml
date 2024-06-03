@@ -14,6 +14,7 @@ dependencies:
   - pystac-client
   - geopandas
   - pandas
+  - eodag
   - ipykernel
   - ipywidgets
   - black
@@ -29,5 +30,5 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  - pip: # must be kept as is to generate .toml
-    - eodag
+  # - pip: # must be kept as is to generate .toml
+    # - eodag

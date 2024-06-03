@@ -14,7 +14,7 @@ dependencies:
   - pystac-client
   - geopandas
   - pandas
-  # - eodag
+  - eodag
   - ipykernel
   - ipywidgets
   - black
@@ -30,7 +30,7 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  - pip:
-    - titiler.application
-    - eodag
+  # - pip:
+    # - titiler.application
+    # - eodag
   # - memory_profiler
