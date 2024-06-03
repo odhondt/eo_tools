@@ -82,7 +82,6 @@ def generate_pyproject_toml(conda_packages, pip_packages):
         "tool": {
             "setuptools": {
                 "packages": ["eo_tools"],
-                "package-dir": {"": "eo_tools"},
                 "include-package-data": True
             }
         }
