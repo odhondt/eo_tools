@@ -1,6 +1,6 @@
 # EO-Tools: 
 
-A dockerized toolbox for easy programmatic processing of remote sensing imagery from various public sources.
+A pure python toolbox for easy programmatic processing of remote sensing imagery from various public sources.
 
 ## New feature: standalone TOPS InSAR processor
 - **Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.**
