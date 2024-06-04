@@ -30,7 +30,5 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  # - pip:
-    # - titiler.application
+  # - pip: # must be kept as is to generate .toml
     # - eodag
-  # - memory_profiler

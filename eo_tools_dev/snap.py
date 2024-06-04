@@ -14,7 +14,7 @@ from datetime import datetime
 import calendar
 from dateutil.parser import parser
 
-from ..auxils import remove
+from eo_tools.auxils import remove
 
 import logging
 
