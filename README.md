@@ -45,8 +45,8 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 
 - The package comes in two flavors
     - A conda package that contains the main functionality (Sentinel-1 InSAR, Sentinel-2 tile mosaic and DEM download)
-    - A docker container (for more advanced users) that also works with a TiTiler server for interactive visualization in the notebooks
-    - The legacy SNAP based processor is also only available in the docker version.
+    - A docker container (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
+    - The legacy SNAP based processor is only available in the docker version.
 
 ### Conda
 
