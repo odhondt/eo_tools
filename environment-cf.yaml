@@ -1,6 +1,5 @@
 name: eo_tools
 channels:
-  - defaults
   - conda-forge
 dependencies:
   - python=3.12
@@ -30,5 +29,8 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  # - pip: # must be kept as is to generate .toml
-    # - eodag
+  - websockets 
+  - watchfiles 
+  - uvloop 
+  - python-dotenv 
+  - httptools

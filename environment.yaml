@@ -1,6 +1,6 @@
 name: eo_tools
 channels:
-  - defaults
+  # - defaults
   - conda-forge
 dependencies:
   - python=3.12
@@ -30,6 +30,12 @@ dependencies:
   - numba
   - dask
   - bottleneck
+  # these are required to avoid eodag to break
+  - websockets 
+  - watchfiles 
+  - uvloop 
+  - python-dotenv 
+  - httptools
   # - pip:
     # - titiler.application
     # - eodag
