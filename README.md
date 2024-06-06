@@ -41,16 +41,18 @@ Here are examples of amplitude, phase and coherence computed using this framewor
         - Show remote and local images on top of folium maps in the notebook
 - Example notebooks can be found in the `notebooks/` folder
 
-## Install & usage
+## Install & quick start
 
 - The package comes in two flavors
     - A conda package that contains the main functionality (Sentinel-1 InSAR, Sentinel-2 tile mosaic and DEM download)
-    - A docker container (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
+    - A docker version (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
     - The legacy SNAP based processor is only available in the docker version.
 
-### Conda
+### Conda install
 
 - It is recommended to first create a conda environment to avoid package conflicts
+- You need to have `conda` installed (or `mamba` / `micromamba`)
+- Then the package can be installed with these commands (replace `conda` by `mamba` or `micromamba` if needed):
 
 ```bash
 conda env create -n eo_tools
@@ -58,12 +60,12 @@ conda activate eo_tools
 conda install conda-forge::eo_tools
 ```
 
-### Docker
+### Docker install
 
 - It works as a dev container for VSCode. 
-    - Clone into the location of your choice.
+    - Clone this repository into the location of your choice.
     - Volumes paths can (and should) be changed in `docker-compose.yml`.
-    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks can be used.
+    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks in the `notebooks` directory can be used.
 - Alternatively, it should also be possible to start the container from the main directory with `docker-compose up -d` in a terminal and attach to the container with any editor supporting docker.
 
 ### Getting started
