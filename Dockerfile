@@ -26,5 +26,6 @@ RUN source ~/.bashrc
 COPY environment.yaml environment.yaml
 RUN micromamba create -f  environment.yaml
 RUN echo "micromamba activate eo_tools" >> ~/.bashrc
+RUN echo "alias conda='micromamba'" >> ~/.bashrc
 
 RUN micromamba activate eo_tools
