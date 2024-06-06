@@ -449,23 +449,24 @@ class S1IWSwath:
 
 
 def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
+    """Fast parallel coregistration based on lookup-tables in a DEM geometry.
+
+    Args:
+        arr_p (array): array containing the data of the primary burst to coregister
+        az_p2g (array): primary azimuth coordinates
+        rg_p2g (array): primary range coordinates
+        az_s2g (array): secondary azimuth coordinates
+        rg_s2g (array): secondary range coordinates
+
+    Returns:
+        arrays: az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
+    """
     log.info("Projecting secondary coordinates onto primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
 @njit(cache=True, nogil=True, parallel=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
-    """Fast parallel coregistration based on lookup-tables in a DEM geometry.
-
-    Args:
-        azp (array): primary azimuth coordinates
-        rgp (array): primary range coordinates
-        azs (array): secondary azimuth coordinates
-        rgs (array): secondary range coordinates
-
-    Returns:
-        arrays: az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
-    """
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -528,6 +529,17 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
 
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
+    """Aligns the secondary image to the geometry of the primary
+
+    Args:
+        arr_s (array): image in the secondary geometry
+        az_s2p (array): azimuth lookup table to project secondary to primary
+        rg_s2p (array): range lookup table project secondary to primary
+        kernel (str, optional): Type of kernel (values are "nearest", "bilinear", "bicubic" -- 4 point bicubic, "bicubic6" -- six point bicubic). Defaults to "bicubic".
+
+    Returns:
+        array: projected image
+    """    
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
