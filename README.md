@@ -16,9 +16,9 @@ A pure python toolbox for easy programmatic processing of remote sensing imagery
 
 Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
-    <img src="./data/ex_amp.png" width="250">
-    <img src="./data/ex_phi.png" width="250">
-    <img src="./data/ex_coh.png" width="250">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="250">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="250">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="250">
 </p>
 
 ## Overview
