@@ -57,7 +57,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 ```bash
 conda env create -n eo_tools
 conda activate eo_tools
-conda install conda-forge::eo_tools
+conda install conda-forge::eo-tools 
 ```
 
 ### Docker install
