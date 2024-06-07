@@ -1,0 +1,51 @@
+site_name: eo_tools documentation
+nav:
+  - Home: index.md
+  - API reference: api.md
+theme:
+  name: material
+  highlightjs: true
+  hljslanguages:
+    - python
+  features:
+    - navigation.instant
+  palette:
+
+  # Palette toggle for automatic mode
+  - media: "(prefers-color-scheme)"
+    toggle:
+      icon: material/brightness-auto
+      name: Switch to light mode
+
+  # Palette toggle for light mode
+  - media: "(prefers-color-scheme: light)"
+    scheme: default 
+
+
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+
+  # Palette toggle for dark mode
+  - media: "(prefers-color-scheme: dark)"
+    scheme: slate
+    toggle:
+      icon: material/brightness-4
+      name: Switch to system preference
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        # See: https://mkdocstrings.github.io/python/usage/
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            heading_level: 1
+markdown_extensions:
+  - markdown_include.include:
+      base_path: .
+  - toc:
+      toc_depth: 4
+      baselevel: 2
+  # - admonition
