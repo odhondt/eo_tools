@@ -21,6 +21,14 @@ conda activate eo_tools
 conda install conda-forge::eo_tools
 ```
 
+### Docker install
+
+- It works as a dev container for VSCode. 
+    - Clone this repository into the location of your choice.
+    - Volumes paths can (and should) be changed in `docker-compose.yml`.
+    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks in the `notebooks` directory can be used.
+- Alternatively, it should also be possible to start the container from the main directory with `docker-compose up -d` in a terminal and attach to the container with any editor supporting docker.
+
 ## Usage
 Examples can be found here:  
 
