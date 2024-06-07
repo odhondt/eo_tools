@@ -1,4 +1,4 @@
-# EO-Tools
+# EO-Tools documentation
 
 EO-Tools is a python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. 
 
@@ -22,13 +22,14 @@ conda install conda-forge::eo_tools
 ```
 
 ## Usage
-Examples of the toolbox features can be found here:  
+Examples can be found here:  
 
-[Example of Sentinel-1 InSAR processing](s1-easy-tops-insar.ipynb)  
+- [Sentinel-1 InSAR processing.](s1-easy-tops-insar.ipynb)  
 
-[Example of Sentinel-2 search download, mosaic and crop](api.md)  
+- [Sentinel-2 search download, mosaic and crop.](discover-and-process-s2.ipynb)  
 
-[Example of DEM download and mosaic and crop](api.md)  
+- [DEM download and mosaic and crop.](download-dem.ipynb)  
 
+Additionally, more example notebooks can be found in the [github](https://github.com/odhondt/eo_tools) repository of the package.
 
-For more advanced usage, read the [API reference](api.md).
+The different functions are documented in the [API reference](api.md).
