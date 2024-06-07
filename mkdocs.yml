@@ -1,4 +1,4 @@
-site_name: eo_tools documentation
+site_name: eo-tools documentation
 nav:
   - Home: index.md
   - Example 1: s1-easy-tops-insar.ipynb
