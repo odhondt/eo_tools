@@ -16,9 +16,9 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
 
 Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="240">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="240">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="240">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="220">
 </p>
 
 ## Overview
