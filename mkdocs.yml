@@ -1,7 +1,7 @@
 site_name: eo_tools documentation
 nav:
   - Home: index.md
-  - Example usage: notebooks/s1-easy-tops-insar.ipynb
+  - Example usage: ../notebooks/s1-easy-tops-insar.ipynb
   - API reference: api.md
 theme:
   name: material
