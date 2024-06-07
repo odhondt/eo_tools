@@ -384,65 +384,66 @@ def _process_bursts(
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
-    with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
-        with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
+    with rio.Env(GDAL_MAX_DATASET_POOL_RAM_USAGE="100MB") as env:
+        with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+            with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
-            for burst_idx in range(min_burst, max_burst + 1):
-                log.info(f"---- Processing burst {burst_idx} ----")
+                for burst_idx in range(min_burst, max_burst + 1):
+                    log.info(f"---- Processing burst {burst_idx} ----")
 
-                # compute geocoding LUTs (lookup tables) for master and slave bursts
-                file_dem = prm.fetch_dem_burst(
-                    burst_idx,
-                    dir_dem,
-                    buffer_arc_sec=dem_buffer_arc_sec,
-                    force_download=dem_force_download,
-                )
-                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-                )
-                az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-                )
+                    # compute geocoding LUTs (lookup tables) for master and slave bursts
+                    file_dem = prm.fetch_dem_burst(
+                        burst_idx,
+                        dir_dem,
+                        buffer_arc_sec=dem_buffer_arc_sec,
+                        force_download=dem_force_download,
+                    )
+                    az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+                        file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                    )
+                    az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+                        file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                    )
 
-                # read primary and secondary burst rasters
-                arr_p = prm.read_burst(burst_idx, True)
-                arr_s = sec.read_burst(burst_idx, True)
+                    # read primary and secondary burst rasters
+                    arr_p = prm.read_burst(burst_idx, True)
+                    arr_s = sec.read_burst(burst_idx, True)
 
-                # deramp secondary
-                pdb_s = sec.deramp_burst(burst_idx)
-                arr_s *= np.exp(1j * pdb_s)
+                    # deramp secondary
+                    pdb_s = sec.deramp_burst(burst_idx)
+                    arr_s *= np.exp(1j * pdb_s)
 
-                # project slave LUT into master grid
-                az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+                    # project slave LUT into master grid
+                    az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
-                # warp raster secondary and deramping phase
-                arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
-                pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
+                    # warp raster secondary and deramping phase
+                    arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+                    pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
 
-                # reramp slave
-                arr_s *= np.exp(-1j * pdb_s)
+                    # reramp slave
+                    arr_s *= np.exp(-1j * pdb_s)
 
-                # compute topographic phases
-                rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
-                pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-                pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-                pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+                    # compute topographic phases
+                    rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
+                    pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+                    pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+                    pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-                lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
-                luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+                    lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+                    lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
+                    luts.append(f"{dir_out}/lut_{burst_idx}.tif")
 
-                arr_s *= pha_topo
+                    arr_s *= pha_topo
 
-                first_line = (burst_idx - min_burst) * prm.lines_per_burst
-                ds_prm.write(
-                    arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
-                )
-                ds_sec.write(
-                    arr_s,
-                    1,
-                    window=Window(0, first_line, nrg, prm.lines_per_burst),
-                )
+                    first_line = (burst_idx - min_burst) * prm.lines_per_burst
+                    ds_prm.write(
+                        arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+                    )
+                    ds_sec.write(
+                        arr_s,
+                        1,
+                        window=Window(0, first_line, nrg, prm.lines_per_burst),
+                    )
     return luts
 
 
