@@ -1,4 +1,5 @@
 site_name: eo-tools documentation
+repo_url: https://github.com/odhondt/eo_tools
 nav:
   - Home: index.md
   - Example 1: s1-easy-tops-insar.ipynb
