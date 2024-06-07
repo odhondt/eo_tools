@@ -35,6 +35,7 @@ theme:
       name: Switch to system preference
 plugins:
   - search
+  - mkdocs-jupyter
   - mkdocstrings:
       handlers:
         # See: https://mkdocstrings.github.io/python/usage/
