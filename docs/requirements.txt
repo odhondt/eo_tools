@@ -1,7 +1,6 @@
   mkdocs
   mkdocs-autorefs
   mkdocs-material
-  mkdocs-material-extension
   mkdocstrings
   mkdocstrings-python
   markdown-include
