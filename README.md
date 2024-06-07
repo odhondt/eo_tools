@@ -1,9 +1,9 @@
 # EO-Tools: 
 
-A pure python toolbox for easy programmatic processing of remote sensing imagery from various public sources.
+EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
 ## New feature: standalone TOPS InSAR processor
-- **Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.**
+- Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.
 - A new processor for IW subswath can be used -- see `s1-easy-tops-insar.ipynb` in the `notebook` folder.
 - Bursts can also be processed individually using the `S1.core` module for more flexibility. Results can be further processed as in-memory arrays or written as GeoTiff files. An example of such processing is found in `s1-tops-core-demo.ipynb`
 - More features/improvements will be added in the near future such as:
@@ -16,9 +16,9 @@ A pure python toolbox for easy programmatic processing of remote sensing imagery
 
 Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="250">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="250">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="250">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="240">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="240">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="240">
 </p>
 
 ## Overview
