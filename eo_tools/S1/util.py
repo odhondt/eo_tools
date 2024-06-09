@@ -5,24 +5,19 @@ from numba import njit, prange, cfunc
 
 
 def boxcar(img, dimaz, dimrg):
-    """Apply a boxcar filter to an image
+    """
+    Apply a boxcar filter to an image.
 
-    Parameters
-    ----------
-    img: complex or real array, shape (naz, nrg,...)
-        input image, with arbitrary number of dimension
-    dimaz, dimrg: floats
-        size in azimuth and range of the filter
+    Args:
+        img (complex or real array): Input image with arbitrary number of dimensions, shape (naz, nrg, ...).
+        dimaz (float): Size in azimuth of the filter.
+        dimrg (float): Size in range of the filter.
 
-    Returns
-    -------
-    imgout: complex or real array, shape (naz, nrg,...)
-        filtered image
+    Returns:
+        complex or real array: Filtered image, shape (naz, nrg, ...).
 
-    Note
-    ----
-    The filter is always along 2 dimensions (azimuth, range), please
-    ensure to provide a valid image.
+    Note:
+        The filter is always applied along 2 dimensions (azimuth, range). Please ensure to provide a valid image.
     """
     # uflt = flt.uniform_filter
     ndim = len(img.shape)
@@ -82,19 +77,13 @@ def presum(img, m, n):
     """
     Computes the average of an image over m lines and n columns in parallel.
 
-    Parameters
-    ----------
-    img : numpy.ndarray
-        Input image array of shape (height, width, ...)
-    m : int
-        Number of lines to average
-    n : int
-        Number of columns to average
+    Args:
+        img (numpy.ndarray): Input image array of shape (height, width, ...).
+        m (int): Number of lines to average.
+        n (int): Number of columns to average.
 
-    Returns
-    -------
-    img_out : numpy.ndarray
-        Output image array of shape (height // m, width // n, ...)
+    Returns:
+        numpy.ndarray: Output image array of shape (height // m, width // n, ...).
     """
     height, width = img.shape[:2]
     new_height = height // m
@@ -167,6 +156,17 @@ def _ker_cub6(x):
 
 
 def remap(img, rr, cc, kernel="bicubic"):
+    """Resample an image using row, column lookup tables
+
+    Args:
+        img (array): image to resample (complex is allowed)
+        rr (array): lookup table for row positions
+        cc (array): lookup table for column positions
+        kernel (str, optional): Kernel type ("nearest", "bilinear", "bicubic" -- 4 point, "bicubic6" -- 6 point). Defaults to "bicubic".
+
+    Returns:
+        array: Resampled image with same dimensions as rr and cc.
+    """    
     if np.iscomplexobj(img):
         return _remap(img.real, rr, cc, kernel) + 1j * _remap(img.imag, rr, cc, kernel)
     else:

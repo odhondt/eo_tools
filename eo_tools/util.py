@@ -6,33 +6,22 @@ import geopandas as gpd
 import json
 
 
-# check for geometrical overlap
-def has_overlap(geom1, geom2, tolerance=0.01):
-    intersection = geom1.intersection(geom2)
-    return intersection.area / min(geom1.area, geom2.area) >= (1 - tolerance)
-
-
-# make groups of almost fully overlapping products
-def group_by_overlap(dfg):
-    init_list = list(dfg.index)
-    groups = []
-    while len(init_list) > 0:
-        geom_a = dfg.geometry.loc[init_list[0]]
-        grp = []
-        grp.append(init_list.pop(0))
-        i = 0
-        while i < len(init_list):
-            geom_b = dfg.geometry.loc[init_list[i]]
-            if has_overlap(geom_a, geom_b):
-                grp.append(init_list.pop(i))
-            else:
-                i += 1
-        groups.append(grp)
-    return groups
 
 
 # TODO: color styling
 def explore_products(products, aoi=None):
+    """Visualize product footprints on a map.
+    Products with almost 100% overlap are automatically grouped.
+
+    Args:
+        products (eodag products): List of products produced by EODAG search.
+        aoi (shapely geometry, optional): Adds AOI to the map. Defaults to None.
+
+    Returns:
+        folium.Map: Interactive map.
+    Note:
+        Hover on the map to see the product characteristics. Overlapping products are grouped for better visibility. Indices can be used to select products to download. For instance for InSAR pairs, select two products with nearly identical footprints.
+    """    
     # Convert results to geodataframe
     gj = products.as_geojson_object()
     gdf = gpd.read_file(json.dumps(gj))
@@ -60,7 +49,7 @@ def explore_products(products, aoi=None):
         dfg = by_orbit.get_group(idx).explode(index_parts=False)
 
         # group very overlapping products
-        group_indices = group_by_overlap(dfg)
+        group_indices = _group_by_overlap(dfg)
         for i, g in enumerate(group_indices):
             sel = gdf.loc[g]
             geom = mapping(sel.unary_union)
@@ -81,3 +70,27 @@ def explore_products(products, aoi=None):
     folium.LayerControl().add_to(m)
     m.fit_bounds(bbox)
     return m
+
+# make groups of almost fully overlapping products
+def _group_by_overlap(dfg):
+    init_list = list(dfg.index)
+    groups = []
+    while len(init_list) > 0:
+        geom_a = dfg.geometry.loc[init_list[0]]
+        grp = []
+        grp.append(init_list.pop(0))
+        i = 0
+        while i < len(init_list):
+            geom_b = dfg.geometry.loc[init_list[i]]
+            if _has_overlap(geom_a, geom_b):
+                grp.append(init_list.pop(i))
+            else:
+                i += 1
+        groups.append(grp)
+    return groups
+
+
+# check for geometrical overlap
+def _has_overlap(geom1, geom2, tolerance=0.01):
+    intersection = geom1.intersection(geom2)
+    return intersection.area / min(geom1.area, geom2.area) >= (1 - tolerance)
