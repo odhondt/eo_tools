@@ -63,7 +63,7 @@ conda install conda-forge::eo-tools
 ### Docker install
 
 - It works as a dev container for VSCode. 
-    - Clone this repository into the location of your choice.
+    - Clone the github repository into the location of your choice.
     - Volumes paths can (and should) be changed in `docker-compose.yml`.
     - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks in the `notebooks` directory can be used.
 - Alternatively, it should also be possible to start the container from the main directory with `docker-compose up -d` in a terminal and attach to the container with any editor supporting docker.
@@ -72,8 +72,8 @@ conda install conda-forge::eo-tools
 
 - Please make sure `jupyter` is installed in your environment
 - Example jupyter notebooks demonstrate the different features
-- For conda use the notebooks in the `notebooks-cf` directory
-- For docker use the notebooks in the `notebooks` directory
+- For conda use the notebooks in the `notebooks-cf` directory of the github repository
+- For docker use the notebooks in the `notebooks` directory of the github repository
 
 ## Notice
 
