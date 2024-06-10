@@ -1,5 +1,6 @@
 site_name: eo-tools documentation
 repo_url: https://github.com/odhondt/eo_tools
+repo_name: 'odhondt/eo_tools'
 nav:
   - Home: index.md
   - Examples:
@@ -8,7 +9,7 @@ nav:
     - Example 3: download-dem.ipynb
   - API reference: 
     # - API: api.md
-    - Sentinel-1 core functions: s1_core_api.md
+    - Sentinel-1 core: s1_core_api.md
     - Sentinel-1 processor: s1_process_api.md
     - Sentinel-1 utilities: s1_util_api.md
     - Sentinel-2: s2_api.md
@@ -23,6 +24,11 @@ theme:
   features:
     - navigation.instant
   palette:
+    primary: 'blue'
+    accent:  'light blue'
+  font:
+    text: 'Nunito Sans'
+    code: 'Fira Code'
 
   # Palette toggle for automatic mode
   - media: "(prefers-color-scheme)"
@@ -33,8 +39,6 @@ theme:
   # Palette toggle for light mode
   - media: "(prefers-color-scheme: light)"
     scheme: default 
-
-
     toggle:
       icon: material/brightness-7
       name: Switch to dark mode
@@ -64,3 +68,7 @@ markdown_extensions:
       toc_depth: 4
       baselevel: 2
   # - admonition
+extra:
+  social:
+    - icon: 'fontawesome/brands/github'
+      link: 'https://github.com/odhondt'
