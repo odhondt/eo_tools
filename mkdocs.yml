@@ -23,12 +23,12 @@ theme:
     - python
   features:
     - navigation.instant
-  palette:
-    primary: 'blue'
-    accent:  'light blue'
   font:
-    text: 'Nunito Sans'
-    code: 'Fira Code'
+  - text: 'Nunito Sans'
+  - code: 'Fira Code'
+  palette:
+  - primary: 'blue'
+  - accent:  'light blue'
 
   # Palette toggle for automatic mode
   - media: "(prefers-color-scheme)"
