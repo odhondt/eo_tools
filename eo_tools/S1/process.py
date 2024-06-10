@@ -9,6 +9,7 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from eo_tools.S1.util import presum, boxcar, remap
+import concurrent
 
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
@@ -98,8 +99,24 @@ def preprocess_insar_iw(
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
     nrg = prm.samples_per_burst
 
-    luts = _process_bursts(
-    # luts = _process_bursts_xarray(
+    # luts = _process_bursts(
+        # luts = _process_bursts_xarray(
+    #     prm,
+    #     sec,
+    #     tmp_prm,
+    #     tmp_sec,
+    #     dir_out,
+    #     dir_dem,
+    #     naz,
+    #     nrg,
+    #     min_burst,
+    #     max_burst_,
+    #     dem_upsampling,
+    #     dem_buffer_arc_sec,
+    #     dem_force_download,
+    #     kernel=warp_kernel,
+    # )
+    args = (
         prm,
         sec,
         tmp_prm,
@@ -113,8 +130,10 @@ def preprocess_insar_iw(
         dem_upsampling,
         dem_buffer_arc_sec,
         dem_force_download,
-        kernel=warp_kernel,
+        warp_kernel,
     )
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        luts = e.submit(_process_bursts, *args).result()
     if (max_burst_ > min_burst) & apply_fast_esd:
         _apply_fast_esd(
             tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
@@ -483,11 +502,15 @@ def _process_bursts_xarray(
     # ds_sec = riox.open_rasterio(tmp_sec, "w")
 
     ds_prm = xr.DataArray(
-        data=da.zeros((1, naz, nrg), dtype="complex64", chunks=(1,prm.lines_per_burst, nrg)),
+        data=da.zeros(
+            (1, naz, nrg), dtype="complex64", chunks=(1, prm.lines_per_burst, nrg)
+        ),
         dims=("band", "y", "x"),
     )
     ds_sec = xr.DataArray(
-        data=da.zeros((1, naz, nrg), dtype="complex64", chunks=(1,prm.lines_per_burst, nrg)),
+        data=da.zeros(
+            (1, naz, nrg), dtype="complex64", chunks=(1, prm.lines_per_burst, nrg)
+        ),
         dims=("band", "y", "x"),
     )
 
