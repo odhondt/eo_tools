@@ -27,7 +27,7 @@ theme:
     text: 'Nunito Sans'
     code: 'Fira Code'
   palette:
-    primary: 'teal'
+    primary: 'MediumSlateBlue'
   # - accent:  'light blue'
 
   # # Palette toggle for automatic mode
