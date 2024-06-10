@@ -7,10 +7,13 @@ nav:
     - Example 2: discover-and-process-s2.ipynb
     - Example 3: download-dem.ipynb
   - API reference: 
-    - API: api.md
-    - S1 core functions: s1_core_api.md
-    - S1 processor: s1_process_api.md
-    - S1 utilities: s1_util_api.md
+    # - API: api.md
+    - Sentinel-1 core functions: s1_core_api.md
+    - Sentinel-1 processor: s1_process_api.md
+    - Sentinel-1 utilities: s1_util_api.md
+    - Sentinel-2: s2_api.md
+    - DEM: dem_api.md
+    - General utilities: util_api.md
 
 theme:
   name: material
@@ -53,6 +56,7 @@ plugins:
             docstring_style: google
             show_root_heading: true
             heading_level: 1
+            show_source: false
 markdown_extensions:
   - markdown_include.include:
       base_path: .
