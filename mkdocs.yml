@@ -2,9 +2,10 @@ site_name: eo-tools documentation
 repo_url: https://github.com/odhondt/eo_tools
 nav:
   - Home: index.md
-  - Example 1: s1-easy-tops-insar.ipynb
-  - Example 2: discover-and-process-s2.ipynb
-  - Example 3: download-dem.ipynb
+  - Examples:
+    - Example 1: s1-easy-tops-insar.ipynb
+    - Example 2: discover-and-process-s2.ipynb
+    - Example 3: download-dem.ipynb
   - API reference: api.md
 theme:
   name: material
