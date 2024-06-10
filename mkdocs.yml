@@ -24,8 +24,8 @@ theme:
   features:
     - navigation.instant
   font:
-  - text: 'Nunito Sans'
-  - code: 'Fira Code'
+    text: 'Nunito Sans'
+    code: 'Fira Code'
   palette:
   # - primary: 'blue'
   # - accent:  'light blue'
