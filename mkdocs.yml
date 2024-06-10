@@ -8,7 +8,8 @@ nav:
     - Example 3: download-dem.ipynb
   - API reference: 
     - API: api.md
-    - Core: core.md
+    - S1 core functions: s1_core_api.md
+    - S1 processor: s1_core_api.md
 
 theme:
   name: material
