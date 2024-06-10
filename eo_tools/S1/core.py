@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 # TODO: Goldstein, coherence, LOS displacement
 class S1IWSwath:
     """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+
     - DEM retrieval (only SRTM 1sec for now)
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
