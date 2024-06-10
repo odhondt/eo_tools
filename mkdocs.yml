@@ -9,7 +9,8 @@ nav:
   - API reference: 
     - API: api.md
     - S1 core functions: s1_core_api.md
-    - S1 processor: s1_core_api.md
+    - S1 processor: s1_process_api.md
+    - S1 utilities: s1_util_api.md
 
 theme:
   name: material
