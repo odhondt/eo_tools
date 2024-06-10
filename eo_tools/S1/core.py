@@ -45,8 +45,8 @@ class S1IWSwath:
         """Object intialization
 
         Args:
-            safe_dir (str): Directory where the (unzipped) product lies.
-            iw (int, optional): Number of subswath (1 to 3). Defaults to 1.
+            safe_dir (str): Directory containing the (unzipped) product.
+            iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
         """
         if not os.path.isdir(safe_dir):
@@ -115,10 +115,10 @@ class S1IWSwath:
         """Downloads the DEM for a given burst
 
         Args:
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
-            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 20.
-            force_download (bool, optional): Forces the file to download even if a DEM is already present on disk. Defaults to False.
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
 
         Returns:
             str: path to the downloaded file
@@ -145,11 +145,11 @@ class S1IWSwath:
 
         Args:
             file_dem (str): path to the DEM
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
 
         Returns:
-            (ndarray, ndarray): azimuth slant range indices. Arrays have the shape of the DEM.
+            (array, array): azimuth slant range indices. Arrays have the shape of the DEM.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -236,10 +236,10 @@ class S1IWSwath:
         """Computes the azimuth deramping phase using product metadata.
 
         Args:
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
 
         Returns:
-            ndarray: phase correction to apply to the SLC burst.
+            array: phase correction to apply to the SLC burst.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -340,11 +340,11 @@ class S1IWSwath:
         """Reads raster SLC burst.
 
         Args:
-            burst_idx (int, optional): burst number. Defaults to 1.
+            burst_idx (int, optional): burst index. Defaults to 1.
             remove_invalid (bool, optional): Sets non-valid pixels to NaN. Defaults to True.
 
         Returns:
-            ndarray: Complex raster
+            array: Complex raster
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -389,10 +389,10 @@ class S1IWSwath:
         """Computes the topographic phase using slant range indices.
 
         Args:
-            rg (ndarray): slant range pixel indices that will be converted to distances using annotation data.
+            rg (array): slant range pixel indices that will be converted to distances using annotation data.
 
         Returns:
-            ndarray: topographic phase for the given burst.
+            array: topographic phase for the given burst.
 
         Note:
             For the primary burst, range is simply the pixel slant range index. For a secondary burst, it is the range index of the burst reprojected in the primary grid thanks to the coregistration function.
@@ -460,9 +460,9 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
         rg_s2g (array): secondary range coordinates
 
     Returns:
-        arrays: az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
+        (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
-    log.info("Projecting secondary coordinates onto primary grid.")
+    log.info("Projecting secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
@@ -652,7 +652,7 @@ def fast_esd(ifgs, overlap):
 
 
 def stitch_bursts(bursts, overlap):
-    """Stitch bursts in the single look radar geometry
+    """Stitch bursts in the single look radar geometry.
 
     Args:
         bursts (list): list of bursts
