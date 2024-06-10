@@ -32,7 +32,8 @@ log = logging.getLogger(__name__)
 
 # TODO: Goldstein, coherence, LOS displacement
 class S1IWSwath:
-    """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+    """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+
     - DEM retrieval (only SRTM 1sec for now)
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
@@ -605,7 +606,7 @@ def fast_esd(ifgs, overlap):
         ifgs (list): List of complex SLC interferograms
         overlap (int): Number of overlapping azimuth pixels between two bursts (can be computed with `compute_burst_overlap`)
 
-    Notes:
+    Note:
         Based on ideas introduced in:
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """

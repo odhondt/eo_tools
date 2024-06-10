@@ -6,9 +6,6 @@ import geopandas as gpd
 import json
 
 
-
-
-# TODO: color styling
 def explore_products(products, aoi=None):
     """Visualize product footprints on a map.
     Products with almost 100% overlap are automatically grouped.
@@ -19,9 +16,10 @@ def explore_products(products, aoi=None):
 
     Returns:
         folium.Map: Interactive map.
+
     Note:
         Hover on the map to see the product characteristics. Overlapping products are grouped for better visibility. Indices can be used to select products to download. For instance for InSAR pairs, select two products with nearly identical footprints.
-    """    
+    """
     # Convert results to geodataframe
     gj = products.as_geojson_object()
     gdf = gpd.read_file(json.dumps(gj))
@@ -70,6 +68,7 @@ def explore_products(products, aoi=None):
     folium.LayerControl().add_to(m)
     m.fit_bounds(bbox)
     return m
+
 
 # make groups of almost fully overlapping products
 def _group_by_overlap(dfg):

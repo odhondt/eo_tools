@@ -1,0 +1,282 @@
+
+1 burst:
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   360    464.5 MiB    464.5 MiB           1   def _process_bursts(
+   361                                             prm,
+   362                                             sec,
+   363                                             tmp_prm,
+   364                                             tmp_sec,
+   365                                             dir_out,
+   366                                             dir_dem,
+   367                                             naz,
+   368                                             nrg,
+   369                                             min_burst,
+   370                                             max_burst,
+   371                                             dem_upsampling,
+   372                                             dem_buffer_arc_sec,
+   373                                             dem_force_download,
+   374                                             kernel,
+   375                                         ):
+   376    464.5 MiB      0.0 MiB           1       luts = []
+   377    464.5 MiB      0.0 MiB           2       prof_tmp = dict(
+   378    464.5 MiB      0.0 MiB           1           width=nrg,
+   379    464.5 MiB      0.0 MiB           1           height=naz,
+   380    464.5 MiB      0.0 MiB           1           count=1,
+   381    464.5 MiB      0.0 MiB           1           dtype="complex64",
+   382    464.5 MiB      0.0 MiB           1           driver="GTiff",
+   383    464.5 MiB      0.0 MiB           1           nodata=np.nan,
+   384                                             )
+   385    464.5 MiB      0.0 MiB           1       warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+   386                                             # process individual bursts
+   387   4202.6 MiB      0.0 MiB           2       with rio.Env(VSI_CACHE=True, GDAL_CACHEMAX=64) as env:
+   388   4202.6 MiB      0.0 MiB           2           with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+   389   4202.6 MiB      0.0 MiB           2               with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
+   390                                         
+   391   4202.6 MiB      0.0 MiB           2                   for burst_idx in range(min_burst, max_burst + 1):
+   392    464.5 MiB      0.0 MiB           1                       log.info(f"---- Processing burst {burst_idx} ----")
+   393                                         
+   394                                                             # compute geocoding LUTs (lookup tables) for master and slave bursts
+   395    464.5 MiB      0.0 MiB           2                       file_dem = prm.fetch_dem_burst(
+   396    464.5 MiB      0.0 MiB           1                           burst_idx,
+   397    464.5 MiB      0.0 MiB           1                           dir_dem,
+   398    464.5 MiB      0.0 MiB           1                           buffer_arc_sec=dem_buffer_arc_sec,
+   399    464.5 MiB      0.0 MiB           1                           force_download=dem_force_download,
+   400                                                             )
+   401   1065.4 MiB    600.9 MiB           2                       az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+   402    464.5 MiB      0.0 MiB           1                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   403                                                             )
+   404   1555.6 MiB    490.2 MiB           2                       az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+   405   1065.4 MiB      0.0 MiB           1                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   406                                                             )
+   407                                         
+   408                                                             # read primary and secondary burst rasters
+   409   1844.4 MiB    288.8 MiB           1                       arr_p = prm.read_burst(burst_idx, True)
+   410   2109.5 MiB    265.1 MiB           1                       arr_s = sec.read_burst(burst_idx, True)
+   411                                         
+   412                                                             # deramp secondary
+   413   2374.6 MiB    265.1 MiB           1                       pdb_s = sec.deramp_burst(burst_idx)
+   414   2374.6 MiB      0.0 MiB           1                       arr_s *= np.exp(1j * pdb_s)
+   415                                         
+   416                                                             # project slave LUT into master grid
+   417   2904.8 MiB    530.2 MiB           1                       az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+   418                                         
+   419                                                             # warp raster secondary and deramping phase
+   420   2909.6 MiB      4.8 MiB           1                       arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+   421   2909.9 MiB      0.3 MiB           1                       pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
+   422                                         
+   423                                                             # reramp slave
+   424   2909.9 MiB      0.0 MiB           1                       arr_s *= np.exp(-1j * pdb_s)
+   425                                         
+   426                                                             # compute topographic phases
+   427   3174.8 MiB    264.8 MiB           1                       rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
+   428   3440.1 MiB    265.3 MiB           1                       pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+   429   3705.2 MiB    265.1 MiB           1                       pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+   430   3970.2 MiB    265.1 MiB           1                       pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+   431                                         
+   432   4201.8 MiB    231.6 MiB           1                       lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+   433   4202.6 MiB      0.7 MiB           1                       lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
+   434   4202.6 MiB      0.0 MiB           1                       luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+   435                                         
+   436   4202.6 MiB      0.0 MiB           1                       arr_s *= pha_topo
+   437                                         
+   438   4202.6 MiB      0.0 MiB           1                       first_line = (burst_idx - min_burst) * prm.lines_per_burst
+   439   4202.6 MiB      0.0 MiB           2                       ds_prm.write(
+   440   4202.6 MiB      0.0 MiB           1                           arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+   441                                                             )
+   442   4202.6 MiB      0.0 MiB           2                       ds_sec.write(
+   443   4202.6 MiB      0.0 MiB           1                           arr_s,
+   444   4202.6 MiB      0.0 MiB           1                           1,
+   445   4202.6 MiB      0.0 MiB           1                           window=Window(0, first_line, nrg, prm.lines_per_burst),
+   446                                                             )
+   447   4202.6 MiB      0.0 MiB           1       return luts
+
+--------------------------------------------------------------------
+   5 bursts:
+
+   Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   360    462.0 MiB    462.0 MiB           1   def _process_bursts(
+   361                                             prm,
+   362                                             sec,
+   363                                             tmp_prm,
+   364                                             tmp_sec,
+   365                                             dir_out,
+   366                                             dir_dem,
+   367                                             naz,
+   368                                             nrg,
+   369                                             min_burst,
+   370                                             max_burst,
+   371                                             dem_upsampling,
+   372                                             dem_buffer_arc_sec,
+   373                                             dem_force_download,
+   374                                             kernel,
+   375                                         ):
+   376    462.0 MiB      0.0 MiB           1       luts = []
+   377    462.0 MiB      0.0 MiB           2       prof_tmp = dict(
+   378    462.0 MiB      0.0 MiB           1           width=nrg,
+   379    462.0 MiB      0.0 MiB           1           height=naz,
+   380    462.0 MiB      0.0 MiB           1           count=1,
+   381    462.0 MiB      0.0 MiB           1           dtype="complex64",
+   382    462.0 MiB      0.0 MiB           1           driver="GTiff",
+   383    462.0 MiB      0.0 MiB           1           nodata=np.nan,
+   384                                             )
+   385    462.0 MiB      0.0 MiB           1       warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+   386                                             # process individual bursts
+   387   5804.1 MiB      0.0 MiB           2       with rio.Env(VSI_CACHE=True, GDAL_CACHEMAX=64) as env:
+   388   5804.1 MiB      0.0 MiB           2           with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+   389   5804.1 MiB    -25.0 MiB           2               with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
+   390                                         
+   391   5829.1 MiB    -25.0 MiB           6                   for burst_idx in range(min_burst, max_burst + 1):
+   392   5829.1 MiB      0.0 MiB           5                       log.info(f"---- Processing burst {burst_idx} ----")
+   393                                         
+   394                                                             # compute geocoding LUTs (lookup tables) for master and slave bursts
+   395   5829.1 MiB   -178.0 MiB          10                       file_dem = prm.fetch_dem_burst(
+   396   5829.1 MiB      0.0 MiB           5                           burst_idx,
+   397   5829.1 MiB      0.0 MiB           5                           dir_dem,
+   398   5829.1 MiB      0.0 MiB           5                           buffer_arc_sec=dem_buffer_arc_sec,
+   399   5829.1 MiB      0.0 MiB           5                           force_download=dem_force_download,
+   400                                                             )
+   401   5651.1 MiB    422.7 MiB          10                       az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+   402   5651.1 MiB      0.0 MiB           5                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   403                                                             )
+   404   5604.8 MiB    447.5 MiB          10                       az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+   405   5539.8 MiB    -64.9 MiB           5                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   406                                                             )
+   407                                         
+   408                                                             # read primary and secondary burst rasters
+   409   5604.8 MiB    167.0 MiB           5                       arr_p = prm.read_burst(burst_idx, True)
+   410   5604.8 MiB    232.9 MiB           5                       arr_s = sec.read_burst(burst_idx, True)
+   411                                         
+   412                                                             # deramp secondary
+   413   5604.8 MiB    232.8 MiB           5                       pdb_s = sec.deramp_burst(burst_idx)
+   414   5604.8 MiB    -32.3 MiB           5                       arr_s *= np.exp(1j * pdb_s)
+   415                                         
+   416                                                             # project slave LUT into master grid
+   417   5604.8 MiB   1028.0 MiB           5                       az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+   418                                         
+   419                                                             # warp raster secondary and deramping phase
+   420   5604.8 MiB    240.4 MiB           5                       arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+   421   5604.8 MiB    -28.6 MiB           5                       pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
+   422                                         
+   423                                                             # reramp slave
+   424   5604.8 MiB    -32.3 MiB           5                       arr_s *= np.exp(-1j * pdb_s)
+   425                                         
+   426                                                             # compute topographic phases
+   427   5604.8 MiB    232.6 MiB           5                       rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
+   428   5604.8 MiB    233.0 MiB           5                       pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+   429   5604.8 MiB    232.8 MiB           5                       pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+   430   5604.8 MiB    232.8 MiB           5                       pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+   431                                         
+   432   5829.1 MiB   1106.9 MiB           5                       lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+   433   5829.1 MiB    -19.9 MiB           5                       lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
+   434   5829.1 MiB    -25.0 MiB           5                       luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+   435                                         
+   436   5829.1 MiB    -25.0 MiB           5                       arr_s *= pha_topo
+   437                                         
+   438   5829.1 MiB    -25.0 MiB           5                       first_line = (burst_idx - min_burst) * prm.lines_per_burst
+   439   5829.1 MiB    -50.1 MiB          10                       ds_prm.write(
+   440   5829.1 MiB    -25.0 MiB           5                           arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+   441                                                             )
+   442   5829.1 MiB    -50.1 MiB          10                       ds_sec.write(
+   443   5829.1 MiB    -25.0 MiB           5                           arr_s,
+   444   5829.1 MiB    -25.0 MiB           5                           1,
+   445   5829.1 MiB    -25.0 MiB           5                           window=Window(0, first_line, nrg, prm.lines_per_burst),
+   446                                                             )
+   447   5804.1 MiB      0.0 MiB           1       return luts
+
+--------------------------------------------------------------------
+5 busts, vsi cache false
+
+
+   Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   360    458.4 MiB    458.4 MiB           1   def _process_bursts(
+   361                                             prm,
+   362                                             sec,
+   363                                             tmp_prm,
+   364                                             tmp_sec,
+   365                                             dir_out,
+   366                                             dir_dem,
+   367                                             naz,
+   368                                             nrg,
+   369                                             min_burst,
+   370                                             max_burst,
+   371                                             dem_upsampling,
+   372                                             dem_buffer_arc_sec,
+   373                                             dem_force_download,
+   374                                             kernel,
+   375                                         ):
+   376    458.4 MiB      0.0 MiB           1       luts = []
+   377    458.4 MiB      0.0 MiB           2       prof_tmp = dict(
+   378    458.4 MiB      0.0 MiB           1           width=nrg,
+   379    458.4 MiB      0.0 MiB           1           height=naz,
+   380    458.4 MiB      0.0 MiB           1           count=1,
+   381    458.4 MiB      0.0 MiB           1           dtype="complex64",
+   382    458.4 MiB      0.0 MiB           1           driver="GTiff",
+   383    458.4 MiB      0.0 MiB           1           nodata=np.nan,
+   384                                             )
+   385    458.4 MiB      0.0 MiB           1       warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+   386                                             # process individual bursts
+   387   5970.4 MiB      0.0 MiB           2       with rio.Env(VSI_CACHE=False, GDAL_CACHEMAX=64) as env:
+   388   5970.4 MiB      0.0 MiB           2           with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+   389   5970.4 MiB      0.0 MiB           2               with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
+   390                                         
+   391   5970.4 MiB      0.0 MiB           6                   for burst_idx in range(min_burst, max_burst + 1):
+   392   5736.9 MiB      0.0 MiB           5                       log.info(f"---- Processing burst {burst_idx} ----")
+   393                                         
+   394                                                             # compute geocoding LUTs (lookup tables) for master and slave bursts
+   395   5736.9 MiB      0.0 MiB          10                       file_dem = prm.fetch_dem_burst(
+   396   5736.9 MiB      0.0 MiB           5                           burst_idx,
+   397   5736.9 MiB      0.0 MiB           5                           dir_dem,
+   398   5736.9 MiB      0.0 MiB           5                           buffer_arc_sec=dem_buffer_arc_sec,
+   399   5736.9 MiB      0.0 MiB           5                           force_download=dem_force_download,
+   400                                                             )
+   401   5736.9 MiB    665.6 MiB          10                       az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+   402   5736.9 MiB      0.0 MiB           5                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   403                                                             )
+   404   5737.7 MiB    443.1 MiB          10                       az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+   405   5672.2 MiB      0.0 MiB           5                           file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+   406                                                             )
+   407                                         
+   408                                                             # read primary and secondary burst rasters
+   409   5738.0 MiB    174.1 MiB           5                       arr_p = prm.read_burst(burst_idx, True)
+   410   5738.0 MiB    265.1 MiB           5                       arr_s = sec.read_burst(burst_idx, True)
+   411                                         
+   412                                                             # deramp secondary
+   413   5738.8 MiB    266.0 MiB           5                       pdb_s = sec.deramp_burst(burst_idx)
+   414   5738.8 MiB      0.0 MiB           5                       arr_s *= np.exp(1j * pdb_s)
+   415                                         
+   416                                                             # project slave LUT into master grid
+   417   5738.8 MiB   1060.2 MiB           5                       az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+   418                                         
+   419                                                             # warp raster secondary and deramping phase
+   420   5738.8 MiB      8.2 MiB           5                       arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
+   421   5738.8 MiB    266.4 MiB           5                       pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
+   422                                         
+   423                                                             # reramp slave
+   424   5738.8 MiB      0.3 MiB           5                       arr_s *= np.exp(-1j * pdb_s)
+   425                                         
+   426                                                             # compute topographic phases
+   427   5738.8 MiB    264.8 MiB           5                       rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
+   428   5738.8 MiB    265.3 MiB           5                       pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+   429   5738.8 MiB    265.1 MiB           5                       pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+   430   5738.8 MiB    265.1 MiB           5                       pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+   431                                         
+   432   5970.2 MiB   1138.9 MiB           5                       lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+   433   5970.4 MiB      7.8 MiB           5                       lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
+   434   5970.4 MiB      0.0 MiB           5                       luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+   435                                         
+   436   5970.4 MiB      0.0 MiB           5                       arr_s *= pha_topo
+   437                                         
+   438   5970.4 MiB      0.0 MiB           5                       first_line = (burst_idx - min_burst) * prm.lines_per_burst
+   439   5970.4 MiB      0.0 MiB          10                       ds_prm.write(
+   440   5970.4 MiB      0.0 MiB           5                           arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+   441                                                             )
+   442   5970.4 MiB      0.0 MiB          10                       ds_sec.write(
+   443   5970.4 MiB      0.0 MiB           5                           arr_s,
+   444   5970.4 MiB      0.0 MiB           5                           1,
+   445   5970.4 MiB      0.0 MiB           5                           window=Window(0, first_line, nrg, prm.lines_per_burst),
+   446                                                             )
+   447   5970.4 MiB      0.0 MiB           1       return luts

@@ -51,7 +51,7 @@ def preprocess_insar_iw(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
 
-    Notes:
+    Note:
         DEM-assisted coregistration is performed to align the secondary with the master. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
 
