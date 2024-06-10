@@ -23,9 +23,9 @@ theme:
     - python
   features:
     - navigation.instant
-  # font:
-  # - text: 'Nunito Sans'
-  # - code: 'Fira Code'
+  font:
+  - text: 'Nunito Sans'
+  - code: 'Fira Code'
   palette:
   # - primary: 'blue'
   # - accent:  'light blue'
