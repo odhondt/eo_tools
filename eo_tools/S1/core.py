@@ -605,7 +605,7 @@ def fast_esd(ifgs, overlap):
         ifgs (list): List of complex SLC interferograms
         overlap (int): Number of overlapping azimuth pixels between two bursts (can be computed with `compute_burst_overlap`)
 
-    Notes:
+    Note:
         Based on ideas introduced in:
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """
