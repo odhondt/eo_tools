@@ -27,8 +27,6 @@ theme:
     text: 'Nunito Sans'
     code: 'Fira Code'
   palette:
-    primary: 'MediumSlateBlue'
-  # - accent:  'light blue'
 
   # # Palette toggle for automatic mode
   # - media: "(prefers-color-scheme)"
@@ -68,7 +66,7 @@ markdown_extensions:
       toc_depth: 4
       baselevel: 2
   # - admonition
-# extra:
-#   social:
-#     - icon: 'fontawesome/brands/github'
-#       link: 'https://github.com/odhondt'
+extra:
+  social:
+    - icon: 'fontawesome/brands/github'
+      link: 'https://github.com/odhondt'
