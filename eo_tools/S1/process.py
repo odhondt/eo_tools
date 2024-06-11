@@ -66,12 +66,14 @@ def preprocess_insar_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
-    info_prm = identify(dir_primary)
-    info_sec = identify(dir_secondary)
-    if info_prm.orbitNumber_rel != info_sec.orbitNumber_rel:
-        raise ValueError(
-            "Products should have identical tracks (relative orbit numbers)"
-        )
+    # redundant with burst check
+    # may be used in the future for non fully overlapping products
+    # info_prm = identify(dir_primary)
+    # info_sec = identify(dir_secondary)
+    # if info_prm.orbitNumber_rel != info_sec.orbitNumber_rel:
+    #     raise ValueError(
+    #         "Products should have identical tracks (relative orbit numbers)"
+    #     )
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
