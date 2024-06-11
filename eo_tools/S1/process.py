@@ -14,13 +14,11 @@ import concurrent
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
-log = logging.getLogger(__name__)
 
-from memory_profiler import profile
+log = logging.getLogger(__name__)
 
 
 # TODO: make class and attach different paths (primary, secondary, lut) ?
-@profile
 def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
@@ -100,23 +98,6 @@ def preprocess_insar_iw(
 
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
     nrg = prm.samples_per_burst
-    # luts = _process_bursts(
-    #     # luts = _process_bursts_xarray(
-    #     prm,
-    #     sec,
-    #     tmp_prm,
-    #     tmp_sec,
-    #     dir_out,
-    #     dir_dem,
-    #     naz,
-    #     nrg,
-    #     min_burst,
-    #     max_burst_,
-    #     dem_upsampling,
-    #     dem_buffer_arc_sec,
-    #     dem_force_download,
-    #     kernel=warp_kernel,
-    # )
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
         args = (
@@ -148,9 +129,6 @@ def preprocess_insar_iw(
                 overlap,
             )
             e.submit(_apply_fast_esd, *args).result()
-        # _apply_fast_esd(
-        #     tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
-        # )
 
     if max_burst_ > min_burst:
         with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
@@ -162,34 +140,20 @@ def preprocess_insar_iw(
                 overlap,
             )
             e.submit(_stitch_bursts, *args).result()
-        # _stitch_bursts(
-        #     tmp_sec,
-        #     f"{dir_out}/secondary.tif",
-        #     prm.lines_per_burst,
-        #     max_burst_ - min_burst + 1,
-        #     overlap,
-        # )
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
             args = (
-            tmp_prm,
-            f"{dir_out}/primary.tif",
-            prm.lines_per_burst,
-            max_burst_ - min_burst + 1,
-            overlap,
-        )
+                tmp_prm,
+                f"{dir_out}/primary.tif",
+                prm.lines_per_burst,
+                max_burst_ - min_burst + 1,
+                overlap,
+            )
             e.submit(_stitch_bursts, *args).result()
-        # _stitch_bursts(
-        #     tmp_prm,
-        #     f"{dir_out}/primary.tif",
-        #     prm.lines_per_burst,
-        #     max_burst_ - min_burst + 1,
-        #     overlap,
-        # )
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
         args = (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
         e.submit(_merge_luts, *args).result()
-    # _merge_luts(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -205,7 +169,6 @@ def preprocess_insar_iw(
     log.info("Done")
 
 
-@profile
 def slc2geo(
     slc_file,
     lut_file,
@@ -297,7 +260,6 @@ def slc2geo(
 
 
 # TODO optional chunk processing
-@profile
 def interferogram(file_prm, file_sec, file_out):
     """Compute an interferogram from two SLC image files.
 
@@ -320,7 +282,6 @@ def interferogram(file_prm, file_sec, file_out):
 
 
 # TODO optional chunk processing
-@profile
 def amplitude(file_in, file_out):
     """Compute the amplitude of a complex-valued image.
 
@@ -340,7 +301,6 @@ def amplitude(file_in, file_out):
         dst.write(amp, 1)
 
 
-@profile
 def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     """Compute the complex coherence from two SLC image files.
 
@@ -504,117 +464,6 @@ def _process_bursts(
     return luts
 
 
-def _process_bursts_xarray(
-    prm,
-    sec,
-    tmp_prm,
-    tmp_sec,
-    dir_out,
-    dir_dem,
-    naz,
-    nrg,
-    min_burst,
-    max_burst,
-    dem_upsampling,
-    dem_buffer_arc_sec,
-    dem_force_download,
-    kernel,
-):
-    luts = []
-    prof_tmp = dict(
-        width=nrg,
-        height=naz,
-        count=1,
-        dtype="complex64",
-        driver="GTiff",
-        nodata=np.nan,
-    )
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # process individual bursts
-    # with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
-    # with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
-    # ds_prm = riox.open_rasterio(tmp_prm, "w")
-    # ds_sec = riox.open_rasterio(tmp_sec, "w")
-
-    ds_prm = xr.DataArray(
-        data=da.zeros(
-            (1, naz, nrg), dtype="complex64", chunks=(1, prm.lines_per_burst, nrg)
-        ),
-        dims=("band", "y", "x"),
-    )
-    ds_sec = xr.DataArray(
-        data=da.zeros(
-            (1, naz, nrg), dtype="complex64", chunks=(1, prm.lines_per_burst, nrg)
-        ),
-        dims=("band", "y", "x"),
-    )
-
-    # create new dataarrays instead
-
-    for burst_idx in range(min_burst, max_burst + 1):
-        log.info(f"---- Processing burst {burst_idx} ----")
-
-        # compute geocoding LUTs (lookup tables) for master and slave bursts
-        file_dem = prm.fetch_dem_burst(
-            burst_idx,
-            dir_dem,
-            buffer_arc_sec=dem_buffer_arc_sec,
-            force_download=dem_force_download,
-        )
-        az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-            file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-        )
-        az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-            file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-        )
-
-        # read primary and secondary burst rasters
-        arr_p = prm.read_burst(burst_idx, True)
-        arr_s = sec.read_burst(burst_idx, True)
-
-        # deramp secondary
-        pdb_s = sec.deramp_burst(burst_idx)
-        arr_s *= np.exp(1j * pdb_s)
-
-        # project slave LUT into master grid
-        az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
-
-        # warp raster secondary and deramping phase
-        arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
-        pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
-
-        # reramp slave
-        arr_s *= np.exp(-1j * pdb_s)
-
-        # compute topographic phases
-        rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
-        pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-        pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-        pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
-
-        lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-        lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
-        luts.append(f"{dir_out}/lut_{burst_idx}.tif")
-
-        arr_s *= pha_topo
-
-        first_line = (burst_idx - min_burst) * prm.lines_per_burst
-        ds_prm[0, first_line : first_line + prm.lines_per_burst, :] = arr_p
-        ds_sec[0, first_line : first_line + prm.lines_per_burst, :] = arr_s
-        # ds_prm.write(
-        #     arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
-        # )
-        # ds_sec.write(
-        #     arr_s,
-        #     1,
-        #     window=Window(0, first_line, nrg, prm.lines_per_burst),
-        # )
-    ds_prm.rio.to_raster(tmp_prm, driver="GTiff", lock=False)
-    ds_sec.rio.to_raster(tmp_sec, driver="GTiff", lock=False)
-    del ds_prm, ds_sec
-    return luts
-
-
 def _apply_fast_esd(
     tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap
 ):
@@ -753,8 +602,8 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     to_merge = []
     # with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
     for i, file_lut in enumerate(files_lut):
-        # lut = riox.open_rasterio(file_lut, cache=False, chunks=True, lock=False)
-        lut = riox.open_rasterio(file_lut, cache=False)
+        lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
+        # lut = riox.open_rasterio(file_lut, cache=False)
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
 
