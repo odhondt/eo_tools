@@ -14,6 +14,7 @@ import concurrent
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
+from pyroSAR import identify
 
 log = logging.getLogger(__name__)
 
@@ -65,10 +66,24 @@ def preprocess_insar_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
+    info_prm = identify(dir_primary)
+    info_sec = identify(dir_secondary)
+    if info_prm.orbitNumber_rel != info_sec.orbitNumber_rel:
+        raise ValueError(
+            "Products should have identical tracks (relative orbit numbers)"
+        )
+
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    # TODO make some checks on product orbits, burst_count
+    prm_burst_info = prm.meta["product"]["swathTiming"]['burstList']['burst']
+    sec_burst_info = sec.meta["product"]["swathTiming"]['burstList']['burst']
+
+    prm_burst_ids = [bid['burstId']["#text"] for bid in prm_burst_info]
+    sec_burst_ids = [bid['burstId']["#text"] for bid in sec_burst_info]
+    if prm_burst_ids != sec_burst_ids:
+        raise NotImplementedError("Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints.")
+
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
@@ -600,7 +615,6 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     H = int(overlap / 2)
     naz = lines_per_burst
     to_merge = []
-    # with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
     for i, file_lut in enumerate(files_lut):
         lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
         # lut = riox.open_rasterio(file_lut, cache=False)
