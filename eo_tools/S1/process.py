@@ -9,15 +9,16 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from eo_tools.S1.util import presum, boxcar, remap
+import concurrent
 
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
+from pyroSAR import identify
 
 log = logging.getLogger(__name__)
 
 
-# TODO: make class and attach different paths (primary, secondary, lut) ?
 def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
@@ -64,10 +65,26 @@ def preprocess_insar_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
+    # redundant with burst check
+    # may be used in the future for non fully overlapping products
+    # info_prm = identify(dir_primary)
+    # info_sec = identify(dir_secondary)
+    # if info_prm.orbitNumber_rel != info_sec.orbitNumber_rel:
+    #     raise ValueError(
+    #         "Products should have identical tracks (relative orbit numbers)"
+    #     )
+
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    # TODO make some checks on product orbits, burst_count
+    prm_burst_info = prm.meta["product"]["swathTiming"]['burstList']['burst']
+    sec_burst_info = sec.meta["product"]["swathTiming"]['burstList']['burst']
+
+    prm_burst_ids = [bid['burstId']["#text"] for bid in prm_burst_info]
+    sec_burst_ids = [bid['burstId']["#text"] for bid in sec_burst_info]
+    if prm_burst_ids != sec_burst_ids:
+        raise NotImplementedError("Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints.")
+
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
@@ -98,44 +115,61 @@ def preprocess_insar_iw(
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
     nrg = prm.samples_per_burst
 
-    luts = _process_bursts(
-        prm,
-        sec,
-        tmp_prm,
-        tmp_sec,
-        dir_out,
-        dir_dem,
-        naz,
-        nrg,
-        min_burst,
-        max_burst_,
-        dem_upsampling,
-        dem_buffer_arc_sec,
-        dem_force_download,
-        kernel=warp_kernel,
-    )
-    if (max_burst_ > min_burst) & apply_fast_esd:
-        _apply_fast_esd(
-            tmp_prm, tmp_sec, min_burst, max_burst_, prm.lines_per_burst, nrg, overlap
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        args = (
+            prm,
+            sec,
+            tmp_prm,
+            tmp_sec,
+            dir_out,
+            dir_dem,
+            naz,
+            nrg,
+            min_burst,
+            max_burst_,
+            dem_upsampling,
+            dem_buffer_arc_sec,
+            dem_force_download,
+            warp_kernel,
         )
+        luts = e.submit(_process_bursts, *args).result()
+    if (max_burst_ > min_burst) & apply_fast_esd:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+            args = (
+                tmp_prm,
+                tmp_sec,
+                min_burst,
+                max_burst_,
+                prm.lines_per_burst,
+                nrg,
+                overlap,
+            )
+            e.submit(_apply_fast_esd, *args).result()
 
     if max_burst_ > min_burst:
-        _stitch_bursts(
-            tmp_sec,
-            f"{dir_out}/secondary.tif",
-            prm.lines_per_burst,
-            max_burst_ - min_burst + 1,
-            overlap,
-        )
-        _stitch_bursts(
-            tmp_prm,
-            f"{dir_out}/primary.tif",
-            prm.lines_per_burst,
-            max_burst_ - min_burst + 1,
-            overlap,
-        )
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+            args = (
+                tmp_sec,
+                f"{dir_out}/secondary.tif",
+                prm.lines_per_burst,
+                max_burst_ - min_burst + 1,
+                overlap,
+            )
+            e.submit(_stitch_bursts, *args).result()
 
-    _merge_luts(luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, offset=4)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+            args = (
+                tmp_prm,
+                f"{dir_out}/primary.tif",
+                prm.lines_per_burst,
+                max_burst_ - min_burst + 1,
+                overlap,
+            )
+            e.submit(_stitch_bursts, *args).result()
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        args = (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+        e.submit(_merge_luts, *args).result()
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -209,7 +243,7 @@ def slc2geo(
                 "compress": "deflate",
                 "resampling": "nearest",
             }
-        ) 
+        )
         # removing incompatible options
         prof_dst.pop("blockysize", None)
         prof_dst.pop("tiled", None)
@@ -582,10 +616,9 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     H = int(overlap / 2)
     naz = lines_per_burst
     to_merge = []
-    # with rasterio.Env(GDAL_NUM_THREADS="ALL_CPUS"):
     for i, file_lut in enumerate(files_lut):
-        # lut = riox.open_rasterio(file_lut, cache=False, chunks=True, lock=False)
-        lut = riox.open_rasterio(file_lut, cache=False)
+        lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
+        # lut = riox.open_rasterio(file_lut, cache=False)
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
 
