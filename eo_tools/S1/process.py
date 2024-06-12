@@ -9,14 +9,256 @@ from rioxarray.merge import merge_arrays
 import warnings
 import os
 from eo_tools.S1.util import presum, boxcar, remap
+from eo_tools.auxils import get_burst_geometry
 import concurrent
-
+import calendar
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
+from typing import Union, List, Tuple
+
+import datetime
 
 log = logging.getLogger(__name__)
+
+
+def process_InSAR(
+    dir_mst: str,
+    dir_slv: str,
+    outputs_prefix: str,
+    dir_tmp: str,
+    aoi_name: str = None,
+    shp=None,
+    pol: Union[str, List[str]] = "full",
+    coh_only: bool = False,
+    intensity: bool = True,
+    clear_tmp_files: bool = True,
+    resume: bool = False,
+    apply_ESD: bool = False,
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dem_force_download: bool = False,
+):
+    # TODO: update docstrings when finished
+    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
+    AOI crop is optional.
+
+    Args:
+        file_mst (str): Master image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        file_slv (str): Slave image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        out_dir (str): Output directory
+        tmp_dir (str): Temporary directory to store intermediate files
+        aoi_name (str): Optional suffix to describe AOI / experiment
+        shp (object, optional): Shapely geometry describing an area of interest as a polygon. If set to None, the whole product is processed. Defaults to None.
+        pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
+        coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
+        intensity (bool, optional): Adds image intensities. Defaults to True.
+        clear_tmp_files (bool, optional): Removes temporary files at the end (recommended). Defaults to True.
+        erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
+        resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
+        apply_ESD (bool, optional): enhanced spectral diversity to correct phase jumps between bursts. Defaults to False
+        subswaths (list, optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to `["IW1", "IW2", "IW3"]`
+    Returns:
+        out_dirs (list): Output directories containing COG files.
+    Note:
+        With products from Copernicus Data Space, processing of some zipped products may lead to errors. This issue can be temporarily fixed by processing the unzipped product instead of the zip file.
+    """
+    # detailed debug info
+    # logging.basicConfig(level=logging.DEBUG)
+
+    if aoi_name is None:
+        aoi_substr = ""
+    else:
+        aoi_substr = f"_{aoi_name}"
+
+    # retrieve burst geometries
+    gdf_burst_mst = get_burst_geometry(
+        dir_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+    gdf_burst_slv = get_burst_geometry(
+        dir_slv, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+
+    # find what subswaths and bursts intersect AOI
+    if shp is not None:
+        gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
+        gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
+
+    # identify corresponding subswaths
+    sel_subsw_mst = gdf_burst_mst["subswath"]
+    sel_subsw_slv = gdf_burst_slv["subswath"]
+    unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
+    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
+
+    # check that polarization is correct
+    info_mst = identify(dir_mst)
+    if isinstance(pol, str):
+        if pol == "full":
+            pol = info_mst.polarizations
+        else:
+            if pol in info_mst.polarizations:
+                pol = [pol]
+            else:
+                raise RuntimeError(
+                    "polarization {} does not exists in the source product".format(pol)
+                )
+    elif isinstance(pol, list):
+        pol = [x for x in pol if x in info_mst.polarizations]
+    else:
+        raise RuntimeError("polarizations must be of type str or list")
+
+    # do a check on orbits
+    info_slv = identify(dir_slv)
+    meta_mst = info_mst.scanMetadata()
+    meta_slv = info_slv.scanMetadata()
+    orbnum = meta_mst["orbitNumber_rel"]
+    if meta_slv["orbitNumber_rel"] != orbnum:
+        raise ValueError("Images must be from the same relative orbit.")
+
+    # parse dates
+    datestr_mst = meta_mst["start"]
+    datestr_slv = meta_slv["start"]
+    date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
+    date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
+
+    calendar_mst = (
+        f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
+    )
+    calendar_slv = (
+        f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
+    )
+
+    id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
+    id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
+
+    # check availability of orbit state vector file
+    log.info("---- Looking for available orbit files")
+    orbit_type = "Sentinel Precise (Auto Download)"
+    match = info_mst.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
+    match2 = info_slv.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
+    if match is None or match2 is None:
+        log.info("-- Precise orbits not available, using restituted")
+        info_mst.getOSV(osvType="RES")  # , osvdir=osvPath)
+        info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
+        orbit_type = "Sentinel Restituted (Auto Download)"
+
+    if coh_only:
+        substr = "coh"
+    else:
+        substr = "ifg"
+    out_dirs = []
+    for p in pol:
+        tmp_names = []
+        for subswath in unique_subswaths:
+            log.info(f"---- Processing subswath {subswath} in {p} polarization")
+
+            # identify bursts to process
+            bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
+                "burst"
+            ].values
+            burst_mst_min = bursts_mst.min()
+            burst_mst_max = bursts_mst.max()
+
+            tmp_subdir = f"{dir_tmp}/{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
+            tmp_names.append(tmp_subdir)
+            iw = int(subswath[2])
+            if not os.isdir(tmp_subdir):
+                os.mkdir(tmp_subdir)
+            preprocess_insar_iw(
+                dir_mst,
+                dir_slv,
+                tmp_subdir,
+                iw=iw,
+                pol=pol.lowercase(),
+                min_burst=burst_mst_min,
+                max_burst=burst_mst_max,
+                dir_dem="/tmp",
+                apply_fast_esd=apply_ESD,
+                warp_kernel="bicubic",
+                dem_upsampling=1.8,
+                dem_buffer_arc_sec=40,
+                dem_force_download=dem_force_download,
+            )
+
+        log.info(f"---- Merging and cropping subswaths {unique_subswaths}")
+
+        log.info("---- Writing COG files")
+
+        # Using COG driver
+        # prof_out.update(
+        #     {"driver": "COG", "compress": "deflate", "resampling": "nearest"}
+        # )
+        # del prof_out["blockysize"]
+        # del prof_out["tiled"]
+        # del prof_out["interleave"]
+
+        # if not coh_only and intensity:
+        #     cog_substrings = ["phi", "coh", "int_mst", "int_slv"]
+        #     offidx = 2
+        # elif coh_only and intensity:
+        #     cog_substrings = ["coh", "int_mst", "int_slv"]
+        #     offidx = 0
+        # elif not coh_only and not intensity:
+        #     cog_substrings = ["phi", "coh"]
+        #     offidx = 2
+        # elif coh_only and not intensity:
+        #     cog_substrings = ["coh"]
+        #     offidx = 0
+
+        # if shp is not None:
+        #     arr_out = arr_crop
+        # else:
+        #     arr_out = arr_merge
+
+        # out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
+        # out_dirs.append(out_dir)
+        # if not os.path.exists(out_dir):
+        #     os.mkdir(out_dir)
+
+        # for sub in cog_substrings:
+        #     if sub == "phi":
+        #         out_path = f"{out_dir}/{sub}.tif"
+        #         with rio.open(out_path, "w", **prof_out) as dst:
+        #             dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
+        #     if sub == "coh":
+        #         out_path = f"{out_dir}/{sub}.tif"
+        #         with rio.open(out_path, "w", **prof_out) as dst:
+        #             dst.write(arr_out[offidx], 1)
+        #     if sub == "int_mst":
+        #         out_path = f"{out_dir}/{sub}.tif"
+        #         with rio.open(out_path, "w", **prof_out) as dst:
+        #             band = arr_out[1 + offidx]
+        #             dst.update_tags(mean_value=band[band != 0].mean())
+        #             dst.write(band, 1)
+        #     if sub == "int_slv":
+        #         out_path = f"{out_dir}/{sub}.tif"
+        #         with rio.open(out_path, "w", **prof_out) as dst:
+        #             band = arr_out[2 + offidx]
+        #             dst.update_tags(mean_value=band[band != 0].mean())
+        #             dst.write(band, 1)
+
+        # if clear_tmp_files:
+        #     log.info("---- Removing temporary files.")
+        #     for tmp_name in tmp_names:
+        #         name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
+        #         name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
+        #         name_int = f"{tmp_dir}/{tmp_name}_{substr}_int"
+        #         dimfiles_to_remove = [name_coreg, name_insar, name_int]
+        #         for name in dimfiles_to_remove:
+        #             remove(f"{name}.dim")
+        #             remove(f"{name}.data")
+
+        #             name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
+        #             path_tc = f"{name_tc}.tif"
+        #             path_edge = f"{name_tc}_edge.tif"
+        #             remove(path_tc)
+        #             remove(path_edge)
+
+        #     remove(f"{tmp_dir}/graph_coreg.xml")
+        #     remove(f"{tmp_dir}/graph_insar.xml")
+        #     remove(f"{tmp_dir}/graph_int.xml")
+        #     remove(f"{tmp_dir}/graph_tc.xml")
+    # return out_dirs
 
 
 def preprocess_insar_iw(
@@ -77,14 +319,15 @@ def preprocess_insar_iw(
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    prm_burst_info = prm.meta["product"]["swathTiming"]['burstList']['burst']
-    sec_burst_info = sec.meta["product"]["swathTiming"]['burstList']['burst']
+    prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
+    sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
 
-    prm_burst_ids = [bid['burstId']["#text"] for bid in prm_burst_info]
-    sec_burst_ids = [bid['burstId']["#text"] for bid in sec_burst_info]
+    prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
+    sec_burst_ids = [bid["burstId"]["#text"] for bid in sec_burst_info]
     if prm_burst_ids != sec_burst_ids:
-        raise NotImplementedError("Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints.")
-
+        raise NotImplementedError(
+            "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
+        )
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
