@@ -17,12 +17,18 @@ from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
 from typing import Union, List, Tuple
-
-import datetime
+from datetime import datetime
 
 log = logging.getLogger(__name__)
 
 
+# TODO add parameters:
+# - slc -- radar geometry only
+# - geocoded
+# - box size
+# - multilook
+# - better options: write_phase, write_amp_prm, write_coh, write_clx_coh, etc
+# - warp kernel, and pre-processing options from other function
 def process_InSAR(
     dir_mst: str,
     dir_slv: str,
@@ -96,7 +102,7 @@ def process_InSAR(
         if pol == "full":
             pol = info_mst.polarizations
         else:
-            if pol in info_mst.polarizations:
+            if pol.upper() in info_mst.polarizations:
                 pol = [pol]
             else:
                 raise RuntimeError(
@@ -142,13 +148,14 @@ def process_InSAR(
         info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
         orbit_type = "Sentinel Restituted (Auto Download)"
 
-    if coh_only:
-        substr = "coh"
-    else:
-        substr = "ifg"
+
     out_dirs = []
     for p in pol:
         tmp_names = []
+        phi_to_merge = []
+        coh_to_merge = []
+        amp_prm_to_merge = []
+        amp_sec_to_merge = []
         for subswath in unique_subswaths:
             log.info(f"---- Processing subswath {subswath} in {p} polarization")
 
@@ -159,17 +166,19 @@ def process_InSAR(
             burst_mst_min = bursts_mst.min()
             burst_mst_max = bursts_mst.max()
 
-            tmp_subdir = f"{dir_tmp}/{subswath}_{p}_{id_mst}_{id_slv}{aoi_substr}"
+            tmp_subdir = (
+                f"{dir_tmp}/{subswath}_{p.upper()}_{id_mst}_{id_slv}{aoi_substr}"
+            )
             tmp_names.append(tmp_subdir)
             iw = int(subswath[2])
-            if not os.isdir(tmp_subdir):
+            if not os.path.isdir(tmp_subdir):
                 os.mkdir(tmp_subdir)
             preprocess_insar_iw(
                 dir_mst,
                 dir_slv,
                 tmp_subdir,
                 iw=iw,
-                pol=pol.lowercase(),
+                pol=p.lower(),
                 min_burst=burst_mst_min,
                 max_burst=burst_mst_max,
                 dir_dem="/tmp",
@@ -180,62 +189,70 @@ def process_InSAR(
                 dem_force_download=dem_force_download,
             )
 
+        file_prm = f"{tmp_subdir}/primary.tif"
+        file_sec = f"{tmp_subdir}/secondary.tif"
+        file_amp_1 = f"{tmp_subdir}/amp_prm.tif"
+        file_amp_2 = f"{tmp_subdir}/amp_sec.tif"
+        file_coh = f"{tmp_subdir}/coh.tif"
+        file_phi_geo = f"{tmp_subdir}/phi_geo.tif"
+        file_amp_1_geo = f"{tmp_subdir}/amp_prm_geo.tif"
+        file_amp_2_geo = f"{tmp_subdir}/amp_sec_geo.tif"
+        file_coh_geo = f"{tmp_subdir}/coh_geo.tif"
+        file_lut = f"{tmp_subdir}/lut.tif"
+
+        # TODO isolate in child processes
+        # computing amplitude and complex coherence  in the radar geometry
+        coherence(file_prm, file_sec, file_coh, box_size=[3, 10], magnitude=False)
+
+        # combined multilooking and geocoding
+        # interferometric coherence
+        log.info("Geocoding interferometric coherence.")
+        slc2geo(
+            file_coh,
+            file_lut,
+            file_coh_geo,
+            1,
+            4,
+            "bicubic",
+            write_phase=False,
+            magnitude_only=True,
+        )
+        coh_to_merge.append(riox.open_rasterio(file_coh_geo))
+
+        # interferometric phase
+        if not coh_only:
+            log.info("Geocoding interferometric phase.")
+            slc2geo(file_coh, file_lut, file_phi_geo, 1, 4, "bicubic", write_phase=True)
+            phi_to_merge.append(riox.open_rasterio(file_phi_geo))
+
+        # amplitude of the primary image
+        if intensity:
+            log.info("Geocoding image amplitudes.")
+            amplitude(file_prm, file_amp_1)
+            amplitude(file_sec, file_amp_2)
+            slc2geo(file_amp_1, file_lut, file_amp_1_geo, 2, 8, "bicubic", False, True)
+            slc2geo(file_amp_2, file_lut, file_amp_2_geo, 2, 8, "bicubic", False, True)
+            amp_prm_to_merge.append(riox.open_rasterio(file_amp_1_geo))
+            amp_sec_to_merge.append(riox.open_rasterio(file_amp_2_geo))
+
         log.info(f"---- Merging and cropping subswaths {unique_subswaths}")
+        out_dir = f"{outputs_prefix}/S1_InSAR_{p.upper()}_{id_mst}__{id_slv}{aoi_substr}"
+        out_dirs.append(out_dir)
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+        list_var = [coh_to_merge, phi_to_merge, amp_prm_to_merge, amp_sec_to_merge]
+        list_prefix = ["coh", "phi", "amp_prm", "amp_sec"]
 
-        log.info("---- Writing COG files")
-
-        # Using COG driver
-        # prof_out.update(
-        #     {"driver": "COG", "compress": "deflate", "resampling": "nearest"}
-        # )
-        # del prof_out["blockysize"]
-        # del prof_out["tiled"]
-        # del prof_out["interleave"]
-
-        # if not coh_only and intensity:
-        #     cog_substrings = ["phi", "coh", "int_mst", "int_slv"]
-        #     offidx = 2
-        # elif coh_only and intensity:
-        #     cog_substrings = ["coh", "int_mst", "int_slv"]
-        #     offidx = 0
-        # elif not coh_only and not intensity:
-        #     cog_substrings = ["phi", "coh"]
-        #     offidx = 2
-        # elif coh_only and not intensity:
-        #     cog_substrings = ["coh"]
-        #     offidx = 0
-
-        # if shp is not None:
-        #     arr_out = arr_crop
-        # else:
-        #     arr_out = arr_merge
-
-        # out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
-        # out_dirs.append(out_dir)
-        # if not os.path.exists(out_dir):
-        #     os.mkdir(out_dir)
-
-        # for sub in cog_substrings:
-        #     if sub == "phi":
-        #         out_path = f"{out_dir}/{sub}.tif"
-        #         with rio.open(out_path, "w", **prof_out) as dst:
-        #             dst.write(np.angle(arr_out[0] + 1j * arr_out[1]), 1)
-        #     if sub == "coh":
-        #         out_path = f"{out_dir}/{sub}.tif"
-        #         with rio.open(out_path, "w", **prof_out) as dst:
-        #             dst.write(arr_out[offidx], 1)
-        #     if sub == "int_mst":
-        #         out_path = f"{out_dir}/{sub}.tif"
-        #         with rio.open(out_path, "w", **prof_out) as dst:
-        #             band = arr_out[1 + offidx]
-        #             dst.update_tags(mean_value=band[band != 0].mean())
-        #             dst.write(band, 1)
-        #     if sub == "int_slv":
-        #         out_path = f"{out_dir}/{sub}.tif"
-        #         with rio.open(out_path, "w", **prof_out) as dst:
-        #             band = arr_out[2 + offidx]
-        #             dst.update_tags(mean_value=band[band != 0].mean())
-        #             dst.write(band, 1)
+        for var_to_merge, prefix in zip(list_var, list_prefix):
+            if var_to_merge:
+                if shp:
+                    merged = merge_arrays(
+                        var_to_merge, parse_coordinates=False
+                    ).rio.clip([shp], all_touched=True)
+                else:
+                    merged = merge_arrays(var_to_merge, parse_coordinates=False)
+                file_out = f"{out_dir}/{prefix}_geo.tif"
+                merged.rio.to_raster(file_out)
 
         # if clear_tmp_files:
         #     log.info("---- Removing temporary files.")
@@ -258,7 +275,7 @@ def process_InSAR(
         #     remove(f"{tmp_dir}/graph_insar.xml")
         #     remove(f"{tmp_dir}/graph_int.xml")
         #     remove(f"{tmp_dir}/graph_tc.xml")
-    # return out_dirs
+    return out_dirs
 
 
 def preprocess_insar_iw(
