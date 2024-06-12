@@ -19,7 +19,6 @@ from pyroSAR import identify
 log = logging.getLogger(__name__)
 
 
-# TODO: make class and attach different paths (primary, secondary, lut) ?
 def preprocess_insar_iw(
     dir_primary,
     dir_secondary,
