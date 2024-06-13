@@ -466,7 +466,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
-@njit(cache=True, nogil=True, parallel=True)
+@njit(nogil=True, parallel=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
