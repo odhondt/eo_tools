@@ -39,70 +39,70 @@ def boxcar(img, dimaz, dimrg):
     return imgout
 
 
-# def presum(img, m, n):
-#     """m by n presumming of an image
-
-#     Parameters
-#     ----------
-#     img: array, shape (naz, nrg,...)
-
-#     m,n: integer
-#         number of lines and columns to sum
-
-#     Returns
-#     -------
-#     out: array, shape(M, N,...)
-#         M and N are closest multiples of m and n
-#         to naz and nrg
-#     """
-#     if m > img.shape[0] or n > img.shape[1]:
-#         raise ValueError("Cannot presum with these parameters.")
-
-#     # TODO: write exception controlling size
-#     # and validity of parameters m, n
-#     M = int(np.floor(img.shape[0] / int(m)) * m)
-#     N = int(np.floor(img.shape[1] / int(n)) * n)
-#     img0 = img[:M, :N].copy()  # keep for readability
-#     s = img0[::m].copy()
-#     for i in range(1, m):
-#         s += img0[i::m]
-#     t = s[:, ::n]
-#     for j in range(1, n):
-#         t += s[:, j::n]
-#     return t / float(m * n)
-
-
-@njit(parallel=True)
 def presum(img, m, n):
+    """m by n presumming of an image
+
+    Parameters
+    ----------
+    img: array, shape (naz, nrg,...)
+
+    m,n: integer
+        number of lines and columns to sum
+
+    Returns
+    -------
+    out: array, shape(M, N,...)
+        M and N are closest multiples of m and n
+        to naz and nrg
     """
-    Computes the average of an image over m lines and n columns in parallel.
+    if m > img.shape[0] or n > img.shape[1]:
+        raise ValueError("Cannot presum with these parameters.")
 
-    Args:
-        img (numpy.ndarray): Input image array of shape (height, width, ...).
-        m (int): Number of lines to average.
-        n (int): Number of columns to average.
+    # TODO: write exception controlling size
+    # and validity of parameters m, n
+    M = int(np.floor(img.shape[0] / int(m)) * m)
+    N = int(np.floor(img.shape[1] / int(n)) * n)
+    img0 = img[:M, :N].copy()  # keep for readability
+    s = img0[::m].copy()
+    for i in range(1, m):
+        s += img0[i::m]
+    t = s[:, ::n]
+    for j in range(1, n):
+        t += s[:, j::n]
+    return t / float(m * n)
 
-    Returns:
-        numpy.ndarray: Output image array of shape (height // m, width // n, ...).
-    """
-    height, width = img.shape[:2]
-    new_height = height // m
-    new_width = width // n
 
-    img_out = np.zeros((new_height, new_width) + img.shape[2:], dtype=img.dtype)
+# @njit(parallel=True, nogil=True)
+# def presum(img, m, n):
+#     """
+#     Computes the average of an image over m lines and n columns in parallel.
 
-    for i in prange(new_height):
-        for j in range(new_width):
-            # Compute the sum over the region
-            block_sum = 0
-            for x in range(i * m, (i + 1) * m):
-                for y in range(j * n, (j + 1) * n):
-                    block_sum += img[x, y]
+#     Args:
+#         img (numpy.ndarray): Input image array of shape (height, width, ...).
+#         m (int): Number of lines to average.
+#         n (int): Number of columns to average.
 
-            # Compute the average and assign to output image
-            img_out[i, j] = block_sum / (m * n)
+#     Returns:
+#         numpy.ndarray: Output image array of shape (height // m, width // n, ...).
+#     """
+#     height, width = img.shape[:2]
+#     new_height = height // m
+#     new_width = width // n
 
-    return img_out
+#     img_out = np.zeros((new_height, new_width) + img.shape[2:], dtype=img.dtype)
+
+#     for i in prange(new_height):
+#         for j in range(new_width):
+#             # Compute the sum over the region
+#             block_sum = 0
+#             for x in range(i * m, (i + 1) * m):
+#                 for y in range(j * n, (j + 1) * n):
+#                     block_sum += img[x, y]
+
+#             # Compute the average and assign to output image
+#             img_out[i, j] = block_sum / (m * n)
+
+#     return img_out
 
 
 # TODO: add truncated sinc
