@@ -23,6 +23,7 @@ from datetime import datetime
 log = logging.getLogger(__name__)
 # mp.set_start_method("fork")
 
+
 # TODO add parameters:
 # - slc -- radar geometry only
 # - geocoded
@@ -45,6 +46,8 @@ def process_InSAR(
     apply_ESD: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dem_force_download: bool = False,
+    boxcar_coherence: Union[int, List[int]] = [3, 10],
+    multilook: List[int] = [1, 4],
 ):
     # TODO: update docstrings when finished
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -107,7 +110,7 @@ def process_InSAR(
                 pol = [pol]
             else:
                 raise RuntimeError(
-                    "polarization {} does not exists in the source product".format(pol)
+                    f"polarization {pol} does not exists in the source product"
                 )
     elif isinstance(pol, list):
         pol = [x for x in pol if x in info_mst.polarizations]
@@ -128,27 +131,8 @@ def process_InSAR(
     date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
     date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
 
-    # calendar_mst = (
-    #     f"{date_mst.strftime('%d')}{calendar.month_abbr[date_mst.month]}{date_mst.year}"
-    # )
-    # calendar_slv = (
-    #     f"{date_slv.strftime('%d')}{calendar.month_abbr[date_slv.month]}{date_slv.year}"
-    # )
-
     id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
     id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
-
-    # check availability of orbit state vector file
-    # log.info("---- Looking for available orbit files")
-    # orbit_type = "Sentinel Precise (Auto Download)"
-    # match = info_mst.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
-    # match2 = info_slv.getOSV(osvType="POE", returnMatch=True)  # , osvdir=osvPath)
-    # if match is None or match2 is None:
-    #     log.info("-- Precise orbits not available, using restituted")
-    #     info_mst.getOSV(osvType="RES")  # , osvdir=osvPath)
-    #     info_slv.getOSV(osvType="RES")  # , osvdir=osvPath)
-    #     orbit_type = "Sentinel Restituted (Auto Download)"
-
 
     out_dirs = []
     for p in pol:
@@ -158,7 +142,7 @@ def process_InSAR(
         amp_prm_to_merge = []
         amp_sec_to_merge = []
         for subswath in unique_subswaths:
-            log.info(f"---- Processing subswath {subswath} in {p} polarization")
+            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
 
             # identify bursts to process
             bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
@@ -174,21 +158,21 @@ def process_InSAR(
             iw = int(subswath[2])
             if not os.path.isdir(tmp_subdir):
                 os.mkdir(tmp_subdir)
-            preprocess_insar_iw(
-                dir_mst,
-                dir_slv,
-                tmp_subdir,
-                iw=iw,
-                pol=p.lower(),
-                min_burst=burst_mst_min,
-                max_burst=burst_mst_max,
-                dir_dem="/tmp",
-                apply_fast_esd=apply_ESD,
-                warp_kernel="bicubic",
-                dem_upsampling=1.8,
-                dem_buffer_arc_sec=40,
-                dem_force_download=dem_force_download,
-            )
+            # preprocess_insar_iw(
+            #     dir_mst,
+            #     dir_slv,
+            #     tmp_subdir,
+            #     iw=iw,
+            #     pol=p.lower(),
+            #     min_burst=burst_mst_min,
+            #     max_burst=burst_mst_max,
+            #     dir_dem="/tmp",
+            #     apply_fast_esd=apply_ESD,
+            #     warp_kernel="bicubic",
+            #     dem_upsampling=1.8,
+            #     dem_buffer_arc_sec=40,
+            #     dem_force_download=dem_force_download,
+            # )
 
             file_prm = f"{tmp_subdir}/primary.tif"
             file_sec = f"{tmp_subdir}/secondary.tif"
@@ -203,72 +187,104 @@ def process_InSAR(
 
             # TODO isolate in child processes
             # computing amplitude and complex coherence  in the radar geometry
-            coherence(file_prm, file_sec, file_coh, box_size=[3, 10], magnitude=False)
+            # coherence(file_prm, file_sec, file_coh, boxcar_coherence, False)
 
             # combined multilooking and geocoding
             # interferometric coherence
             log.info("Geocoding interferometric coherence.")
             # using child process to avoid fork conflitcs due to openmp
-            with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-                args =( file_coh, file_lut, file_coh_geo, 1, 4, "bicubic", False, True) 
-                e.submit(slc2geo, *args).result()
-            
-            # slc2geo(
-            #     file_coh,
-            #     file_lut,
-            #     file_coh_geo,
-            #     1,
-            #     4,
-            #     "bicubic",
-            #     write_phase=False,
-            #     magnitude_only=True,
-            # )
-           
-            coh_to_merge.append(riox.open_rasterio(file_coh_geo))
+
+            _child_process(
+                slc2geo,
+                (
+                    file_coh,
+                    file_lut,
+                    file_coh_geo,
+                    multilook[0],
+                    multilook[1],
+                    "bicubic",
+                    False,
+                    True,
+                ),
+            )
+
+            # coh_to_merge.append(riox.open_rasterio(file_coh_geo))
+            coh_to_merge.append(file_coh_geo)
 
             # interferometric phase
             if not coh_only:
                 log.info("Geocoding interferometric phase.")
-                with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-                    args =(file_coh, file_lut, file_phi_geo, 1, 4, "bicubic", True)
-                    e.submit(slc2geo, *args).result()
-                # slc2geo(file_coh, file_lut, file_phi_geo, 1, 4, "bicubic", write_phase=True)
-                phi_to_merge.append(riox.open_rasterio(file_phi_geo))
+                _child_process(
+                    slc2geo,
+                    (
+                        file_coh,
+                        file_lut,
+                        file_phi_geo,
+                        multilook[0],
+                        multilook[1],
+                        "bicubic",
+                        True,
+                        False,
+                    ),
+                )
+                phi_to_merge.append(file_phi_geo)
 
             # amplitude of the primary image
             if intensity:
                 log.info("Geocoding image amplitudes.")
-                amplitude(file_prm, file_amp_1)
-                amplitude(file_sec, file_amp_2)
-                with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-                    args =(file_amp_1, file_lut, file_amp_1_geo, 1, 4, "bicubic", False, True)
-                    e.submit(slc2geo, *args).result()
-                with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-                    args =(file_amp_2, file_lut, file_amp_2_geo, 1, 4, "bicubic", False, True)
-                    e.submit(slc2geo, *args).result()
-                # slc2geo(file_amp_1, file_lut, file_amp_1_geo, 1, 4, "bicubic", False, True)
-                # slc2geo(file_amp_2, file_lut, file_amp_2_geo, 1, 4, "bicubic", False, True)
-                amp_prm_to_merge.append(riox.open_rasterio(file_amp_1_geo))
-                amp_sec_to_merge.append(riox.open_rasterio(file_amp_2_geo))
+                # _child_process(amplitude, (file_prm, file_amp_1))
+                # _child_process(amplitude, (file_sec, file_amp_2))
+                _child_process(
+                    slc2geo,
+                    (
+                        file_amp_1,
+                        file_lut,
+                        file_amp_1_geo,
+                        multilook[0],
+                        multilook[1],
+                        "bicubic",
+                        False,
+                        True,
+                    ),
+                )
+                _child_process(
+                    slc2geo,
+                    (
+                        file_amp_2,
+                        file_lut,
+                        file_amp_2_geo,
+                        multilook[0],
+                        multilook[1],
+                        "bicubic",
+                        False,
+                        True,
+                    ),
+                )
+                amp_prm_to_merge.append(file_amp_1_geo)
+                amp_sec_to_merge.append(file_amp_2_geo)
 
         log.info(f"---- Merging and cropping subswaths {unique_subswaths}")
         # create output dir if needed
-        out_dir = f"{outputs_prefix}/S1_InSAR_{p.upper()}_{id_mst}__{id_slv}{aoi_substr}"
+        out_dir = (
+            f"{outputs_prefix}/S1_InSAR_{p.upper()}_{id_mst}__{id_slv}{aoi_substr}"
+        )
         out_dirs.append(out_dir)
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
 
-        # merge & crop 
+        # merge & crop
         list_var = [coh_to_merge, phi_to_merge, amp_prm_to_merge, amp_sec_to_merge]
         list_prefix = ["coh", "phi", "amp_prm", "amp_sec"]
         for var_to_merge, prefix in zip(list_var, list_prefix):
             if var_to_merge:
+                log.info(f"Merging to file {prefix}_geo.tif")
                 if shp:
+                    da_to_merge = [riox.open_rasterio(var) for var in var_to_merge]
                     merged = merge_arrays(
-                        var_to_merge, parse_coordinates=False
+                        da_to_merge, parse_coordinates=False
                     ).rio.clip([shp], all_touched=True)
                 else:
-                    merged = merge_arrays(var_to_merge, parse_coordinates=False)
+                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
                 file_out = f"{out_dir}/{prefix}_geo.tif"
                 merged.rio.to_raster(file_out)
 
@@ -394,8 +410,9 @@ def preprocess_insar_iw(
     nrg = prm.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        args = (
+    luts = _child_process(
+        _process_bursts,
+        (
             prm,
             sec,
             tmp_prm,
@@ -410,8 +427,26 @@ def preprocess_insar_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             warp_kernel,
-        )
-        luts = e.submit(_process_bursts, *args).result()
+        ),
+    )
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+    #     args = (
+    #         prm,
+    #         sec,
+    #         tmp_prm,
+    #         tmp_sec,
+    #         dir_out,
+    #         dir_dem,
+    #         naz,
+    #         nrg,
+    #         min_burst,
+    #         max_burst_,
+    #         dem_upsampling,
+    #         dem_buffer_arc_sec,
+    #         dem_force_download,
+    #         warp_kernel,
+    #     )
+    #     luts = e.submit(_process_bursts, *args).result()
     if (max_burst_ > min_burst) & apply_fast_esd:
         with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
             args = (
@@ -665,6 +700,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
+    del da_coh
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
@@ -897,7 +933,7 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
     to_merge = []
     for i, file_lut in enumerate(files_lut):
         # lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
-        lut = riox.open_rasterio(file_lut)#, chunks=True)#, lock=False)
+        lut = riox.open_rasterio(file_lut)  # , chunks=True)#, lock=False)
         # lut = riox.open_rasterio(file_lut, cache=False)
         cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
         lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
@@ -917,3 +953,10 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
 
     merged = merge_arrays(to_merge, parse_coordinates=False)
     merged.rio.to_raster(file_out)  # , windowed=False, tiled=True)
+
+
+def _child_process(func, args):
+    # convenience function to make code prettier
+    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        res = e.submit(func, *args).result()
+    return res
