@@ -152,27 +152,28 @@ def process_InSAR(
             burst_mst_max = bursts_mst.max()
 
             tmp_subdir = (
-                f"{dir_tmp}/{subswath}_{p.upper()}_{id_mst}_{id_slv}{aoi_substr}"
+                # f"{dir_tmp}/{subswath}_{p.upper()}_{id_mst}_{id_slv}{aoi_substr}"
+                f"{dir_tmp}/{p.upper()}_{id_mst}_{id_slv}{aoi_substr}/{subswath}"
             )
             tmp_names.append(tmp_subdir)
             iw = int(subswath[2])
             if not os.path.isdir(tmp_subdir):
                 os.mkdir(tmp_subdir)
-            # preprocess_insar_iw(
-            #     dir_mst,
-            #     dir_slv,
-            #     tmp_subdir,
-            #     iw=iw,
-            #     pol=p.lower(),
-            #     min_burst=burst_mst_min,
-            #     max_burst=burst_mst_max,
-            #     dir_dem="/tmp",
-            #     apply_fast_esd=apply_ESD,
-            #     warp_kernel="bicubic",
-            #     dem_upsampling=1.8,
-            #     dem_buffer_arc_sec=40,
-            #     dem_force_download=dem_force_download,
-            # )
+            preprocess_insar_iw(
+                dir_mst,
+                dir_slv,
+                tmp_subdir,
+                iw=iw,
+                pol=p.lower(),
+                min_burst=burst_mst_min,
+                max_burst=burst_mst_max,
+                dir_dem="/tmp",
+                apply_fast_esd=apply_ESD,
+                warp_kernel="bicubic",
+                dem_upsampling=1.8,
+                dem_buffer_arc_sec=40,
+                dem_force_download=dem_force_download,
+            )
 
             file_prm = f"{tmp_subdir}/primary.tif"
             file_sec = f"{tmp_subdir}/secondary.tif"
@@ -187,12 +188,11 @@ def process_InSAR(
 
             # TODO isolate in child processes
             # computing amplitude and complex coherence  in the radar geometry
-            # coherence(file_prm, file_sec, file_coh, boxcar_coherence, False)
+            coherence(file_prm, file_sec, file_coh, boxcar_coherence, False)
 
             # combined multilooking and geocoding
             # interferometric coherence
             log.info("Geocoding interferometric coherence.")
-            # using child process to avoid fork conflitcs due to openmp
 
             _child_process(
                 slc2geo,
@@ -232,8 +232,8 @@ def process_InSAR(
             # amplitude of the primary image
             if intensity:
                 log.info("Geocoding image amplitudes.")
-                # _child_process(amplitude, (file_prm, file_amp_1))
-                # _child_process(amplitude, (file_sec, file_amp_2))
+                _child_process(amplitude, (file_prm, file_amp_1))
+                _child_process(amplitude, (file_sec, file_amp_2))
                 _child_process(
                     slc2geo,
                     (
@@ -287,6 +287,7 @@ def process_InSAR(
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
                 file_out = f"{out_dir}/{prefix}_geo.tif"
                 merged.rio.to_raster(file_out)
+                # del merged
 
         # if clear_tmp_files:
         #     log.info("---- Removing temporary files.")
@@ -700,7 +701,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
-    del da_coh
+    # del da_coh
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
