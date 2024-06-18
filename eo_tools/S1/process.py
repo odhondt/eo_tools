@@ -19,6 +19,8 @@ import logging
 from pyroSAR import identify
 from typing import Union, List, Tuple
 from datetime import datetime
+import glob
+from eo_tools.auxils import remove
 
 log = logging.getLogger(__name__)
 # mp.set_start_method("fork")
@@ -95,9 +97,7 @@ def prepare_InSAR(
     id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
     id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
 
-    out_dir = (
-        f"{outputs_prefix}/S1_InSAR_{id_mst}_{id_slv}{aoi_substr}"
-    )
+    out_dir = f"{outputs_prefix}/S1_InSAR_{id_mst}_{id_slv}{aoi_substr}"
     for p in pol:
         for subswath in unique_subswaths:
             log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
@@ -128,15 +128,84 @@ def prepare_InSAR(
                 dem_force_download=dem_force_download,
             )
             os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
-            os.rename(f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif")
+            os.rename(
+                f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
+            )
             os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
+    return out_dir
+
+
+def geocode_and_merge(
+    insar_dir: str,
+    var_names: List[str],
+    shp=None,
+    kernel="bicubic",
+    multilook: List[int] = [1, 4],
+    complex_phase: bool = False
+):
+
+    for var in var_names:
+        no_file_found = True
+        for pol in ["vv", "vh"]:
+            patterns = [f"{insar_dir}/{pol}_iw{iw}_{var}.tif" for iw in [1, 2, 3]]
+            tmp_files = []
+            for pattern in patterns:
+                matched_files = glob.glob(pattern)
+                if matched_files:
+                    no_file_found = False
+                for file_var in matched_files:
+                    log.info(f"Geocoding file {file_var}.")
+                    base_name = os.path.basename(file_var)
+                    parts = base_name.split("_")
+                    pol = parts[0]
+                    iw = parts[1][2]  # Extract the digit after "iw"
+                    file_lut = f"{pol}_iw{iw}_lut.tif"
+                    file_out = f"{pol}_iw{iw}_{var}_geo.tif"
+                    tmp_files.append(file_out)
+
+                    if not os.path.exists(file_lut):
+                        raise FileNotFoundError(
+                            f"Corresponding LUT file {file_lut} not found for {file_var}"
+                        )
+                    
+                    # handling phase as a special case
+                    write_phase = False
+                    if var == "phi":
+                        darr = riox.open_rasterio(file_var)
+                        if not np.iscomplexobj(darr[0]):
+                            warnings.warn("Geocoding real-valued phase. The result might not be optimal if the phase is wrapped.")
+                        if not complex_phase:
+                            write_phase = True
+                    slc2geo(
+                        file_var,
+                        file_lut,
+                        file_out,
+                        multilook[0],
+                        multilook[1],
+                        kernel,
+                        write_phase,
+                        False,
+                    )
+            if no_file_found:
+                raise FileNotFoundError(f"No file was found for variable {var}")
+            else:
+                log.info(f"Merging to file {var}_{pol}.tif")
+                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
+                if shp:
+                    merged = merge_arrays(
+                        da_to_merge, parse_coordinates=False
+                    ).rio.clip([shp], all_touched=True)
+                else:
+                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
+                file_out = f"{insar_dir}/{var}_{pol}.tif"
+                merged.rio.to_raster(file_out)
+
+                # clean tmp files
+                for file in tmp_files:
+                    remove(file)
 
 
 # TODO add parameters:
-# - slc -- radar geometry only
-# - geocoded
-# - box size
-# - multilook
 # - better options: write_phase, write_amp_prm, write_coh, write_clx_coh, etc
 # - warp kernel, and pre-processing options from other function
 def process_InSAR(
@@ -181,8 +250,6 @@ def process_InSAR(
     Note:
         With products from Copernicus Data Space, processing of some zipped products may lead to errors. This issue can be temporarily fixed by processing the unzipped product instead of the zip file.
     """
-    # detailed debug info
-    # logging.basicConfig(level=logging.DEBUG)
 
     if aoi_name is None:
         aoi_substr = ""
@@ -700,7 +767,7 @@ def slc2geo(
 
 # TODO optional chunk processing
 def interferogram(file_prm, file_sec, file_out):
-    """Compute an interferogram from two SLC image files.
+    """Compute a complex interferogram from two SLC image files.
 
     Args:
         file_prm (str): GeoTiff file of the primary SLC image
@@ -740,7 +807,7 @@ def amplitude(file_in, file_out):
         dst.write(amp, 1)
 
 
-def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
+def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True, file_complex_ifg=None):
     """Compute the complex coherence from two SLC image files.
 
     Args:
@@ -776,7 +843,8 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
         depth=(box_az, box_rg),
     )
 
-    coh = da.map_overlap(boxcar, prm * sec.conj(), **process_args, dtype="complex64")
+    ifg =  prm * sec.conj()
+    coh = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
     coh /= np.sqrt(
         da.map_overlap(
@@ -807,8 +875,18 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True):
     )
     da_coh.rio.write_nodata(nodataval)
 
+
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
+
+    # useful as users may want non-filtered interferograms 
+    if file_complex_ifg:
+        da_ifg = xr.DataArray(
+            data=ifg[None],
+            dims=("band", "y", "x"),
+        )
+        da_ifg.rio.write_nodata(np.nan + 1j * np.nan)
+        da_ifg.rio.to_raster(file_complex_ifg)
     # del da_coh
 
 
