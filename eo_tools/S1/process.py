@@ -21,9 +21,9 @@ from typing import Union, List, Tuple
 from datetime import datetime
 import glob
 from eo_tools.auxils import remove
+from pathlib import Path
 
 log = logging.getLogger(__name__)
-# mp.set_start_method("fork")
 
 
 def prepare_InSAR(
@@ -35,6 +35,7 @@ def prepare_InSAR(
     pol: Union[str, List[str]] = "full",
     apply_ESD: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
 ):
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables."""
@@ -112,70 +113,85 @@ def prepare_InSAR(
             iw = int(subswath[2])
             if not os.path.isdir(out_dir):
                 os.mkdir(out_dir)
-            preprocess_insar_iw(
-                dir_mst,
-                dir_slv,
-                out_dir,
-                iw=iw,
-                pol=p.lower(),
-                min_burst=burst_mst_min,
-                max_burst=burst_mst_max,
-                dir_dem="/tmp",
-                apply_fast_esd=apply_ESD,
-                warp_kernel="bicubic",
-                dem_upsampling=1.8,
-                dem_buffer_arc_sec=40,
-                dem_force_download=dem_force_download,
-            )
-            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
-            os.rename(
-                f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
-            )
-            os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
+            # preprocess_insar_iw(
+            #     dir_mst,
+            #     dir_slv,
+            #     out_dir,
+            #     iw=iw,
+            #     pol=p.lower(),
+            #     min_burst=burst_mst_min,
+            #     max_burst=burst_mst_max,
+            #     dir_dem="/tmp",
+            #     apply_fast_esd=apply_ESD,
+            #     warp_kernel="bicubic",
+            #     dem_upsampling=dem_upsampling,
+            #     dem_buffer_arc_sec=40,
+            #     dem_force_download=dem_force_download,
+            # )
+            # os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
+            # os.rename(
+            #     f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
+            # )
+            # os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
     return out_dir
 
 
-def geocode_and_merge(
+def geocode_and_merge_iw(
     insar_dir: str,
     var_names: List[str],
     shp=None,
     kernel="bicubic",
     multilook: List[int] = [1, 4],
-    complex_phase: bool = False
+    ifg_to_phi: bool = True,
+    write_complex_ifg=False,
 ):
 
     for var in var_names:
         no_file_found = True
         for pol in ["vv", "vh"]:
             patterns = [f"{insar_dir}/{pol}_iw{iw}_{var}.tif" for iw in [1, 2, 3]]
+            print(patterns)
             tmp_files = []
             for pattern in patterns:
                 matched_files = glob.glob(pattern)
                 if matched_files:
                     no_file_found = False
                 for file_var in matched_files:
-                    log.info(f"Geocoding file {file_var}.")
+                    log.info(f"Geocoding file {Path(file_var).name}.")
                     base_name = os.path.basename(file_var)
                     parts = base_name.split("_")
                     pol = parts[0]
                     iw = parts[1][2]  # Extract the digit after "iw"
-                    file_lut = f"{pol}_iw{iw}_lut.tif"
-                    file_out = f"{pol}_iw{iw}_{var}_geo.tif"
+                    file_lut = f"{insar_dir}/{pol}_iw{iw}_lut.tif"
+                    file_out = f"{insar_dir}/{pol}_iw{iw}_{var}_geo.tif"
                     tmp_files.append(file_out)
 
                     if not os.path.exists(file_lut):
                         raise FileNotFoundError(
                             f"Corresponding LUT file {file_lut} not found for {file_var}"
                         )
-                    
+
                     # handling phase as a special case
                     write_phase = False
                     if var == "phi":
                         darr = riox.open_rasterio(file_var)
                         if not np.iscomplexobj(darr[0]):
-                            warnings.warn("Geocoding real-valued phase. The result might not be optimal if the phase is wrapped.")
-                        if not complex_phase:
-                            write_phase = True
+                            warnings.warn(
+                                "Geocoding real-valued phase. The result might not be optimal if the phase is wrapped."
+                            )
+                    if var == "ifg" and ifg_to_phi:
+                        slc2geo(
+                            file_var,
+                            file_lut,
+                            file_out,
+                            multilook[0],
+                            multilook[1],
+                            kernel,
+                            write_phase=True,
+                            write_magnitude=False,
+                        )
+                    if var == "ifg" and not write_complex_ifg:
+                        continue
                     slc2geo(
                         file_var,
                         file_lut,
@@ -183,26 +199,30 @@ def geocode_and_merge(
                         multilook[0],
                         multilook[1],
                         kernel,
-                        write_phase,
-                        False,
+                        write_phase=False,
+                        write_magnitude=False,
                     )
-            if no_file_found:
-                raise FileNotFoundError(f"No file was found for variable {var}")
-            else:
-                log.info(f"Merging to file {var}_{pol}.tif")
-                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
-                if shp:
-                    merged = merge_arrays(
-                        da_to_merge, parse_coordinates=False
-                    ).rio.clip([shp], all_touched=True)
-                else:
-                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                file_out = f"{insar_dir}/{var}_{pol}.tif"
-                merged.rio.to_raster(file_out)
 
-                # clean tmp files
-                for file in tmp_files:
-                    remove(file)
+        if no_file_found:
+            raise FileNotFoundError(f"No file was found for variable {var}")
+        else:
+            log.info(f"Merging to file {var}_{pol}.tif")
+            da_to_merge = [riox.open_rasterio(file, masked=True) for file in tmp_files]
+            
+            print("array",da_to_merge[0].dtype)
+            if shp:
+                merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
+                    [shp], all_touched=True
+                )
+                print("merged",merged[0].dtype)
+            else:
+                merged = merge_arrays(da_to_merge, parse_coordinates=False)
+            file_out = f"{insar_dir}/{var}_{pol}.tif"
+            merged.rio.to_raster(file_out)
+
+            # clean tmp files
+            for file in tmp_files:
+                remove(file)
 
 
 # TODO add parameters:
@@ -216,15 +236,20 @@ def process_InSAR(
     aoi_name: str = None,
     shp=None,
     pol: Union[str, List[str]] = "full",
-    coh_only: bool = False,
-    intensity: bool = True,
+    write_coherence: bool = True,
+    write_interferogram: bool = True,
+    write_primary_amplitude: bool = True,
+    write_secondary_amplitude: bool = False,
+    write_complex_interferogram: bool = False,
     clear_tmp_files: bool = True,
     resume: bool = False,
     apply_ESD: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     multilook: List[int] = [1, 4],
+    kernel: str = "bicubic",
 ):
     # TODO: update docstrings when finished
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -250,242 +275,69 @@ def process_InSAR(
     Note:
         With products from Copernicus Data Space, processing of some zipped products may lead to errors. This issue can be temporarily fixed by processing the unzipped product instead of the zip file.
     """
+    if not np.any([coherence, interferogram]):
+        raise ValueError("At least one of `coherence` and `interferogram` must be True")
 
-    if aoi_name is None:
-        aoi_substr = ""
-    else:
-        aoi_substr = f"_{aoi_name}"
-
-    # retrieve burst geometries
-    gdf_burst_mst = get_burst_geometry(
-        dir_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    # prepare pair for interferogram computation
+    out_dir = prepare_InSAR(
+        dir_mst,
+        dir_slv,
+        outputs_prefix,
+        aoi_name,
+        shp,
+        pol,
+        apply_ESD,
+        subswaths,
+        dem_force_download,
     )
-    gdf_burst_slv = get_burst_geometry(
-        dir_slv, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+
+    var_names = []
+    patterns = [f"{out_dir}/{pol}_iw{iw}" for pol in ["vv", "vh"] for iw in [1, 2, 3]]
+    for pattern in patterns:
+        file_prm = f"{pattern}_prm.tif"
+        file_sec = f"{pattern}_sec.tif"
+
+        if os.path.isfile(file_prm) and os.path.isfile(file_sec):
+            log.info(
+                f"---- Interferometric outputs for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+            if write_coherence and write_interferogram:
+                file_coh = f"{pattern}_coh.tif"
+                file_ifg = f"{pattern}_ifg.tif"
+                coherence(
+                    file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
+                )
+                var_names.append("coh")
+                var_names.append("ifg")
+            elif write_coherence and not write_interferogram:
+                file_coh = f"{pattern}_coh.tif"
+                coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
+                var_names.append("coh")
+            elif not write_coherence and write_interferogram:
+                file_ifg = f"{pattern}_ifg.tif"
+                interferogram(file_prm, file_sec, file_ifg)
+                var_names.append("ifg")
+
+            if write_primary_amplitude:
+                file_ampl = f"{pattern}_prm_ampl.tif"
+                amplitude(file_prm, file_ampl)
+                var_names.append("prm_ampl")
+
+            if write_secondary_amplitude:
+                file_ampl = f"{pattern}_sec_ampl.tif"
+                amplitude(file_sec, file_ampl)
+                var_names.append("sec_ampl")
+
+    geocode_and_merge_iw(
+        out_dir,
+        var_names,
+        shp,
+        kernel,
+        multilook,
+        ifg_to_phi=True,
+        write_complex_ifg=write_complex_interferogram,
     )
-
-    # find what subswaths and bursts intersect AOI
-    if shp is not None:
-        gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
-        gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
-
-    # identify corresponding subswaths
-    sel_subsw_mst = gdf_burst_mst["subswath"]
-    sel_subsw_slv = gdf_burst_slv["subswath"]
-    unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
-    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
-
-    # check that polarization is correct
-    info_mst = identify(dir_mst)
-    if isinstance(pol, str):
-        if pol == "full":
-            pol = info_mst.polarizations
-        else:
-            if pol.upper() in info_mst.polarizations:
-                pol = [pol]
-            else:
-                raise RuntimeError(
-                    f"polarization {pol} does not exists in the source product"
-                )
-    elif isinstance(pol, list):
-        pol = [x for x in pol if x in info_mst.polarizations]
-    else:
-        raise RuntimeError("polarizations must be of type str or list")
-
-    # do a check on orbits
-    info_slv = identify(dir_slv)
-    meta_mst = info_mst.scanMetadata()
-    meta_slv = info_slv.scanMetadata()
-    orbnum = meta_mst["orbitNumber_rel"]
-    if meta_slv["orbitNumber_rel"] != orbnum:
-        raise ValueError("Images must be from the same relative orbit.")
-
-    # parse dates
-    datestr_mst = meta_mst["start"]
-    datestr_slv = meta_slv["start"]
-    date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
-    date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
-
-    id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
-    id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
-
-    out_dirs = []
-    for p in pol:
-        tmp_names = []
-        phi_to_merge = []
-        coh_to_merge = []
-        amp_prm_to_merge = []
-        amp_sec_to_merge = []
-        for subswath in unique_subswaths:
-            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
-
-            # identify bursts to process
-            bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
-                "burst"
-            ].values
-            burst_mst_min = bursts_mst.min()
-            burst_mst_max = bursts_mst.max()
-
-            tmp_subdir = (
-                # f"{dir_tmp}/{subswath}_{p.upper()}_{id_mst}_{id_slv}{aoi_substr}"
-                f"{dir_tmp}/{p.upper()}_{id_mst}_{id_slv}{aoi_substr}/{subswath}"
-            )
-            tmp_names.append(tmp_subdir)
-            iw = int(subswath[2])
-            if not os.path.isdir(tmp_subdir):
-                os.mkdir(tmp_subdir)
-            preprocess_insar_iw(
-                dir_mst,
-                dir_slv,
-                tmp_subdir,
-                iw=iw,
-                pol=p.lower(),
-                min_burst=burst_mst_min,
-                max_burst=burst_mst_max,
-                dir_dem="/tmp",
-                apply_fast_esd=apply_ESD,
-                warp_kernel="bicubic",
-                dem_upsampling=1.8,
-                dem_buffer_arc_sec=40,
-                dem_force_download=dem_force_download,
-            )
-
-            file_prm = f"{tmp_subdir}/primary.tif"
-            file_sec = f"{tmp_subdir}/secondary.tif"
-            file_amp_1 = f"{tmp_subdir}/amp_prm.tif"
-            file_amp_2 = f"{tmp_subdir}/amp_sec.tif"
-            file_coh = f"{tmp_subdir}/coh.tif"
-            file_phi_geo = f"{tmp_subdir}/phi_geo.tif"
-            file_amp_1_geo = f"{tmp_subdir}/amp_prm_geo.tif"
-            file_amp_2_geo = f"{tmp_subdir}/amp_sec_geo.tif"
-            file_coh_geo = f"{tmp_subdir}/coh_geo.tif"
-            file_lut = f"{tmp_subdir}/lut.tif"
-
-            # TODO isolate in child processes
-            # computing amplitude and complex coherence  in the radar geometry
-            coherence(file_prm, file_sec, file_coh, boxcar_coherence, False)
-
-            # combined multilooking and geocoding
-            # interferometric coherence
-            log.info("Geocoding interferometric coherence.")
-
-            _child_process(
-                slc2geo,
-                (
-                    file_coh,
-                    file_lut,
-                    file_coh_geo,
-                    multilook[0],
-                    multilook[1],
-                    "bicubic",
-                    False,
-                    True,
-                ),
-            )
-
-            # coh_to_merge.append(riox.open_rasterio(file_coh_geo))
-            coh_to_merge.append(file_coh_geo)
-
-            # interferometric phase
-            if not coh_only:
-                log.info("Geocoding interferometric phase.")
-                _child_process(
-                    slc2geo,
-                    (
-                        file_coh,
-                        file_lut,
-                        file_phi_geo,
-                        multilook[0],
-                        multilook[1],
-                        "bicubic",
-                        True,
-                        False,
-                    ),
-                )
-                phi_to_merge.append(file_phi_geo)
-
-            # amplitude of the primary image
-            if intensity:
-                log.info("Geocoding image amplitudes.")
-                _child_process(amplitude, (file_prm, file_amp_1))
-                _child_process(amplitude, (file_sec, file_amp_2))
-                _child_process(
-                    slc2geo,
-                    (
-                        file_amp_1,
-                        file_lut,
-                        file_amp_1_geo,
-                        multilook[0],
-                        multilook[1],
-                        "bicubic",
-                        False,
-                        True,
-                    ),
-                )
-                _child_process(
-                    slc2geo,
-                    (
-                        file_amp_2,
-                        file_lut,
-                        file_amp_2_geo,
-                        multilook[0],
-                        multilook[1],
-                        "bicubic",
-                        False,
-                        True,
-                    ),
-                )
-                amp_prm_to_merge.append(file_amp_1_geo)
-                amp_sec_to_merge.append(file_amp_2_geo)
-
-        log.info(f"---- Merging and cropping subswaths {unique_subswaths}")
-        # create output dir if needed
-        out_dir = (
-            f"{outputs_prefix}/S1_InSAR_{p.upper()}_{id_mst}__{id_slv}{aoi_substr}"
-        )
-        out_dirs.append(out_dir)
-        if not os.path.isdir(out_dir):
-            os.makedirs(out_dir)
-
-        # merge & crop
-        list_var = [coh_to_merge, phi_to_merge, amp_prm_to_merge, amp_sec_to_merge]
-        list_prefix = ["coh", "phi", "amp_prm", "amp_sec"]
-        for var_to_merge, prefix in zip(list_var, list_prefix):
-            if var_to_merge:
-                log.info(f"Merging to file {prefix}_geo.tif")
-                if shp:
-                    da_to_merge = [riox.open_rasterio(var) for var in var_to_merge]
-                    merged = merge_arrays(
-                        da_to_merge, parse_coordinates=False
-                    ).rio.clip([shp], all_touched=True)
-                else:
-                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                file_out = f"{out_dir}/{prefix}_geo.tif"
-                merged.rio.to_raster(file_out)
-                # del merged
-
-        # if clear_tmp_files:
-        #     log.info("---- Removing temporary files.")
-        #     for tmp_name in tmp_names:
-        #         name_coreg = f"{tmp_dir}/{tmp_name}_coreg"
-        #         name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
-        #         name_int = f"{tmp_dir}/{tmp_name}_{substr}_int"
-        #         dimfiles_to_remove = [name_coreg, name_insar, name_int]
-        #         for name in dimfiles_to_remove:
-        #             remove(f"{name}.dim")
-        #             remove(f"{name}.data")
-
-        #             name_tc = f"{tmp_dir}/{tmp_name}_{substr}_tc"
-        #             path_tc = f"{name_tc}.tif"
-        #             path_edge = f"{name_tc}_edge.tif"
-        #             remove(path_tc)
-        #             remove(path_edge)
-
-        #     remove(f"{tmp_dir}/graph_coreg.xml")
-        #     remove(f"{tmp_dir}/graph_insar.xml")
-        #     remove(f"{tmp_dir}/graph_int.xml")
-        #     remove(f"{tmp_dir}/graph_tc.xml")
-    return out_dirs
+    return out_dir
 
 
 def preprocess_insar_iw(
@@ -499,7 +351,7 @@ def preprocess_insar_iw(
     dir_dem="/tmp",
     apply_fast_esd=True,
     warp_kernel="bicubic",
-    dem_upsampling=2,
+    dem_upsampling=1.8,
     dem_buffer_arc_sec=40,
     dem_force_download=False,
 ):
@@ -605,24 +457,7 @@ def preprocess_insar_iw(
             warp_kernel,
         ),
     )
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-    #     args = (
-    #         prm,
-    #         sec,
-    #         tmp_prm,
-    #         tmp_sec,
-    #         dir_out,
-    #         dir_dem,
-    #         naz,
-    #         nrg,
-    #         min_burst,
-    #         max_burst_,
-    #         dem_upsampling,
-    #         dem_buffer_arc_sec,
-    #         dem_force_download,
-    #         warp_kernel,
-    #     )
-    #     luts = e.submit(_process_bursts, *args).result()
+
     if (max_burst_ > min_burst) & apply_fast_esd:
         with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
             args = (
@@ -683,7 +518,8 @@ def slc2geo(
     mlt_rg=1,
     kernel="bicubic",
     write_phase=False,
-    magnitude_only=False,
+    write_magnitude=False,
+    write_complex=True,
 ):
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
@@ -694,12 +530,14 @@ def slc2geo(
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
         mlt_rg (int): number of looks in the range direction. Defaults to 1.
         kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
-        write_phase (bool): writes the array's phase instead of its complex values. Defaults to False.
-        magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
+        write_phase (bool): writes the array's phase . Defaults to False.
+        write_magnitude (bool): writes the array's magnitude of its complex values. Has no effect it `write_phase` is True. Defaults to False.
+        write_complex (bool): writes the array's magnitude instead of its complex values. Has no effect on real-valued data. Defaults to False.
     Note:
         Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
     log.info("Project image with the lookup table.")
+
     with rio.open(slc_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
@@ -710,8 +548,15 @@ def slc2geo(
     if prof_src["count"] != 1:
         raise ValueError("Only single band rasters are supported.")
 
-    if not np.iscomplexobj(arr) and write_phase:
-        raise ValueError("Cannot compute phase of a real array.")
+    if write_phase and not np.iscomplexobj(arr):
+        warnings.warn(
+            "write_phase: Trying to write phase of a real-valued array. This option will have no effect."
+        )
+    # if write_complex and not np.iscomplexobj(arr):
+    #     warnings.warn(
+    #         "write_complex: Input is a real-valued array. This option will have no effect."
+    #     )
+
 
     if (mlt_az == 1) & (mlt_rg == 1):
         arr_ = arr[0].copy()
@@ -721,11 +566,13 @@ def slc2geo(
     arr_out = remap(arr_, lut[0] / mlt_az, lut[1] / mlt_rg, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
-    if write_phase:
+
+    if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
-        prof_dst.update(
+        prof_dst_phi = prof_dst.copy()
+        prof_dst_phi.update(
             {
                 "dtype": phi.dtype.name,
                 "nodata": nodata,
@@ -734,35 +581,42 @@ def slc2geo(
                 "resampling": "nearest",
             }
         )
-        # removing incompatible options
-        prof_dst.pop("blockysize", None)
-        prof_dst.pop("tiled", None)
-        prof_dst.pop("interleave", None)
-        with rio.open(out_file, "w", **prof_dst) as dst:
+        # removing COG incompatible options
+        prof_dst_phi.pop("blockysize", None)
+        prof_dst_phi.pop("tiled", None)
+        prof_dst_phi.pop("interleave", None)
+        with rio.open(out_file, "w", **prof_dst_phi) as dst:
             dst.write(phi, 1)
-    else:
-        if magnitude_only:
-            mag = np.abs(arr_out)
-            nodata = 0
-            mag[np.isnan(mag)] = nodata
-            prof_dst.update(
-                {
-                    "dtype": mag.dtype.name,
-                    "nodata": nodata,
-                    "driver": "COG",
-                    "compress": "deflate",
-                    "resampling": "nearest",
-                }
-            )
-            # removing incompatible options
-            prof_dst.pop("blockysize", None)
-            prof_dst.pop("tiled", None)
-            prof_dst.pop("interleave", None)
-            with rio.open(out_file, "w", **prof_dst) as dst:
-                dst.write(mag, 1)
-        else:
-            with rio.open(out_file, "w", **prof_dst) as dst:
-                dst.write(arr_out, 1)
+
+    if write_magnitude and np.iscomplexobj(arr_out):
+        mag = np.abs(arr_out)
+        nodata = 0
+        mag[np.isnan(mag)] = nodata
+        prof_dst_mag = prof_dst.copy()
+        prof_dst_mag.update(
+            {
+                "dtype": mag.dtype.name,
+                "nodata": nodata,
+                "driver": "COG",
+                "compress": "deflate",
+                "resampling": "nearest",
+            }
+        )
+        # removing COG incompatible options
+        prof_dst_mag.pop("blockysize", None)
+        prof_dst_mag.pop("tiled", None)
+        prof_dst_mag.pop("interleave", None)
+        with rio.open(out_file, "w", **prof_dst_mag) as dst:
+            dst.write(mag, 1)
+
+
+    if write_complex and np.iscomplexobj(arr_out):
+        with rio.open(out_file, "w", **prof_dst) as dst:
+            dst.write(arr_out, 1)
+    
+    if not np.iscomplexobj(arr_out):
+        with rio.open(out_file, "w", **prof_dst) as dst:
+            dst.write(arr_out, 1)
 
 
 # TODO optional chunk processing
@@ -807,7 +661,9 @@ def amplitude(file_in, file_out):
         dst.write(amp, 1)
 
 
-def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True, file_complex_ifg=None):
+def coherence(
+    file_prm, file_sec, file_out, box_size=5, magnitude=True, file_complex_ifg=None
+):
     """Compute the complex coherence from two SLC image files.
 
     Args:
@@ -843,7 +699,7 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True, file_com
         depth=(box_az, box_rg),
     )
 
-    ifg =  prm * sec.conj()
+    ifg = prm * sec.conj()
     coh = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
     coh /= np.sqrt(
@@ -875,11 +731,10 @@ def coherence(file_prm, file_sec, file_out, box_size=5, magnitude=True, file_com
     )
     da_coh.rio.write_nodata(nodataval)
 
-
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
 
-    # useful as users may want non-filtered interferograms 
+    # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         da_ifg = xr.DataArray(
             data=ifg[None],
