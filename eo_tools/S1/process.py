@@ -24,6 +24,114 @@ log = logging.getLogger(__name__)
 # mp.set_start_method("fork")
 
 
+def prepare_InSAR(
+    dir_mst: str,
+    dir_slv: str,
+    outputs_prefix: str,
+    aoi_name: str = None,
+    shp=None,
+    pol: Union[str, List[str]] = "full",
+    apply_ESD: bool = False,
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dem_force_download: bool = False,
+):
+    """Produce a coregistered pair of Single Look Complex images and associated lookup tables."""
+
+    if aoi_name is None:
+        aoi_substr = ""
+    else:
+        aoi_substr = f"_{aoi_name}"
+
+    # retrieve burst geometries
+    gdf_burst_mst = get_burst_geometry(
+        dir_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+    gdf_burst_slv = get_burst_geometry(
+        dir_slv, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+
+    # find what subswaths and bursts intersect AOI
+    if shp is not None:
+        gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
+        gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
+
+    # identify corresponding subswaths
+    sel_subsw_mst = gdf_burst_mst["subswath"]
+    sel_subsw_slv = gdf_burst_slv["subswath"]
+    unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
+    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
+
+    # check that polarization is correct
+    info_mst = identify(dir_mst)
+    if isinstance(pol, str):
+        if pol == "full":
+            pol = info_mst.polarizations
+        else:
+            if pol.upper() in info_mst.polarizations:
+                pol = [pol]
+            else:
+                raise RuntimeError(
+                    f"polarization {pol} does not exists in the source product"
+                )
+    elif isinstance(pol, list):
+        pol = [x for x in pol if x in info_mst.polarizations]
+    else:
+        raise RuntimeError("polarizations must be of type str or list")
+
+    # do a check on orbits
+    info_slv = identify(dir_slv)
+    meta_mst = info_mst.scanMetadata()
+    meta_slv = info_slv.scanMetadata()
+    orbnum = meta_mst["orbitNumber_rel"]
+    if meta_slv["orbitNumber_rel"] != orbnum:
+        raise ValueError("Images must be from the same relative orbit.")
+
+    # parse dates
+    datestr_mst = meta_mst["start"]
+    datestr_slv = meta_slv["start"]
+    date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
+    date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
+
+    id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
+    id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
+
+    out_dir = (
+        f"{outputs_prefix}/S1_InSAR_{id_mst}_{id_slv}{aoi_substr}"
+    )
+    for p in pol:
+        for subswath in unique_subswaths:
+            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
+
+            # identify bursts to process
+            bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
+                "burst"
+            ].values
+            burst_mst_min = bursts_mst.min()
+            burst_mst_max = bursts_mst.max()
+
+            iw = int(subswath[2])
+            if not os.path.isdir(out_dir):
+                os.mkdir(out_dir)
+            preprocess_insar_iw(
+                dir_mst,
+                dir_slv,
+                out_dir,
+                iw=iw,
+                pol=p.lower(),
+                min_burst=burst_mst_min,
+                max_burst=burst_mst_max,
+                dir_dem="/tmp",
+                apply_fast_esd=apply_ESD,
+                warp_kernel="bicubic",
+                dem_upsampling=1.8,
+                dem_buffer_arc_sec=40,
+                dem_force_download=dem_force_download,
+            )
+            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
+            os.rename(f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif")
+            os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
+
+
 # TODO add parameters:
 # - slc -- radar geometry only
 # - geocoded
