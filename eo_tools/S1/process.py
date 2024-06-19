@@ -146,6 +146,7 @@ def geocode_and_merge_iw(
     multilook: List[int] = [1, 4],
     kernel="bicubic",
     kernel_phase: str = "nearest",
+    clip_to_shape: bool = True,
 ):
 
     for var in var_names:
@@ -218,7 +219,7 @@ def geocode_and_merge_iw(
                         f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
                     )
 
-            if shp:
+            if shp and clip_to_shape:
                 merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
                     [shp], all_touched=True
                 )
@@ -246,8 +247,6 @@ def process_InSAR(
     write_interferogram: bool = True,
     write_primary_amplitude: bool = True,
     write_secondary_amplitude: bool = False,
-    clear_tmp_files: bool = True,
-    resume: bool = False,
     apply_ESD: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dem_upsampling: float = 1.8,
@@ -256,6 +255,7 @@ def process_InSAR(
     multilook: List[int] = [1, 4],
     kernel: str = "bicubic",
     kernel_phase: str = "nearest",
+    clip_to_shape: bool = True,
 ):
     # TODO: update docstrings when finished
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -311,37 +311,38 @@ def process_InSAR(
             if write_coherence and write_interferogram:
                 file_coh = f"{pattern}_coh.tif"
                 file_ifg = f"{pattern}_ifg.tif"
-                # coherence(
-                #     file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
-                # )
+                coherence(
+                    file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
+                )
                 var_names.append("coh")
                 var_names.append("ifg")
             elif write_coherence and not write_interferogram:
                 file_coh = f"{pattern}_coh.tif"
-                # coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
+                coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
                 var_names.append("coh")
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{pattern}_ifg.tif"
-                # interferogram(file_prm, file_sec, file_ifg)
+                interferogram(file_prm, file_sec, file_ifg)
                 var_names.append("ifg")
 
             if write_primary_amplitude:
                 file_ampl = f"{pattern}_prm_ampl.tif"
-                # amplitude(file_prm, file_ampl)
+                amplitude(file_prm, file_ampl)
                 var_names.append("prm_ampl")
 
             if write_secondary_amplitude:
                 file_ampl = f"{pattern}_sec_ampl.tif"
-                # amplitude(file_sec, file_ampl)
+                amplitude(file_sec, file_ampl)
                 var_names.append("sec_ampl")
 
     geocode_and_merge_iw(
-        out_dir=out_dir,
+        insar_dir=out_dir,
         var_names=var_names,
         shp=shp,
         multilook=multilook,
         kernel=kernel,
         kernel_phase=kernel_phase,
+        clip_to_shape=clip_to_shape,
     )
     return out_dir
 
@@ -684,7 +685,10 @@ def coherence(
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
     """
 
-    log.info("Computing coherence")
+    if not file_complex_ifg:
+        log.info("Computing coherence")
+    else:
+        log.info("Computing coherence & interferogram")
 
     if isinstance(box_size, list):
         box_az = box_size[0]
@@ -696,7 +700,6 @@ def coherence(
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
     # open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True, masked=True)
 
-    # TODO use rioxarray.open_rasterio instead
     # ds_prm = xr.open_dataset(file_prm, **open_args)
     # ds_sec = xr.open_dataset(file_sec, **open_args)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
