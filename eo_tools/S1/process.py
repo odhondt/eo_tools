@@ -129,9 +129,9 @@ def prepare_InSAR(
                 dem_buffer_arc_sec=40,
                 dem_force_download=dem_force_download,
             )
-            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/prm_slc_{p.lower()}_iw{iw}.tif")
+            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif")
             os.rename(
-                f"{out_dir}/secondary.tif", f"{out_dir}/sec_slc_{p.lower()}_iw{iw}.tif"
+                f"{out_dir}/secondary.tif", f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif"
             )
             os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
     return out_dir
@@ -151,7 +151,7 @@ def geocode_and_merge_iw(
         no_file_found = True
         for pol in ["vv", "vh"]:
             postfixes = [f"{pol}_iw{iw}" for iw in [1, 2, 3]]
-            patterns = [f"{out_dir}/sar/{var}_{prefix}.tif" for prefix in postfixes]
+            patterns = [f"{out_dir}/sar/{var}_{postfix}.tif" for postfix in postfixes]
             tmp_files = []
             for pattern, postfix in zip(patterns, postfixes):
                 matched_files = glob.glob(pattern)
@@ -161,10 +161,10 @@ def geocode_and_merge_iw(
                     log.info(f"Geocoding file {Path(file_var).name}.")
                     base_name = os.path.basename(file_var)
                     parts = base_name.split("_")
-                    pol = parts[0]
-                    iw = parts[1][2]  # Extract the digit after "iw"
-                    file_lut = f"{out_dir}/lut_{postfix}.tif"
-                    file_out = f"{out_dir}/{var}_{postfix}_geo.tif"
+                    # pol = parts[0]
+                    # iw = parts[1][2]  # Extract the digit after "iw"
+                    file_lut = f"{out_dir}/sar/lut_{postfix}.tif"
+                    file_out = f"{out_dir}/sar/{var}_{postfix}_geo.tif"
 
                     if not os.path.exists(file_lut):
                         raise FileNotFoundError(
@@ -179,7 +179,7 @@ def geocode_and_merge_iw(
                                 "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                             )
                     if var == "ifg":
-                        file_out = f"{out_dir}/phi_{postfix}_geo.tif"
+                        file_out = f"{out_dir}/sar/phi_{postfix}_geo.tif"
                         sar2geo(
                             file_var,
                             file_lut,
@@ -237,7 +237,6 @@ def process_InSAR(
     dir_prm: str,
     dir_sec: str,
     outputs_prefix: str,
-    dir_tmp: str,
     aoi_name: str = None,
     shp=None,
     pol: Union[str, List[str]] = "full",
@@ -299,40 +298,41 @@ def process_InSAR(
     var_names = []
     patterns = [f"{pol}_iw{iw}" for pol in ["vv", "vh"] for iw in [1, 2, 3]]
     for pattern in patterns:
-        file_prm = f"{out_dir}/prm_slc_{pattern}.tif"
-        file_sec = f"{out_dir}/sec_slc_{pattern}.tif"
+        file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
+        file_sec = f"{out_dir}/slc_sec_{pattern}.tif"
 
         if os.path.isfile(file_prm) and os.path.isfile(file_sec):
             log.info(
                 f"---- Interferometric outputs for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
             )
             if write_coherence and write_interferogram:
-                file_coh = f"coh_{pattern}.tif"
-                file_ifg = f"ifg_{pattern}.tif"
+                file_coh = f"{out_dir}/coh_{pattern}.tif"
+                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 coherence(
                     file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
                 )
                 var_names.append("coh")
                 var_names.append("ifg")
             elif write_coherence and not write_interferogram:
-                file_coh = f"coh_{pattern}.tif"
+                file_coh = f"{out_dir}/coh_{pattern}.tif"
                 coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
                 var_names.append("coh")
             elif not write_coherence and write_interferogram:
-                file_ifg = f"ifg_{pattern}.tif"
+                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 interferogram(file_prm, file_sec, file_ifg)
                 var_names.append("ifg")
 
             if write_primary_amplitude:
-                file_ampl = f"prm_ampl_{pattern}.tif"
+                file_ampl = f"{out_dir}/ampl_prm_{pattern}.tif"
                 amplitude(file_prm, file_ampl)
-                var_names.append("prm_ampl")
+                var_names.append("ampl_prm")
 
             if write_secondary_amplitude:
-                file_ampl = f"sec_ampl_{pattern}.tif"
+                file_ampl = f"{out_dir}/ampl_sec_{pattern}.tif"
                 amplitude(file_sec, file_ampl)
-                var_names.append("sec_ampl")
+                var_names.append("ampl_sec")
 
+    
     geocode_and_merge_iw(
         out_dir=Path(out_dir).parent,
         var_names=var_names,
