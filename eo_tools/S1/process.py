@@ -243,7 +243,6 @@ def process_InSAR(
     write_interferogram: bool = True,
     write_primary_amplitude: bool = True,
     write_secondary_amplitude: bool = False,
-    write_complex_interferogram: bool = False,
     clear_tmp_files: bool = True,
     resume: bool = False,
     apply_ESD: bool = False,
