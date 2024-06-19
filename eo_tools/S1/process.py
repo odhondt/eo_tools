@@ -116,26 +116,26 @@ def prepare_InSAR(
             iw = int(subswath[2])
             if not os.path.isdir(out_dir):
                 os.mkdir(out_dir)
-            preprocess_insar_iw(
-                dir_mst,
-                dir_slv,
-                out_dir,
-                iw=iw,
-                pol=p.lower(),
-                min_burst=burst_mst_min,
-                max_burst=burst_mst_max,
-                dir_dem="/tmp",
-                apply_fast_esd=apply_ESD,
-                warp_kernel="bicubic",
-                dem_upsampling=dem_upsampling,
-                dem_buffer_arc_sec=40,
-                dem_force_download=dem_force_download,
-            )
-            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
-            os.rename(
-                f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
-            )
-            os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
+            # preprocess_insar_iw(
+            #     dir_mst,
+            #     dir_slv,
+            #     out_dir,
+            #     iw=iw,
+            #     pol=p.lower(),
+            #     min_burst=burst_mst_min,
+            #     max_burst=burst_mst_max,
+            #     dir_dem="/tmp",
+            #     apply_fast_esd=apply_ESD,
+            #     warp_kernel="bicubic",
+            #     dem_upsampling=dem_upsampling,
+            #     dem_buffer_arc_sec=40,
+            #     dem_force_download=dem_force_download,
+            # )
+            # os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
+            # os.rename(
+            #     f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
+            # )
+            # os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
     return out_dir
 
 
@@ -311,37 +311,37 @@ def process_InSAR(
             if write_coherence and write_interferogram:
                 file_coh = f"{pattern}_coh.tif"
                 file_ifg = f"{pattern}_ifg.tif"
-                coherence(
-                    file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
-                )
+                # coherence(
+                #     file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
+                # )
                 var_names.append("coh")
                 var_names.append("ifg")
             elif write_coherence and not write_interferogram:
                 file_coh = f"{pattern}_coh.tif"
-                coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
+                # coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
                 var_names.append("coh")
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{pattern}_ifg.tif"
-                interferogram(file_prm, file_sec, file_ifg)
+                # interferogram(file_prm, file_sec, file_ifg)
                 var_names.append("ifg")
 
             if write_primary_amplitude:
                 file_ampl = f"{pattern}_prm_ampl.tif"
-                amplitude(file_prm, file_ampl)
+                # amplitude(file_prm, file_ampl)
                 var_names.append("prm_ampl")
 
             if write_secondary_amplitude:
                 file_ampl = f"{pattern}_sec_ampl.tif"
-                amplitude(file_sec, file_ampl)
+                # amplitude(file_sec, file_ampl)
                 var_names.append("sec_ampl")
 
     geocode_and_merge_iw(
-        out_dir,
-        var_names,
-        shp,
-        kernel,
-        kernel_phase,
-        multilook,
+        out_dir=out_dir,
+        var_names=var_names,
+        shp=shp,
+        multilook=multilook,
+        kernel=kernel,
+        kernel_phase=kernel_phase,
     )
     return out_dir
 
