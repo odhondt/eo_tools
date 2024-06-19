@@ -27,8 +27,8 @@ log = logging.getLogger(__name__)
 
 
 def prepare_InSAR(
-    dir_mst: str,
-    dir_slv: str,
+    dir_prm: str,
+    dir_sec: str,
     outputs_prefix: str,
     aoi_name: str = None,
     shp=None,
@@ -46,59 +46,59 @@ def prepare_InSAR(
         aoi_substr = f"_{aoi_name}"
 
     # retrieve burst geometries
-    gdf_burst_mst = get_burst_geometry(
-        dir_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    gdf_burst_prm = get_burst_geometry(
+        dir_prm, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
-    gdf_burst_slv = get_burst_geometry(
-        dir_slv, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    gdf_burst_sec = get_burst_geometry(
+        dir_sec, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
 
     # find what subswaths and bursts intersect AOI
     if shp is not None:
-        gdf_burst_mst = gdf_burst_mst[gdf_burst_mst.intersects(shp)]
-        gdf_burst_slv = gdf_burst_slv[gdf_burst_slv.intersects(shp)]
+        gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
+        gdf_burst_sec = gdf_burst_sec[gdf_burst_sec.intersects(shp)]
 
     # identify corresponding subswaths
-    sel_subsw_mst = gdf_burst_mst["subswath"]
-    sel_subsw_slv = gdf_burst_slv["subswath"]
-    unique_subswaths = np.unique(np.concatenate((sel_subsw_mst, sel_subsw_slv)))
+    sel_subsw_prm = gdf_burst_prm["subswath"]
+    sel_subsw_sec = gdf_burst_sec["subswath"]
+    unique_subswaths = np.unique(np.concatenate((sel_subsw_prm, sel_subsw_sec)))
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_mst = identify(dir_mst)
+    info_prm = identify(dir_prm)
     if isinstance(pol, str):
         if pol == "full":
-            pol = info_mst.polarizations
+            pol = info_prm.polarizations
         else:
-            if pol.upper() in info_mst.polarizations:
+            if pol.upper() in info_prm.polarizations:
                 pol = [pol]
             else:
                 raise RuntimeError(
                     f"polarization {pol} does not exists in the source product"
                 )
     elif isinstance(pol, list):
-        pol = [x for x in pol if x in info_mst.polarizations]
+        pol = [x for x in pol if x in info_prm.polarizations]
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
     # do a check on orbits
-    info_slv = identify(dir_slv)
-    meta_mst = info_mst.scanMetadata()
-    meta_slv = info_slv.scanMetadata()
-    orbnum = meta_mst["orbitNumber_rel"]
-    if meta_slv["orbitNumber_rel"] != orbnum:
+    info_sec = identify(dir_sec)
+    meta_prm = info_prm.scanMetadata()
+    meta_sec = info_sec.scanMetadata()
+    orbnum = meta_prm["orbitNumber_rel"]
+    if meta_sec["orbitNumber_rel"] != orbnum:
         raise ValueError("Images must be from the same relative orbit.")
 
     # parse dates
-    datestr_mst = meta_mst["start"]
-    datestr_slv = meta_slv["start"]
-    date_mst = datetime.strptime(datestr_mst, "%Y%m%dT%H%M%S")
-    date_slv = datetime.strptime(datestr_slv, "%Y%m%dT%H%M%S")
+    datestr_prm = meta_prm["start"]
+    datestr_sec = meta_sec["start"]
+    date_prm = datetime.strptime(datestr_prm, "%Y%m%dT%H%M%S")
+    date_sec = datetime.strptime(datestr_sec, "%Y%m%dT%H%M%S")
 
-    id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
-    id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
+    id_prm = date_prm.strftime("%Y-%m-%d-%H%M%S")
+    id_sec = date_sec.strftime("%Y-%m-%d-%H%M%S")
 
-    out_dir = f"{outputs_prefix}/S1_InSAR_{id_mst}__{id_slv}{aoi_substr}"
+    out_dir = f"{outputs_prefix}/S1_InSAR_{id_prm}__{id_sec}{aoi_substr}"
     if not os.path.isdir(out_dir):
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
@@ -107,35 +107,35 @@ def prepare_InSAR(
             log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
 
             # identify bursts to process
-            bursts_mst = gdf_burst_mst[gdf_burst_mst["subswath"] == subswath][
+            bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
                 "burst"
             ].values
-            burst_mst_min = bursts_mst.min()
-            burst_mst_max = bursts_mst.max()
+            burst_prm_min = bursts_prm.min()
+            burst_prm_max = bursts_prm.max()
 
             iw = int(subswath[2])
             if not os.path.isdir(out_dir):
                 os.mkdir(out_dir)
-            # preprocess_insar_iw(
-            #     dir_mst,
-            #     dir_slv,
-            #     out_dir,
-            #     iw=iw,
-            #     pol=p.lower(),
-            #     min_burst=burst_mst_min,
-            #     max_burst=burst_mst_max,
-            #     dir_dem="/tmp",
-            #     apply_fast_esd=apply_ESD,
-            #     warp_kernel="bicubic",
-            #     dem_upsampling=dem_upsampling,
-            #     dem_buffer_arc_sec=40,
-            #     dem_force_download=dem_force_download,
-            # )
-            # os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
-            # os.rename(
-            #     f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
-            # )
-            # os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
+            preprocess_insar_iw(
+                dir_prm,
+                dir_sec,
+                out_dir,
+                iw=iw,
+                pol=p.lower(),
+                min_burst=burst_prm_min,
+                max_burst=burst_prm_max,
+                dir_dem="/tmp",
+                apply_fast_esd=apply_ESD,
+                warp_kernel="bicubic",
+                dem_upsampling=dem_upsampling,
+                dem_buffer_arc_sec=40,
+                dem_force_download=dem_force_download,
+            )
+            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/{p.lower()}_iw{iw}_prm.tif")
+            os.rename(
+                f"{out_dir}/secondary.tif", f"{out_dir}/{p.lower()}_iw{iw}_sec.tif"
+            )
+            os.rename(f"{out_dir}/lut.tif", f"{out_dir}/{p.lower()}_iw{iw}_lut.tif")
     return out_dir
 
 
@@ -235,8 +235,8 @@ def geocode_and_merge_iw(
 # - better options: write_phase, write_amp_prm, write_coh, write_clx_coh, etc
 # - warp kernel, and pre-processing options from other function
 def process_InSAR(
-    dir_mst: str,
-    dir_slv: str,
+    dir_prm: str,
+    dir_sec: str,
     outputs_prefix: str,
     dir_tmp: str,
     aoi_name: str = None,
@@ -262,8 +262,8 @@ def process_InSAR(
     AOI crop is optional.
 
     Args:
-        file_mst (str): Master image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
-        file_slv (str): Slave image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        file_prm (str): Primary image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        file_sec (str): Secondary image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
         out_dir (str): Output directory
         tmp_dir (str): Temporary directory to store intermediate files
         aoi_name (str): Optional suffix to describe AOI / experiment
@@ -286,8 +286,8 @@ def process_InSAR(
 
     # prepare pair for interferogram computation
     out_dir = prepare_InSAR(
-        dir_mst,
-        dir_slv,
+        dir_prm,
+        dir_sec,
         outputs_prefix,
         aoi_name,
         shp,
@@ -380,7 +380,7 @@ def preprocess_insar_iw(
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
 
     Note:
-        DEM-assisted coregistration is performed to align the secondary with the master. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
 
     if not os.path.isdir(dir_out):
@@ -796,7 +796,7 @@ def _process_bursts(
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
-                # compute geocoding LUTs (lookup tables) for master and slave bursts
+                # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
                 file_dem = prm.fetch_dem_burst(
                     burst_idx,
                     dir_dem,
@@ -818,14 +818,14 @@ def _process_bursts(
                 pdb_s = sec.deramp_burst(burst_idx)
                 arr_s *= np.exp(1j * pdb_s)
 
-                # project slave LUT into master grid
+                # project Secondary LUT into Primary grid
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
                 # warp raster secondary and deramping phase
                 arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
 
-                # reramp slave
+                # reramp secondary
                 arr_s *= np.exp(-1j * pdb_s)
 
                 # compute topographic phases
