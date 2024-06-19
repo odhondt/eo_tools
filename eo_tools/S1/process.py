@@ -11,8 +11,6 @@ import os
 from eo_tools.S1.util import presum, boxcar, remap
 from eo_tools.auxils import get_burst_geometry
 import concurrent
-import multiprocessing as mp
-import calendar
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
@@ -181,7 +179,7 @@ def geocode_and_merge_iw(
                             )
                     if var == "ifg":
                         file_out = f"{insar_dir}/{pol}_iw{iw}_phi_geo.tif"
-                        slc2geo(
+                        sar2geo(
                             file_var,
                             file_lut,
                             file_out,
@@ -192,7 +190,7 @@ def geocode_and_merge_iw(
                             magnitude_only=False,
                         )
                     else:
-                        slc2geo(
+                        sar2geo(
                             file_var,
                             file_lut,
                             file_out,
@@ -213,11 +211,10 @@ def geocode_and_merge_iw(
             log.info(f"Merging file {Path(file_out).name}")
             da_to_merge = [riox.open_rasterio(file, masked=True) for file in tmp_files]
 
-            for it in da_to_merge:
-                if np.iscomplexobj(it):
-                    raise NotImplementedError(
-                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
-                    )
+            if any(np.iscomplexobj(it) for it in da_to_merge):
+                raise NotImplementedError(
+                    f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+                )
 
             if shp and clip_to_shape:
                 merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
@@ -517,7 +514,7 @@ def preprocess_insar_iw(
     log.info("Done")
 
 
-def slc2geo(
+def sar2geo(
     slc_file,
     lut_file,
     out_file,
