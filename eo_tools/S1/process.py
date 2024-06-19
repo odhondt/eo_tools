@@ -98,7 +98,10 @@ def prepare_InSAR(
     id_mst = date_mst.strftime("%Y-%m-%d-%H%M%S")
     id_slv = date_slv.strftime("%Y-%m-%d-%H%M%S")
 
-    out_dir = f"{outputs_prefix}/S1_InSAR_{id_mst}_{id_slv}{aoi_substr}"
+    out_dir = f"{outputs_prefix}/S1_InSAR_{id_mst}__{id_slv}{aoi_substr}"
+    if not os.path.isdir(out_dir):
+        log.info(f"Creating directory {out_dir}")
+        os.makedirs(out_dir)
     for p in pol:
         for subswath in unique_subswaths:
             log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
