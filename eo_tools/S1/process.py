@@ -696,16 +696,11 @@ def coherence(
         box_rg = box_size
 
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    # open_args = dict(lock=False, chunks="auto", engine="rasterio", cache=True, masked=True)
 
-    # ds_prm = xr.open_dataset(file_prm, **open_args)
-    # ds_sec = xr.open_dataset(file_sec, **open_args)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
     ds_sec = riox.open_rasterio(file_sec, **open_args)
 
     # accessing dask arrays
-    # prm = ds_prm["band_data"][0].data
-    # sec = ds_sec["band_data"][0].data
     prm = ds_prm[0].data
     sec = ds_sec[0].data
 
@@ -758,7 +753,6 @@ def coherence(
         )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
         da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
-    # del da_coh
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
