@@ -1,4 +1,4 @@
-from eo_tools.S1.core import S1IWSwath, coregister, align, stitch_bursts
+from eo_tools.S1.core import S1IWSwath, coregister, align
 
 import numpy as np
 import xarray as xr
@@ -146,93 +146,90 @@ def geocode_and_merge_iw(
     kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ):
-
     for var in var_names:
         no_file_found = True
         for pol in ["vv", "vh"]:
-            postfixes = [f"{pol}_iw{iw}" for iw in [1, 2, 3]]
-            patterns = [f"{out_dir}/sar/{var}_{postfix}.tif" for postfix in postfixes]
+            patterns = [f"{out_dir}/sar/{var}_{pol}_iw{iw}.tif" for iw in [1, 2, 3]]
+
+            matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
+
             tmp_files = []
-            for pattern, postfix in zip(patterns, postfixes):
-                matched_files = glob.glob(pattern)
-                if matched_files:
-                    no_file_found = False
-                for file_var in matched_files:
-                    log.info(f"Geocoding file {Path(file_var).name}.")
-                    base_name = os.path.basename(file_var)
-                    parts = base_name.split("_")
-                    # pol = parts[0]
-                    # iw = parts[1][2]  # Extract the digit after "iw"
-                    file_lut = f"{out_dir}/sar/lut_{postfix}.tif"
-                    file_out = f"{out_dir}/sar/{var}_{postfix}_geo.tif"
+            if matched_files:
+                no_file_found = False
+            for file_var in matched_files:
+                log.info(f"Geocoding file {Path(file_var).name}.")
+                base_name = Path(file_var).stem
+                print(f"{base_name=}")
+                parts = base_name.split("_")
+                postfix = "_".join(parts[-2:])
+                file_lut = f"{out_dir}/sar/lut_{postfix}.tif"
+                file_out = f"{out_dir}/sar/{var}_{postfix}_geo.tif"
 
-                    if not os.path.exists(file_lut):
-                        raise FileNotFoundError(
-                            f"Corresponding LUT file {file_lut} not found for {file_var}"
-                        )
+                if not os.path.exists(file_lut):
+                    raise FileNotFoundError(
+                        f"Corresponding LUT file {file_lut} not found for {file_var}"
+                    )
 
-                    # handling phase as a special case
-                    if var == "phi":
-                        darr = riox.open_rasterio(file_var)
-                        if not np.iscomplexobj(darr[0]):
-                            warnings.warn(
-                                "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
-                            )
-                    if var == "ifg":
-                        file_out = f"{out_dir}/sar/phi_{postfix}_geo.tif"
-                        sar2geo(
-                            file_var,
-                            file_lut,
-                            file_out,
-                            multilook[0],
-                            multilook[1],
-                            kernel_phase,
-                            write_phase=True,
-                            magnitude_only=False,
+                # handling phase as a special case
+                if var == "phi":
+                    darr = riox.open_rasterio(file_var)
+                    if not np.iscomplexobj(darr[0]):
+                        warnings.warn(
+                            "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                         )
-                    else:
-                        sar2geo(
-                            file_var,
-                            file_lut,
-                            file_out,
-                            multilook[0],
-                            multilook[1],
-                            kernel,
-                            write_phase=False,
-                            magnitude_only=False,
-                        )
-                    tmp_files.append(file_out)
+                if var == "ifg":
+                    file_out = f"{out_dir}/sar/phi_{postfix}_geo.tif"
+                    sar2geo(
+                        file_var,
+                        file_lut,
+                        file_out,
+                        multilook[0],
+                        multilook[1],
+                        kernel_phase,
+                        write_phase=True,
+                        magnitude_only=False,
+                    )
+                else:
+                    sar2geo(
+                        file_var,
+                        file_lut,
+                        file_out,
+                        multilook[0],
+                        multilook[1],
+                        kernel,
+                        write_phase=False,
+                        magnitude_only=False,
+                    )
+                tmp_files.append(file_out)
+            if tmp_files:
+                if var != "ifg":
+                    file_out = f"{out_dir}/{var}_{pol}.tif"
+                else:
+                    file_out = f"{out_dir}/phi_{pol}.tif"
+                log.info(f"Merging file {Path(file_out).name}")
+                da_to_merge = [
+                    riox.open_rasterio(file, masked=True) for file in tmp_files
+                ]
+
+                if any(np.iscomplexobj(it) for it in da_to_merge):
+                    raise NotImplementedError(
+                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+                    )
+
+                if shp and clip_to_shape:
+                    merged = merge_arrays(
+                        da_to_merge, parse_coordinates=False
+                    ).rio.clip([shp], all_touched=True)
+                else:
+                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
+                merged.rio.to_raster(file_out)
+                # clean tmp files
+                for file in tmp_files:
+                    remove(file)
         if no_file_found:
             raise FileNotFoundError(f"No file was found for variable {var}")
-        else:
-            if var != "ifg":
-                file_out = f"{out_dir}/{var}_{pol}.tif"
-            else:
-                file_out = f"{out_dir}/phi_{pol}.tif"
-            log.info(f"Merging file {Path(file_out).name}")
-            da_to_merge = [riox.open_rasterio(file, masked=True) for file in tmp_files]
-
-            if any(np.iscomplexobj(it) for it in da_to_merge):
-                raise NotImplementedError(
-                    f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
-                )
-
-            if shp and clip_to_shape:
-                merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
-                    [shp], all_touched=True
-                )
-            else:
-                merged = merge_arrays(da_to_merge, parse_coordinates=False)
-            merged.rio.to_raster(file_out)
-
-            # clean tmp files
-            for file in tmp_files:
-                remove(file)
 
 
-# TODO add parameters:
-# - better options: write_phase, write_amp_prm, write_coh, write_clx_coh, etc
-# - warp kernel, and pre-processing options from other function
 def process_InSAR(
     dir_prm: str,
     dir_sec: str,
@@ -296,6 +293,15 @@ def process_InSAR(
     )
 
     var_names = []
+    if write_coherence:
+        var_names.append("coh")
+    if write_interferogram:
+        var_names.append("ifg")
+    if write_primary_amplitude:
+        var_names.append("amp_prm")
+    if write_secondary_amplitude:
+        var_names.append("amp_sec")
+
     patterns = [f"{pol}_iw{iw}" for pol in ["vv", "vh"] for iw in [1, 2, 3]]
     for pattern in patterns:
         file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
@@ -311,28 +317,21 @@ def process_InSAR(
                 coherence(
                     file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
                 )
-                var_names.append("coh")
-                var_names.append("ifg")
             elif write_coherence and not write_interferogram:
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
                 coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
-                var_names.append("coh")
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 interferogram(file_prm, file_sec, file_ifg)
-                var_names.append("ifg")
 
             if write_primary_amplitude:
                 file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
                 amplitude(file_prm, file_ampl)
-                var_names.append("amp_prm")
 
             if write_secondary_amplitude:
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
                 amplitude(file_sec, file_ampl)
-                var_names.append("amp_sec")
 
-    
     geocode_and_merge_iw(
         out_dir=Path(out_dir).parent,
         var_names=var_names,
