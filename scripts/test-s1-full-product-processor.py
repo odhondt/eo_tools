@@ -62,14 +62,15 @@ out_dir = process_insar(
     write_interferogram=True,
     write_primary_amplitude=True,
     write_secondary_amplitude=True,
-    apply_ESD=True,
+    apply_fast_esd=True,
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
+    dem_buffer_arc_sec=40,
     boxcar_coherence=[3, 10],
     multilook=[1, 4],
-    kernel="bicubic",
-    kernel_phase="nearest",
+    warp_kernel="bicubic",
+    warp_kernel_phase="nearest",
     clip_to_shape=False,
 )
 

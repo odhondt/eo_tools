@@ -17,7 +17,6 @@ import logging
 from pyroSAR import identify
 from typing import Union, List, Tuple
 from datetime import datetime
-import glob
 from eo_tools.auxils import remove
 from pathlib import Path
 
@@ -31,10 +30,12 @@ def prepare_insar(
     aoi_name: str = None,
     shp=None,
     pol: Union[str, List[str]] = "full",
-    apply_ESD: bool = False,
+    apply_fast_esd: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    warp_kernel: str = "bicubic",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
 ):
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -45,10 +46,11 @@ def prepare_insar(
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        apply_ESD (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
+        apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM.
 
     Returns:
         str: output directory
@@ -139,10 +141,10 @@ def prepare_insar(
                 min_burst=burst_prm_min,
                 max_burst=burst_prm_max,
                 dir_dem="/tmp",
-                apply_fast_esd=apply_ESD,
-                warp_kernel="bicubic",
+                apply_fast_esd=apply_fast_esd,
+                warp_kernel=warp_kernel,
                 dem_upsampling=dem_upsampling,
-                dem_buffer_arc_sec=40,
+                dem_buffer_arc_sec=dem_buffer_arc_sec,
                 dem_force_download=dem_force_download,
             )
             os.rename(
@@ -160,8 +162,8 @@ def geocode_and_merge_iw(
     var_names: List[str],
     shp=None,
     multilook: List[int] = [1, 4],
-    kernel="bicubic",
-    kernel_phase: str = "nearest",
+    warp_kernel="bicubic",
+    warp_kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ):
     """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
@@ -171,8 +173,8 @@ def geocode_and_merge_iw(
         var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
         shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
-        kernel (str, optional): Warping kernel. Defaults to "bicubic".
-        kernel_phase (str, optional): Warping kernel for the phase. Defaults to "nearest".
+        warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
+        warp_kernel_phase (str, optional): Warping kernel for the phase. Defaults to "nearest".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
 
     """
@@ -189,7 +191,6 @@ def geocode_and_merge_iw(
             for file_var in matched_files:
                 log.info(f"Geocoding file {Path(file_var).name}.")
                 base_name = Path(file_var).stem
-                print(f"{base_name=}")
                 parts = base_name.split("_")
                 postfix = "_".join(parts[-2:])
                 file_lut = f"{input_dir}/sar/lut_{postfix}.tif"
@@ -215,7 +216,7 @@ def geocode_and_merge_iw(
                         file_out,
                         multilook[0],
                         multilook[1],
-                        kernel_phase,
+                        warp_kernel_phase,
                         write_phase=True,
                         magnitude_only=False,
                     )
@@ -226,7 +227,7 @@ def geocode_and_merge_iw(
                         file_out,
                         multilook[0],
                         multilook[1],
-                        kernel,
+                        warp_kernel,
                         write_phase=False,
                         magnitude_only=False,
                     )
@@ -238,7 +239,9 @@ def geocode_and_merge_iw(
                     file_out = f"{input_dir}/phi_{pol}.tif"
                 log.info(f"Merging file {Path(file_out).name}")
                 da_to_merge = [
-                    riox.open_rasterio(file, masked=True) for file in tmp_files
+                    # riox.open_rasterio(file, masked=True) for file in tmp_files
+                    riox.open_rasterio(file)
+                    for file in tmp_files
                 ]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
@@ -271,14 +274,15 @@ def process_insar(
     write_interferogram: bool = True,
     write_primary_amplitude: bool = True,
     write_secondary_amplitude: bool = False,
-    apply_ESD: bool = False,
+    apply_fast_esd: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     multilook: List[int] = [1, 4],
-    kernel: str = "bicubic",
-    kernel_phase: str = "nearest",
+    warp_kernel: str = "bicubic",
+    warp_kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -295,14 +299,14 @@ def process_insar(
         write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
         write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
         write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
-        apply_ESD (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
+        apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
         subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        kernel_phase (str, optional):  Resampling kernel used in phase geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "nearest".
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        warp_kernel_phase (str, optional):  Resampling kernel used in phase geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "nearest".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
 
     Returns:
@@ -314,16 +318,17 @@ def process_insar(
 
     # prepare pair for interferogram computation
     out_dir = prepare_insar(
-        dir_prm,
-        dir_sec,
-        outputs_prefix,
-        aoi_name,
-        shp,
-        pol,
-        apply_ESD,
-        subswaths,
-        dem_upsampling,
-        dem_force_download,
+        dir_prm=dir_prm,
+        dir_sec=dir_sec,
+        outputs_prefix=outputs_prefix,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol=pol,
+        apply_fast_esd=apply_fast_esd,
+        subswaths=subswaths,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
     )
 
     var_names = []
@@ -367,12 +372,12 @@ def process_insar(
                 amplitude(file_sec, file_ampl)
 
     geocode_and_merge_iw(
-        out_dir=Path(out_dir).parent,
+        input_dir=Path(out_dir).parent,
         var_names=var_names,
         shp=shp,
         multilook=multilook,
-        kernel=kernel,
-        kernel_phase=kernel_phase,
+        warp_kernel=warp_kernel,
+        warp_kernel_phase=warp_kernel_phase,
         clip_to_shape=clip_to_shape,
     )
     return out_dir
@@ -423,15 +428,6 @@ def preprocess_insar_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
-
-    # redundant with burst check
-    # may be used in the future for non fully overlapping products
-    # info_prm = identify(dir_primary)
-    # info_sec = identify(dir_secondary)
-    # if info_prm.orbitNumber_rel != info_sec.orbitNumber_rel:
-    #     raise ValueError(
-    #         "Products should have identical tracks (relative orbit numbers)"
-    #     )
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -640,24 +636,27 @@ def sar2geo(
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
+            # Using COG only if real-valued
+            if not np.iscomplexobj(arr_out):
+                nodata = 0
+                prof_dst.update(
+                    {
+                        "driver": "COG",
+                        "compress": "deflate",
+                        "nodata": nodata,
+                    }
+                )
+                prof_dst.pop("blockysize", None)
+                prof_dst.pop("tiled", None)
+                prof_dst.pop("interleave", None)
+                arr_out[np.isnan(arr_out)] = nodata
+            else:
+                prof_dst.update(
+                    {
+                        "compress": "deflate",
+                    }
+                )
             with rio.open(out_file, "w", **prof_dst) as dst:
-                # Using COG only if real-valued
-                if not np.iscomplexobj(arr_out):
-                    prof_dst.update(
-                        {
-                            "driver": "COG",
-                            "compress": "deflate",
-                        }
-                    )
-                    prof_dst.pop("blockysize", None)
-                    prof_dst.pop("tiled", None)
-                    prof_dst.pop("interleave", None)
-                else:
-                    prof_dst.update(
-                        {
-                            "compress": "deflate",
-                        }
-                    )
                 dst.write(arr_out, 1)
 
 
@@ -805,7 +804,7 @@ def _process_bursts(
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
-    kernel,
+    warp_kernel,
 ):
     luts = []
     prof_tmp = dict(
@@ -850,8 +849,8 @@ def _process_bursts(
                 az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
                 # warp raster secondary and deramping phase
-                arr_s = align(arr_s, az_s2p, rg_s2p, kernel)
-                pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel)
+                arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
 
                 # reramp secondary
                 arr_s *= np.exp(-1j * pdb_s)
