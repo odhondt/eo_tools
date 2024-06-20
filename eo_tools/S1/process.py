@@ -24,7 +24,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
-def prepare_InSAR(
+def prepare_insar(
     dir_prm: str,
     dir_sec: str,
     outputs_prefix: str,
@@ -36,7 +36,23 @@ def prepare_InSAR(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
 ):
-    """Produce a coregistered pair of Single Look Complex images and associated lookup tables."""
+    """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
+
+    Args:
+        dir_prm (str): Primary image (SLC Sentinel-1 product directory).
+        dir_sec (str): Secondary image (SLC Sentinel-1 productdirectory).
+        outputs_prefix (str): location in which the product subdirectory will be created.
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        apply_ESD (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
+        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+
+    Returns:
+        str: output directory
+    """
 
     if aoi_name is None:
         aoi_substr = ""
@@ -244,7 +260,7 @@ def geocode_and_merge_iw(
             raise FileNotFoundError(f"No file was found for variable {var}")
 
 
-def process_InSAR(
+def process_insar(
     dir_prm: str,
     dir_sec: str,
     outputs_prefix: str,
@@ -269,19 +285,19 @@ def process_InSAR(
     AOI crop is optional.
 
     Args:
-        dir_prm (str):  Primary image (SLC Sentinel-1 product directory).
-        dir_sec (str): Secondary image (SLC Sentinel-1 productdirectory).
+        dir_prm (str): primary image (SLC Sentinel-1 product directory).
+        dir_sec (str): secondary image (SLC Sentinel-1 productdirectory).
         outputs_prefix (str): location in which the product subdirectory will be created
-        aoi_name (str, optional):  Optional suffix to describe AOI / experiment. Defaults to None.
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
         write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
         write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
         write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
-        apply_ESD (bool, optional): _description_. Defaults to False.
+        apply_ESD (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
         subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        dem_upsampling (float, optional):  Upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
@@ -297,7 +313,7 @@ def process_InSAR(
         raise ValueError("At least one of `coherence` and `interferogram` must be True")
 
     # prepare pair for interferogram computation
-    out_dir = prepare_InSAR(
+    out_dir = prepare_insar(
         dir_prm,
         dir_sec,
         outputs_prefix,
