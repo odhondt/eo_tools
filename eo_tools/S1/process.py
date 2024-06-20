@@ -323,14 +323,14 @@ def process_InSAR(
                 var_names.append("ifg")
 
             if write_primary_amplitude:
-                file_ampl = f"{out_dir}/ampl_prm_{pattern}.tif"
+                file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
                 amplitude(file_prm, file_ampl)
-                var_names.append("ampl_prm")
+                var_names.append("amp_prm")
 
             if write_secondary_amplitude:
-                file_ampl = f"{out_dir}/ampl_sec_{pattern}.tif"
+                file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
                 amplitude(file_sec, file_ampl)
-                var_names.append("ampl_sec")
+                var_names.append("amp_sec")
 
     
     geocode_and_merge_iw(
