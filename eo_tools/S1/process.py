@@ -129,7 +129,9 @@ def prepare_InSAR(
                 dem_buffer_arc_sec=40,
                 dem_force_download=dem_force_download,
             )
-            os.rename(f"{out_dir}/primary.tif", f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif")
+            os.rename(
+                f"{out_dir}/primary.tif", f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif"
+            )
             os.rename(
                 f"{out_dir}/secondary.tif", f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif"
             )
@@ -138,7 +140,7 @@ def prepare_InSAR(
 
 
 def geocode_and_merge_iw(
-    out_dir: str,
+    input_dir: str,
     var_names: List[str],
     shp=None,
     multilook: List[int] = [1, 4],
@@ -146,10 +148,22 @@ def geocode_and_merge_iw(
     kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ):
+    """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
+
+    Args:
+        input_dir (str): Interferometric product directory.
+        var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
+        shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
+        multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
+        kernel (str, optional): Warping kernel. Defaults to "bicubic".
+        kernel_phase (str, optional): Warping kernel for the phase. Defaults to "nearest".
+        clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
+
+    """
     for var in var_names:
         no_file_found = True
         for pol in ["vv", "vh"]:
-            patterns = [f"{out_dir}/sar/{var}_{pol}_iw{iw}.tif" for iw in [1, 2, 3]]
+            patterns = [f"{input_dir}/sar/{var}_{pol}_iw{iw}.tif" for iw in [1, 2, 3]]
 
             matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
 
@@ -162,8 +176,8 @@ def geocode_and_merge_iw(
                 print(f"{base_name=}")
                 parts = base_name.split("_")
                 postfix = "_".join(parts[-2:])
-                file_lut = f"{out_dir}/sar/lut_{postfix}.tif"
-                file_out = f"{out_dir}/sar/{var}_{postfix}_geo.tif"
+                file_lut = f"{input_dir}/sar/lut_{postfix}.tif"
+                file_out = f"{input_dir}/sar/{var}_{postfix}_geo.tif"
 
                 if not os.path.exists(file_lut):
                     raise FileNotFoundError(
@@ -178,7 +192,7 @@ def geocode_and_merge_iw(
                             "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                         )
                 if var == "ifg":
-                    file_out = f"{out_dir}/sar/phi_{postfix}_geo.tif"
+                    file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
                     sar2geo(
                         file_var,
                         file_lut,
@@ -203,9 +217,9 @@ def geocode_and_merge_iw(
                 tmp_files.append(file_out)
             if tmp_files:
                 if var != "ifg":
-                    file_out = f"{out_dir}/{var}_{pol}.tif"
+                    file_out = f"{input_dir}/{var}_{pol}.tif"
                 else:
-                    file_out = f"{out_dir}/phi_{pol}.tif"
+                    file_out = f"{input_dir}/phi_{pol}.tif"
                 log.info(f"Merging file {Path(file_out).name}")
                 da_to_merge = [
                     riox.open_rasterio(file, masked=True) for file in tmp_files
@@ -250,31 +264,35 @@ def process_InSAR(
     kernel: str = "bicubic",
     kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
-):
-    # TODO: update docstrings when finished
+) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
 
     Args:
-        file_prm (str): Primary image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
-        file_sec (str): Secondary image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
-        out_dir (str): Output directory
-        tmp_dir (str): Temporary directory to store intermediate files
-        aoi_name (str): Optional suffix to describe AOI / experiment
-        shp (object, optional): Shapely geometry describing an area of interest as a polygon. If set to None, the whole product is processed. Defaults to None.
-        pol (str, optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']). Defaults to "full".
-        coh_only (bool, optional): Computes only the InSAR coherence and not the phase. Defaults to False.
-        intensity (bool, optional): Adds image intensities. Defaults to True.
-        clear_tmp_files (bool, optional): Removes temporary files at the end (recommended). Defaults to True.
-        erosion_width (int, optional): Size of the morphological erosion to clean image edges after SNAP geocoding. Defaults to 15.
-        resume (bool, optional): Allows to resume the processing when interrupted (use carefully). Defaults to False.
-        apply_ESD (bool, optional): enhanced spectral diversity to correct phase jumps between bursts. Defaults to False
-        subswaths (list, optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to `["IW1", "IW2", "IW3"]`
+        dir_prm (str):  Primary image (SLC Sentinel-1 product directory).
+        dir_sec (str): Secondary image (SLC Sentinel-1 productdirectory).
+        outputs_prefix (str): location in which the product subdirectory will be created
+        aoi_name (str, optional):  Optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
+        write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
+        write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
+        write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
+        apply_ESD (bool, optional): _description_. Defaults to False.
+        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_upsampling (float, optional):  Upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
+        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        kernel_phase (str, optional):  Resampling kernel used in phase geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "nearest".
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+
     Returns:
-        out_dirs (list): Output directories containing COG files.
-    Note:
-        With products from Copernicus Data Space, processing of some zipped products may lead to errors. This issue can be temporarily fixed by processing the unzipped product instead of the zip file.
+        str: output directory
     """
+
     if not np.any([coherence, interferogram]):
         raise ValueError("At least one of `coherence` and `interferogram` must be True")
 
