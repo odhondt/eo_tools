@@ -386,7 +386,7 @@ def process_insar(
         warp_kernel=warp_kernel,
         clip_to_shape=clip_to_shape,
     )
-    return out_dir
+    return Path(out_dir).parent
 
 
 def preprocess_insar_iw(
