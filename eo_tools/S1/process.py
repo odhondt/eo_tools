@@ -166,7 +166,6 @@ def geocode_and_merge_iw(
     shp=None,
     multilook: List[int] = [1, 4],
     warp_kernel="bicubic",
-    warp_kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ):
     """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
@@ -177,7 +176,6 @@ def geocode_and_merge_iw(
         shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
-        warp_kernel_phase (str, optional): Warping kernel for the phase. Defaults to "nearest".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
 
     """
@@ -219,7 +217,7 @@ def geocode_and_merge_iw(
                         file_out,
                         multilook[0],
                         multilook[1],
-                        warp_kernel_phase,
+                        warp_kernel,
                         write_phase=True,
                         magnitude_only=False,
                     )
@@ -286,7 +284,6 @@ def process_insar(
     filter_ifg: bool = True,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
-    warp_kernel_phase: str = "nearest",
     clip_to_shape: bool = True,
 ) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
@@ -308,10 +305,9 @@ def process_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
-        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.x
+        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        warp_kernel_phase (str, optional):  Resampling kernel used in phase geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "nearest".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
 
     Returns:
@@ -388,7 +384,6 @@ def process_insar(
         shp=shp,
         multilook=multilook,
         warp_kernel=warp_kernel,
-        warp_kernel_phase=warp_kernel_phase,
         clip_to_shape=clip_to_shape,
     )
     return out_dir
