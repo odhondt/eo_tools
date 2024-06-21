@@ -30,7 +30,7 @@ outputs_prefix = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
-file_aoi = "/eo_tools/data/Morocco_small.geojson"
+file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
@@ -57,7 +57,7 @@ out_dir = process_insar(
     outputs_prefix=outputs_prefix,
     aoi_name=None,
     shp=shp,
-    pol="full",
+    pol="vv",
     write_coherence=True,
     write_interferogram=True,
     write_primary_amplitude=True,
@@ -68,10 +68,10 @@ out_dir = process_insar(
     dem_force_download=False,
     dem_buffer_arc_sec=40,
     boxcar_coherence=[3, 10],
+    filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
-    warp_kernel_phase="nearest",
-    clip_to_shape=False,
+    clip_to_shape=True,
 )
 
 # %%
