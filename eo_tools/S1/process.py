@@ -74,6 +74,9 @@ def prepare_insar(
         gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
         gdf_burst_sec = gdf_burst_sec[gdf_burst_sec.intersects(shp)]
 
+    if gdf_burst_prm.empty:
+        raise ValueError("The list of bursts to process is empty. Make sure shp intersects with the product.")
+
     # identify corresponding subswaths
     sel_subsw_prm = gdf_burst_prm["subswath"]
     sel_subsw_sec = gdf_burst_sec["subswath"]
@@ -280,6 +283,7 @@ def process_insar(
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
+    filter_ifg: bool = True,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     warp_kernel_phase: str = "nearest",
@@ -304,6 +308,7 @@ def process_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
+        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.x
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
         warp_kernel_phase (str, optional):  Resampling kernel used in phase geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "nearest".
@@ -354,7 +359,13 @@ def process_insar(
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 coherence(
-                    file_prm, file_sec, file_coh, boxcar_coherence, True, file_ifg
+                    file_prm,
+                    file_sec,
+                    file_coh,
+                    boxcar_coherence,
+                    True,
+                    file_ifg,
+                    filter_ifg,
                 )
             elif write_coherence and not write_interferogram:
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
@@ -493,8 +504,9 @@ def preprocess_insar_iw(
     )
 
     if (max_burst_ > min_burst) & apply_fast_esd:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-            args = (
+        _child_process(
+            _apply_fast_esd,
+            (
                 tmp_prm,
                 tmp_sec,
                 min_burst,
@@ -502,33 +514,65 @@ def preprocess_insar_iw(
                 prm.lines_per_burst,
                 nrg,
                 overlap,
-            )
-            e.submit(_apply_fast_esd, *args).result()
+            ),
+        )
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        #     args = (
+        #         tmp_prm,
+        #         tmp_sec,
+        #         min_burst,
+        #         max_burst_,
+        #         prm.lines_per_burst,
+        #         nrg,
+        #         overlap,
+        #     )
+        #     e.submit(_apply_fast_esd, *args).result()
 
     if max_burst_ > min_burst:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-            args = (
+        _child_process(
+            _stitch_bursts,
+            (
                 tmp_sec,
                 f"{dir_out}/secondary.tif",
                 prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
-            )
-            e.submit(_stitch_bursts, *args).result()
-
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-            args = (
+            ),
+        )
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        #     args = (
+        #         tmp_sec,
+        #         f"{dir_out}/secondary.tif",
+        #         prm.lines_per_burst,
+        #         max_burst_ - min_burst + 1,
+        #         overlap,
+        #     )
+        #     e.submit(_stitch_bursts, *args).result()
+        _child_process(
+            _stitch_bursts,
+            (
                 tmp_prm,
                 f"{dir_out}/primary.tif",
                 prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
-            )
-            e.submit(_stitch_bursts, *args).result()
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        args = (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
-        e.submit(_merge_luts, *args).result()
+            ),
+        )
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+        #     args = (
+        #         tmp_prm,
+        #         f"{dir_out}/primary.tif",
+        #         prm.lines_per_burst,
+        #         max_burst_ - min_burst + 1,
+        #         overlap,
+        #     )
+        #     e.submit(_stitch_bursts, *args).result()
+    _child_process(
+        _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+    )
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+    #     args = (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+    #     e.submit(_merge_luts, *args).result()
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -703,7 +747,13 @@ def amplitude(file_in, file_out):
 
 
 def coherence(
-    file_prm, file_sec, file_out, box_size=5, magnitude=True, file_complex_ifg=None
+    file_prm,
+    file_sec,
+    file_out,
+    box_size=5,
+    magnitude=True,
+    file_complex_ifg=None,
+    filter_ifg=True,
 ):
     """Compute the complex coherence from two SLC image files.
 
@@ -713,6 +763,8 @@ def coherence(
         file_out (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
+        file_complex_ifg (str, optional): Writes complex interferogram as well.
+        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.
     """
 
     if not file_complex_ifg:
@@ -742,10 +794,11 @@ def coherence(
         depth=(box_az, box_rg),
     )
 
+    # we need these for interferogram
     ifg = prm * sec.conj()
-    coh = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
+    ifg_box = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
-    coh /= np.sqrt(
+    coh = ifg_box / np.sqrt(
         da.map_overlap(
             boxcar,
             np.nan_to_num((prm * prm.conj()).real),
@@ -764,9 +817,8 @@ def coherence(
 
     if magnitude:
         coh = np.abs(coh)
-        nodataval = np.nan
-    else:
-        nodataval = np.nan + 1j * np.nan
+
+    nodataval = np.nan
 
     da_coh = xr.DataArray(
         data=coh[None],
@@ -779,10 +831,16 @@ def coherence(
 
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
-        da_ifg = xr.DataArray(
-            data=ifg[None],
-            dims=("band", "y", "x"),
-        )
+        if filter_ifg:
+            da_ifg = xr.DataArray(
+                data=ifg_box[None],
+                dims=("band", "y", "x"),
+            )
+        else:
+            da_ifg = xr.DataArray(
+                data=ifg[None],
+                dims=("band", "y", "x"),
+            )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
         da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
 
