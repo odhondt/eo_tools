@@ -36,7 +36,7 @@ def prepare_insar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-):
+) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
     Args:

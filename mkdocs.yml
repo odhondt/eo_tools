@@ -9,7 +9,7 @@ nav:
     - Example 3: download-dem.ipynb
   - API reference: 
     - Sentinel-1 core: s1_core_api.md
-    # - Sentinel-1 processor: s1_process_api.md
+    - Sentinel-1 processor: s1_process_api.md
     - Sentinel-1 utilities: s1_util_api.md
     - Sentinel-2: s2_api.md
     - DEM: dem_api.md
