@@ -19,6 +19,7 @@ from typing import Union, List
 from datetime import datetime
 from eo_tools.auxils import remove
 from pathlib import Path
+from shapely.geometry import shape
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def prepare_insar(
     dir_sec: str,
     outputs_prefix: str,
     aoi_name: str = None,
-    shp=None,
+    shp: shape = None,
     pol: Union[str, List[str]] = "full",
     apply_fast_esd: bool = False,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
@@ -165,7 +166,7 @@ def prepare_insar(
 def geocode_and_merge_iw(
     input_dir: str,
     var_names: List[str],
-    shp=None,
+    shp: shape = None,
     multilook: List[int] = [1, 4],
     warp_kernel="bicubic",
     clip_to_shape: bool = True,
@@ -271,7 +272,7 @@ def process_insar(
     dir_sec: str,
     outputs_prefix: str,
     aoi_name: str = None,
-    shp=None,
+    shp: shape = None,
     pol: Union[str, List[str]] = "full",
     write_coherence: bool = True,
     write_interferogram: bool = True,
