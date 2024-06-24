@@ -205,7 +205,7 @@ class S1IWSwath:
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Terrain correction (index computation)")
+        log.info("Terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
             # removing first pos to get smaller numbers, is this useful?
             dem_x.ravel() - pos[0, 0],
@@ -466,7 +466,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
-@njit(cache=True, nogil=True, parallel=True)
+@njit(nogil=True, parallel=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
