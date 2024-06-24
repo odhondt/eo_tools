@@ -2,17 +2,18 @@
 
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
-## New feature: standalone TOPS InSAR processor
-- Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.
-- A new processor for IW subswath can be used -- see `s1-easy-tops-insar.ipynb` in the `notebook` folder.
-- Bursts can also be processed individually using the `S1.core` module for more flexibility. Results can be further processed as in-memory arrays or written as GeoTiff files. An example of such processing is found in `s1-tops-core-demo.ipynb`
-- More features/improvements will be added in the near future such as:
-    - Better memory and multi-core handling (probably using `dask`)
-    - Full product (all subswaths and polarization) processing with optional AOI selection
-    - Multi-temporal stacks
-    - Radiometric terrain correction
-- In a more distant future:
-    - Tools for change detection, polarimetry, speckle filtering, DEM generation
+## New in version 2024.6.2
+- New InSAR processor for full products
+	- Processing, geocoding and merging subswaths in one function call
+	- Computation of coherence and / or interferogram
+	- Optional computation of amplitudes
+	- Selection of subswath and polarization subsets
+	- Optional crop of an area of interest (to save computation, only intersecting bursts are processed)
+	- Access to intermediate files in the SAR geometry. These can be further processed prior to geocoding (for instance, speckle filtering or incoherent change detection of amplitudes may be applied) 
+	- Standalone functions to geocode and merge any raster in the SAR geometry
+	- Cloud Optimized GeoTIFF (COG) geocoded output file which can be displayed in GIS software or uploaded to tile servers
+- Improved internals
+	- Some memory intensive functions are now using child processes to ensure memory from large objects will be released after processing. This ensures an overall lower memory footprint.
 
 Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
