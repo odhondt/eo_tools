@@ -15,7 +15,7 @@ import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
-from typing import Union, List, Tuple
+from typing import Union, List
 from datetime import datetime
 from eo_tools.auxils import remove
 from pathlib import Path
@@ -555,14 +555,14 @@ def preprocess_insar_iw(
 
 
 def sar2geo(
-    slc_file,
-    lut_file,
-    out_file,
-    mlt_az=1,
-    mlt_rg=1,
-    kernel="bicubic",
-    write_phase=False,
-    magnitude_only=False,
+    slc_file: str,
+    lut_file: str,
+    out_file: str,
+    mlt_az: int = 1,
+    mlt_rg: int = 1,
+    kernel: str = "bicubic",
+    write_phase: bool = False,
+    magnitude_only: bool = False,
 ):
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
@@ -713,13 +713,13 @@ def amplitude(file_in, file_out):
 
 
 def coherence(
-    file_prm,
-    file_sec,
-    file_out,
-    box_size=5,
-    magnitude=True,
-    file_complex_ifg=None,
-    filter_ifg=True,
+    file_prm: str,
+    file_sec: str,
+    file_out: str,
+    box_size: Union[int, List[int]] = 5,
+    magnitude: bool = True,
+    file_complex_ifg: str = None,
+    filter_ifg: bool = True,
 ):
     """Compute the complex coherence from two SLC image files.
 
@@ -729,7 +729,7 @@ def coherence(
         file_out (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
-        file_complex_ifg (str, optional): Writes complex interferogram as well.
+        file_complex_ifg (str, optional): Writes complex interferogram as well. Defaults to None.
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.
     """
 
