@@ -1,5 +1,7 @@
 from eo_tools.S1.core import S1IWSwath, coregister, align
-
+from eo_tools.S1.util import presum, boxcar, remap
+from eo_tools.auxils import get_burst_geometry
+from eo_tools.auxils import remove
 import numpy as np
 import xarray as xr
 import rasterio as rio
@@ -8,8 +10,6 @@ import rioxarray as riox
 from rioxarray.merge import merge_arrays
 import warnings
 import os
-from eo_tools.S1.util import presum, boxcar, remap
-from eo_tools.auxils import get_burst_geometry
 import concurrent
 import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
@@ -17,7 +17,6 @@ import logging
 from pyroSAR import identify
 from typing import Union, List
 from datetime import datetime
-from eo_tools.auxils import remove
 from pathlib import Path
 from shapely.geometry import shape
 
@@ -170,7 +169,7 @@ def geocode_and_merge_iw(
     multilook: List[int] = [1, 4],
     warp_kernel="bicubic",
     clip_to_shape: bool = True,
-):
+) -> None:
     """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
 
     Args:
@@ -406,7 +405,7 @@ def preprocess_insar_iw(
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
-):
+) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
     Args:
@@ -564,7 +563,7 @@ def sar2geo(
     kernel: str = "bicubic",
     write_phase: bool = False,
     magnitude_only: bool = False,
-):
+) -> None:
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
@@ -672,7 +671,7 @@ def sar2geo(
 
 
 # TODO optional chunk processing
-def interferogram(file_prm, file_sec, file_out):
+def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     """Compute a complex interferogram from two SLC image files.
 
     Args:
@@ -694,7 +693,7 @@ def interferogram(file_prm, file_sec, file_out):
 
 
 # TODO optional chunk processing
-def amplitude(file_in, file_out):
+def amplitude(file_in: str, file_out: str) -> None:
     """Compute the amplitude of a complex-valued image.
 
     Args:
@@ -721,7 +720,7 @@ def coherence(
     magnitude: bool = True,
     file_complex_ifg: str = None,
     filter_ifg: bool = True,
-):
+) -> None:
     """Compute the complex coherence from two SLC image files.
 
     Args:
