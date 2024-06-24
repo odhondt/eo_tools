@@ -75,7 +75,9 @@ def prepare_insar(
         gdf_burst_sec = gdf_burst_sec[gdf_burst_sec.intersects(shp)]
 
     if gdf_burst_prm.empty:
-        raise ValueError("The list of bursts to process is empty. Make sure shp intersects with the product.")
+        raise ValueError(
+            "The list of bursts to process is empty. Make sure shp intersects with the product."
+        )
 
     # identify corresponding subswaths
     sel_subsw_prm = gdf_burst_prm["subswath"]
@@ -390,19 +392,19 @@ def process_insar(
 
 
 def preprocess_insar_iw(
-    dir_primary,
-    dir_secondary,
-    dir_out,
-    iw=1,
-    pol="vv",
-    min_burst=1,
-    max_burst=None,
-    dir_dem="/tmp",
-    apply_fast_esd=True,
-    warp_kernel="bicubic",
-    dem_upsampling=1.8,
-    dem_buffer_arc_sec=40,
-    dem_force_download=False,
+    dir_primary: str,
+    dir_secondary: str,
+    dir_out: str,
+    iw: int = 1,
+    pol: Union[str, List[str]] = "vv",
+    min_burst: int = 1,
+    max_burst: int = None,
+    dir_dem: str = "/tmp",
+    apply_fast_esd: bool = True,
+    warp_kernel: str = "bicubic",
+    dem_upsampling: float = 1.8,
+    dem_buffer_arc_sec: float = 40,
+    dem_force_download: bool = False,
 ):
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -511,17 +513,6 @@ def preprocess_insar_iw(
                 overlap,
             ),
         )
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        #     args = (
-        #         tmp_prm,
-        #         tmp_sec,
-        #         min_burst,
-        #         max_burst_,
-        #         prm.lines_per_burst,
-        #         nrg,
-        #         overlap,
-        #     )
-        #     e.submit(_apply_fast_esd, *args).result()
 
     if max_burst_ > min_burst:
         _child_process(
@@ -534,15 +525,7 @@ def preprocess_insar_iw(
                 overlap,
             ),
         )
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        #     args = (
-        #         tmp_sec,
-        #         f"{dir_out}/secondary.tif",
-        #         prm.lines_per_burst,
-        #         max_burst_ - min_burst + 1,
-        #         overlap,
-        #     )
-        #     e.submit(_stitch_bursts, *args).result()
+
         _child_process(
             _stitch_bursts,
             (
@@ -553,21 +536,9 @@ def preprocess_insar_iw(
                 overlap,
             ),
         )
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        #     args = (
-        #         tmp_prm,
-        #         f"{dir_out}/primary.tif",
-        #         prm.lines_per_burst,
-        #         max_burst_ - min_burst + 1,
-        #         overlap,
-        #     )
-        #     e.submit(_stitch_bursts, *args).result()
     _child_process(
         _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
     )
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-    #     args = (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
-    #     e.submit(_merge_luts, *args).result()
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
