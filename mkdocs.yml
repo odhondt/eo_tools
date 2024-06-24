@@ -53,6 +53,7 @@ plugins:
       handlers:
         # See: https://mkdocstrings.github.io/python/usage/
         python:
+          paths: [eo_tools]
           options:
             docstring_style: google
             show_root_heading: true
