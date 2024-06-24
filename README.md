@@ -1,9 +1,9 @@
-# EO-Tools: 
+# EO-Tools 
 
-A dockerized toolbox for easy programmatic processing of remote sensing imagery from various public sources.
+EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
 ## New feature: standalone TOPS InSAR processor
-- **Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.**
+- Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.
 - A new processor for IW subswath can be used -- see `s1-easy-tops-insar.ipynb` in the `notebook` folder.
 - Bursts can also be processed individually using the `S1.core` module for more flexibility. Results can be further processed as in-memory arrays or written as GeoTiff files. An example of such processing is found in `s1-tops-core-demo.ipynb`
 - More features/improvements will be added in the near future such as:
@@ -16,9 +16,9 @@ A dockerized toolbox for easy programmatic processing of remote sensing imagery 
 
 Here are examples of amplitude, phase and coherence computed using this framework:
 <p float="left">
-    <img src="./data/ex_amp.png" width="250">
-    <img src="./data/ex_phi.png" width="250">
-    <img src="./data/ex_coh.png" width="250">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="220">
 </p>
 
 ## Overview
@@ -41,12 +41,39 @@ Here are examples of amplitude, phase and coherence computed using this framewor
         - Show remote and local images on top of folium maps in the notebook
 - Example notebooks can be found in the `notebooks/` folder
 
-## Usage
+## Install & quick start
+
+- The package comes in two flavors
+    - A conda package that contains the main functionality (Sentinel-1 InSAR, Sentinel-2 tile mosaic and DEM download)
+    - A docker version (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
+    - The legacy SNAP based processor is only available in the docker version.
+
+### Conda install
+
+- It is recommended to first create a conda environment to avoid package conflicts
+- You need to have `conda` installed (or `mamba` / `micromamba`)
+- Then the package can be installed with these commands (replace `conda` by `mamba` or `micromamba` if needed):
+
+```bash
+conda env create -n eo_tools
+conda activate eo_tools
+conda install conda-forge::eo-tools 
+```
+
+### Docker install
+
 - It works as a dev container for VSCode. 
-    - Clone into the location of your choice.
+    - Clone the github repository into the location of your choice.
     - Volumes paths can (and should) be changed in `docker-compose.yml`.
-    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks can be used.
+    - After opening the main directory, VSCode should detect the devcontainer file and ask to build the container. Once the container is running, the example notebooks in the `notebooks` directory can be used.
 - Alternatively, it should also be possible to start the container from the main directory with `docker-compose up -d` in a terminal and attach to the container with any editor supporting docker.
+
+### Getting started
+
+- Please make sure `jupyter` is installed in your environment
+- Example jupyter notebooks demonstrate the different features
+- For conda use the notebooks in the `notebooks-cf` directory of the github repository
+- For docker use the notebooks in the `notebooks` directory of the github repository
 
 ## Notice
 

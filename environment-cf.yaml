@@ -1,0 +1,36 @@
+name: eo_tools
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pytest
+  - gdal
+  - rasterio
+  - pyrosar
+  - spatialist
+  - pip
+  - pystac
+  - pystac-client
+  - geopandas
+  - pandas
+  - eodag
+  - ipykernel
+  - ipywidgets
+  - black
+  - scikit-image
+  - ipyleaflet
+  - folium
+  - tqdm
+  - xmltodict
+  - httpx
+  - xarray
+  - netcdf4
+  - rioxarray
+  - numba
+  - dask
+  - bottleneck
+  - websockets 
+  - watchfiles 
+  - uvloop 
+  - python-dotenv 
+  - httptools

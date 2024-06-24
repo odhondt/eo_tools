@@ -1,0 +1,7 @@
+  mkdocs
+  mkdocs-autorefs
+  mkdocs-material
+  mkdocstrings[python]
+  # mkdocstrings-python
+  markdown-include
+  mkdocs-jupyter

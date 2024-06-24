@@ -1,0 +1,72 @@
+site_name: eo-tools documentation
+repo_url: https://github.com/odhondt/eo_tools
+repo_name: 'odhondt/eo_tools'
+nav:
+  - Home: index.md
+  - Examples:
+    - Example 1: s1-easy-tops-insar.ipynb
+    - Example 2: discover-and-process-s2.ipynb
+    - Example 3: download-dem.ipynb
+  - API reference: 
+    - Sentinel-1 core: s1_core_api.md
+    - Sentinel-1 processor: s1_process_api.md
+    - Sentinel-1 utilities: s1_util_api.md
+    - Sentinel-2: s2_api.md
+    - DEM: dem_api.md
+    - General utilities: util_api.md
+
+theme:
+  name: material
+  highlightjs: true
+  hljslanguages:
+    - python
+  features:
+    - navigation.instant
+  font:
+    text: 'Nunito Sans'
+    code: 'Fira Code'
+  palette:
+
+  # # Palette toggle for automatic mode
+  # - media: "(prefers-color-scheme)"
+  #   toggle:
+  #     icon: material/brightness-auto
+  #     name: Switch to light mode
+
+  # # Palette toggle for light mode
+  # - media: "(prefers-color-scheme: light)"
+  #   scheme: default 
+  #   toggle:
+  #     icon: material/brightness-7
+  #     name: Switch to dark mode
+
+  # # Palette toggle for dark mode
+  # - media: "(prefers-color-scheme: dark)"
+  #   scheme: slate
+  #   toggle:
+  #     icon: material/brightness-4
+  #     name: Switch to system preference
+plugins:
+  - search
+  - mkdocs-jupyter
+  - mkdocstrings:
+      handlers:
+        # See: https://mkdocstrings.github.io/python/usage/
+        python:
+          paths: [eo_tools]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            heading_level: 1
+            show_source: false
+markdown_extensions:
+  - markdown_include.include:
+      base_path: .
+  - toc:
+      toc_depth: 4
+      baselevel: 2
+  # - admonition
+extra:
+  social:
+    - icon: 'fontawesome/brands/github'
+      link: 'https://github.com/odhondt'

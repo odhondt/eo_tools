@@ -3,13 +3,15 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
+from math import floor, ceil
 from scipy.interpolate import CubicHermiteSpline
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
+from eo_tools.S1.util import remap
 from shapely.geometry import box
 from rasterio.enums import Resampling
-from numba import njit, jit, prange
+from numba import njit, prange
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
 
@@ -21,8 +23,6 @@ from zipfile import ZipFile
 # WARP_RELATIVE_MAP only in dev version for now
 
 # benchmark & debug
-from eo_tools.bench import timeit
-import matplotlib.pyplot as plt
 
 
 import logging
@@ -32,7 +32,8 @@ log = logging.getLogger(__name__)
 
 # TODO: Goldstein, coherence, LOS displacement
 class S1IWSwath:
-    """Class S1IWSwath: contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+    """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
+
     - DEM retrieval (only SRTM 1sec for now)
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
@@ -44,8 +45,8 @@ class S1IWSwath:
         """Object intialization
 
         Args:
-            safe_dir (str): Directory where the (unzipped) product lies.
-            iw (int, optional): Number of subswath (1 to 3). Defaults to 1.
+            safe_dir (str): Directory containing the (unzipped) product.
+            iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
         """
         if not os.path.isdir(safe_dir):
@@ -114,10 +115,10 @@ class S1IWSwath:
         """Downloads the DEM for a given burst
 
         Args:
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
-            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 20.
-            force_download (bool, optional): Forces the file to download even if a DEM is already present on disk. Defaults to False.
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
 
         Returns:
             str: path to the downloaded file
@@ -144,11 +145,11 @@ class S1IWSwath:
 
         Args:
             file_dem (str): path to the DEM
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
 
         Returns:
-            (ndarray, ndarray): azimuth slant range indices. Arrays have the shape of the DEM.
+            (array, array): azimuth slant range indices. Arrays have the shape of the DEM.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -204,7 +205,7 @@ class S1IWSwath:
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Terrain correction (index computation)")
+        log.info("Terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
             # removing first pos to get smaller numbers, is this useful?
             dem_x.ravel() - pos[0, 0],
@@ -235,10 +236,10 @@ class S1IWSwath:
         """Computes the azimuth deramping phase using product metadata.
 
         Args:
-            burst_idx (int, optional): Burst number. Defaults to 1.
+            burst_idx (int, optional): Burst index. Defaults to 1.
 
         Returns:
-            ndarray: phase correction to apply to the SLC burst.
+            array: phase correction to apply to the SLC burst.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -339,11 +340,11 @@ class S1IWSwath:
         """Reads raster SLC burst.
 
         Args:
-            burst_idx (int, optional): burst number. Defaults to 1.
+            burst_idx (int, optional): burst index. Defaults to 1.
             remove_invalid (bool, optional): Sets non-valid pixels to NaN. Defaults to True.
 
         Returns:
-            ndarray: Complex raster
+            array: Complex raster
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -388,10 +389,10 @@ class S1IWSwath:
         """Computes the topographic phase using slant range indices.
 
         Args:
-            rg (ndarray): slant range pixel indices that will be converted to distances using annotation data.
+            rg (array): slant range pixel indices that will be converted to distances using annotation data.
 
         Returns:
-            ndarray: topographic phase for the given burst.
+            array: topographic phase for the given burst.
 
         Note:
             For the primary burst, range is simply the pixel slant range index. For a secondary burst, it is the range index of the burst reprojected in the primary grid thanks to the coregistration function.
@@ -449,23 +450,24 @@ class S1IWSwath:
 
 
 def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
-    log.info("Projecting secondary coordinates onto primary grid.")
-    return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
-
-
-@njit(cache=True, nogil=True, parallel=True)
-def coreg_fast(arr_p, azp, rgp, azs, rgs):
     """Fast parallel coregistration based on lookup-tables in a DEM geometry.
 
     Args:
-        azp (array): primary azimuth coordinates
-        rgp (array): primary range coordinates
-        azs (array): secondary azimuth coordinates
-        rgs (array): secondary range coordinates
+        arr_p (array): array containing the data of the primary burst to coregister
+        az_p2g (array): primary azimuth coordinates
+        rg_p2g (array): primary range coordinates
+        az_s2g (array): secondary azimuth coordinates
+        rg_s2g (array): secondary range coordinates
 
     Returns:
-        arrays: az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
+        (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
+    log.info("Projecting secondary coordinates to primary grid.")
+    return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+
+
+@njit(nogil=True, parallel=True)
+def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -527,43 +529,22 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
     return az_s2p, rg_s2p
 
 
-def align(arr_p, arr_s, az_s2p, rg_s2p, order=3):
+def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
+    """Aligns the secondary image to the geometry of the primary
+
+    Args:
+        arr_s (array): image in the secondary geometry
+        az_s2p (array): azimuth lookup table to project secondary to primary
+        rg_s2p (array): range lookup table project secondary to primary
+        kernel (str, optional): Type of kernel (values are "nearest", "bilinear", "bicubic" -- 4 point bicubic, "bicubic6" -- six point bicubic). Defaults to "bicubic".
+
+    Returns:
+        array: projected image
+    """    
     log.info("Warp secondary to primary geometry.")
-
-    if np.iscomplexobj(arr_s):
-        nodata_dst = np.nan + 1j * np.nan
-    else:
-        nodata_dst = np.nan
-
-    if np.iscomplexobj(arr_p):
-        nodata_src = np.nan + 1j * np.nan
-    else:
-        nodata_src = np.nan
-
-    # msk_dst = arr_s != nodata_dst
-    msk_dst = ~np.isnan(arr_s)
-    msk_src = ~np.isnan(arr_p)
-    # msk_src = arr_p != nodata_src
-    arr_out = np.full_like(arr_p, dtype=arr_s.dtype, fill_value=nodata_dst)
-    msk_out = np.ones_like(msk_src, dtype=bool)
-    coords = np.vstack((az_s2p[msk_src], rg_s2p[msk_src]))
-    arr_out[msk_src] = map_coordinates(
-        arr_s,
-        coords,
-        order=order,
-        cval=nodata_dst,
-        prefilter=False,
-    )
-    msk_out[msk_src] = map_coordinates(
-        msk_dst,
-        coords,
-        order=0,
-    )
-    arr_out[~msk_out] = np.nan
-    return arr_out.reshape(arr_p.shape)
+    return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
-# TODO: auto-upsampling factor, rename, mask nan in coordinates, no mask resampling
 def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
 
     # replace nan to work with map_coordinates
@@ -625,7 +606,7 @@ def fast_esd(ifgs, overlap):
         ifgs (list): List of complex SLC interferograms
         overlap (int): Number of overlapping azimuth pixels between two bursts (can be computed with `compute_burst_overlap`)
 
-    Notes:
+    Note:
         Based on ideas introduced in:
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """
@@ -671,7 +652,7 @@ def fast_esd(ifgs, overlap):
 
 
 def stitch_bursts(bursts, overlap):
-    """Stitch bursts in the single look radar geometry
+    """Stitch bursts in the single look radar geometry.
 
     Args:
         bursts (list): list of bursts
@@ -782,6 +763,15 @@ def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
+
+    # DEM dependent
+    step = 1 / 3600
+
+    xmin = floor(xmin / step) * step
+    xmax = ceil(xmax / step) * step
+    ymin = floor(ymin / step) * step
+    ymax = ceil(ymax / step) * step
+
     off = buffer_arc_sec / 3600
     shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
 
@@ -805,7 +795,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
             resampling=Resampling.bilinear,
             # resampling=Resampling.cubic,
         )[0]
-
         # scale image transform
         dem_prof = ds.profile.copy()
         dem_trans = ds.transform * ds.transform.scale(
@@ -853,7 +842,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
         (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
         for b in range(0, len(lon), chunk)
     ]
-    chunked = Parallel(n_jobs=8, prefer="threads")(
+    chunked = Parallel(n_jobs=-1, prefer="threads")(
         delayed(tf.transform)(*b) for b in wgs_pts
     )
     dem_x = np.zeros_like(lon)

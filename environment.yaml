@@ -1,23 +1,24 @@
 name: eo_tools
 channels:
-  - defaults
+  # - defaults
   - conda-forge
 dependencies:
   - python=3.12
   - pytest
   - gdal
   - rasterio
-  - pyroSAR
+  - pyrosar
   - spatialist
   - pip
   - pystac
+  - pystac-client
   - geopandas
   - pandas
+  - eodag
   - ipykernel
   - ipywidgets
   - black
   - scikit-image
-  - eodag
   - ipyleaflet
   - folium
   - tqdm
@@ -29,4 +30,13 @@ dependencies:
   - numba
   - dask
   - bottleneck
+  # these are required to avoid eodag to break
+  - websockets 
+  - watchfiles 
+  - uvloop 
+  - python-dotenv 
+  - httptools
+  # - pip:
+    # - titiler.application
+    # - eodag
   # - memory_profiler
