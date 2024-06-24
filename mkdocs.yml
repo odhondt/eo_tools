@@ -8,7 +8,6 @@ nav:
     - Example 2: discover-and-process-s2.ipynb
     - Example 3: download-dem.ipynb
   - API reference: 
-    # - API: api.md
     - Sentinel-1 core: s1_core_api.md
     - Sentinel-1 processor: s1_process_api.md
     - Sentinel-1 utilities: s1_util_api.md
