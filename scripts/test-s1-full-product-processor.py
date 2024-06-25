@@ -3,6 +3,13 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+# Uncomment these lines to test conda imports
+# import sys
+# sys.path.remove("/eo_tools")
+# import eo_tools 
+# print(f"EO-Tools imported from:")
+# print(f"{eo_tools.__file__=}")
+
 # from folium import LayerControl
 import os
 import geopandas as gpd
