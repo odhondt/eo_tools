@@ -37,7 +37,8 @@ outputs_prefix = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
-file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
@@ -49,7 +50,7 @@ search_criteria = {
 
 results, _ = dag.search(**search_criteria)
 to_dl = [it for it in results if it.properties["id"] in ids]
-dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=False)
+# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=True)
 
 # %%
 
@@ -65,12 +66,12 @@ out_dir = process_insar(
     aoi_name=None,
     shp=shp,
     pol="vv",
+    subswaths=["IW1", "IW2", "IW3"],
     write_coherence=True,
     write_interferogram=True,
     write_primary_amplitude=True,
     write_secondary_amplitude=True,
     apply_fast_esd=True,
-    subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
     dem_buffer_arc_sec=40,
