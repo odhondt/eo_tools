@@ -48,8 +48,9 @@ search_criteria = {
     "geom": shp,
 }
 
-results, _ = dag.search(**search_criteria)
-to_dl = [it for it in results if it.properties["id"] in ids]
+# uncomment if files are not already on disk
+# results, _ = dag.search(**search_criteria)
+# to_dl = [it for it in results if it.properties["id"] in ids]
 # dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=True)
 
 # %%
@@ -65,7 +66,7 @@ out_dir = process_insar(
     outputs_prefix=outputs_prefix,
     aoi_name=None,
     shp=shp,
-    pol="vv",
+    pol="Vh",
     subswaths=["IW1", "IW2", "IW3"],
     write_coherence=True,
     write_interferogram=True,
@@ -80,6 +81,7 @@ out_dir = process_insar(
     multilook=[1, 4],
     warp_kernel="bicubic",
     clip_to_shape=True,
+    # skip_preprocessing=True
 )
 
 # %%
