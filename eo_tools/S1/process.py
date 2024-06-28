@@ -200,17 +200,13 @@ def geocode_and_merge_iw(
     else:
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
-    print(iw_idx)
-    print(pol_)
 
     for var in var_names:
         no_file_found = True
         for p in pol_:
             patterns = [f"{input_dir}/sar/{var}_{p}_iw{iw}.tif" for iw in iw_idx]
-            print(patterns)
 
             matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
-            print(matched_files)
 
             tmp_files = []
             if matched_files:
@@ -382,7 +378,6 @@ def process_insar(
 
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
-    print(patterns)
     for pattern in patterns:
         file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
         file_sec = f"{out_dir}/slc_sec_{pattern}.tif"
