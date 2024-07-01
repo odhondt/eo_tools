@@ -22,7 +22,6 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 </p>
 
 ## Overview
-- Because this project is in active development the API is likely to change. 
 - Currently, the available features are:
     - Sentinel-1
         - New standalone InSAR processor (see previous section)
@@ -48,7 +47,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
     - A docker version (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
     - The legacy SNAP based processor is only available in the docker version.
 
-### Conda install
+### Conda install (recommended)
 
 - It is recommended to first create a conda environment to avoid package conflicts
 - You need to have `conda` installed (or `mamba` / `micromamba`)
