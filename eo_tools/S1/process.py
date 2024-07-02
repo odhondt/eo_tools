@@ -413,7 +413,7 @@ def process_insar(
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
                 amplitude(file_sec, file_ampl)
 
-    # by default, we use iw and pol which exists
+    # by default, we use iw and pol which exist
     geocode_and_merge_iw(
         input_dir=Path(out_dir).parent,
         var_names=var_names,
@@ -479,7 +479,7 @@ def preprocess_insar_iw(
     prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
     sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
 
-    is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in prm_burst_info[0]
+    is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in sec_burst_info[0]
 
     if is_burst_id:
         prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
