@@ -52,7 +52,7 @@ def prepare_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
 
     Returns:
         str: output directory
@@ -77,8 +77,8 @@ def prepare_insar(
         gdf_burst_sec = gdf_burst_sec[gdf_burst_sec.intersects(shp)]
 
     if gdf_burst_prm.empty:
-        raise ValueError(
-            "The list of bursts to process is empty. Make sure shp intersects with the product."
+        raise RuntimeError(
+            "The list of bursts to process is empty. Make sure shp intersects the product."
         )
 
     # identify corresponding subswaths
@@ -110,7 +110,7 @@ def prepare_insar(
     meta_sec = info_sec.scanMetadata()
     orbnum = meta_prm["orbitNumber_rel"]
     if meta_sec["orbitNumber_rel"] != orbnum:
-        raise ValueError("Images must be from the same relative orbit.")
+        raise RuntimeError("Images must be from the same relative orbit.")
 
     # parse dates
     datestr_prm = meta_prm["start"]
@@ -711,7 +711,6 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-# TODO optional chunk processing
 def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     """Compute a complex interferogram from two SLC image files.
 
@@ -733,7 +732,6 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
         dst.write(ifg, 1)
 
 
-# TODO optional chunk processing
 def amplitude(file_in: str, file_out: str) -> None:
     """Compute the amplitude of a complex-valued image.
 
