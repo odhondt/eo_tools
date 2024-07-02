@@ -163,7 +163,7 @@ def prepare_insar(
                 )
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
-                log.info("Processing is skipped.")
+                log.info("Skipping preprocessing.")
     return out_dir
 
 
@@ -184,7 +184,7 @@ def geocode_and_merge_iw(
         var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
         shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
@@ -262,7 +262,6 @@ def geocode_and_merge_iw(
                     file_out = f"{input_dir}/phi_{p}.tif"
                 log.info(f"Merging file {Path(file_out).name}")
                 da_to_merge = [
-                    # riox.open_rasterio(file, masked=True) for file in tmp_files
                     riox.open_rasterio(file)
                     for file in tmp_files
                 ]
@@ -340,7 +339,7 @@ def process_insar(
     """
 
     if not np.any([coherence, interferogram]):
-        raise ValueError("At least one of `coherence` and `interferogram` must be True")
+        raise ValueError("At least one of `write_coherence` and `write_interferogram` must be True.")
 
     # prepare pair for interferogram computation
     out_dir = prepare_insar(
