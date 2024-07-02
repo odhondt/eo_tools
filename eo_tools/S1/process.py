@@ -596,7 +596,7 @@ def preprocess_insar_iw(
 
 
 def sar2geo(
-    slc_file: str,
+    sar_file: str,
     lut_file: str,
     out_file: str,
     mlt_az: int = 1,
@@ -608,7 +608,7 @@ def sar2geo(
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
-        slc_file (str): file in the SLC radar geometry
+        sar_file (str): file in the SAR geometry
         lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
@@ -621,7 +621,7 @@ def sar2geo(
     """
     log.info("Project image with the lookup table.")
 
-    with rio.open(slc_file) as ds_slc:
+    with rio.open(sar_file) as ds_slc:
         arr = ds_slc.read()
         prof_src = ds_slc.profile.copy()
     with rio.open(lut_file) as ds_lut:
