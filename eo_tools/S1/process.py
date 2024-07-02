@@ -36,7 +36,7 @@ def prepare_insar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    skip_preprocessing: bool = False
+    skip_preprocessing: bool = False,
 ) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -156,10 +156,12 @@ def prepare_insar(
                     dem_force_download=dem_force_download,
                 )
                 os.rename(
-                    f"{out_dir}/primary.tif", f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif"
+                    f"{out_dir}/primary.tif",
+                    f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(
-                    f"{out_dir}/secondary.tif", f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif"
+                    f"{out_dir}/secondary.tif",
+                    f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
@@ -196,7 +198,7 @@ def geocode_and_merge_iw(
         else:
             pol_ = [pol.lower()]
     elif isinstance(pol, list):
-            pol_ = [p.lower() for p in pol]
+        pol_ = [p.lower() for p in pol]
     else:
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
@@ -261,10 +263,7 @@ def geocode_and_merge_iw(
                 else:
                     file_out = f"{input_dir}/phi_{p}.tif"
                 log.info(f"Merging file {Path(file_out).name}")
-                da_to_merge = [
-                    riox.open_rasterio(file)
-                    for file in tmp_files
-                ]
+                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
                     raise NotImplementedError(
@@ -306,7 +305,7 @@ def process_insar(
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     clip_to_shape: bool = True,
-    skip_preprocessing:bool = False,
+    skip_preprocessing: bool = False,
 ) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -339,7 +338,9 @@ def process_insar(
     """
 
     if not np.any([coherence, interferogram]):
-        raise ValueError("At least one of `write_coherence` and `write_interferogram` must be True.")
+        raise ValueError(
+            "At least one of `write_coherence` and `write_interferogram` must be True."
+        )
 
     # prepare pair for interferogram computation
     out_dir = prepare_insar(
@@ -354,7 +355,7 @@ def process_insar(
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
-        skip_preprocessing=skip_preprocessing
+        skip_preprocessing=skip_preprocessing,
     )
 
     var_names = []
@@ -389,28 +390,34 @@ def process_insar(
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 coherence(
-                    file_prm,
-                    file_sec,
-                    file_coh,
-                    boxcar_coherence,
-                    True,
-                    file_ifg,
-                    filter_ifg,
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                    file_complex_ifg=file_ifg,
+                    filter_ifg=filter_ifg,
                 )
             elif write_coherence and not write_interferogram:
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
-                coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
+                coherence(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                )
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(file_prm, file_sec, file_ifg)
+                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
 
             if write_primary_amplitude:
                 file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(file_prm, file_ampl)
+                amplitude(file_in=file_prm, file_out=file_ampl)
 
             if write_secondary_amplitude:
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(file_sec, file_ampl)
+                amplitude(file_in=file_sec, file_out=file_ampl)
 
     # by default, we use iw and pol which exist
     geocode_and_merge_iw(
@@ -488,7 +495,9 @@ def preprocess_insar_iw(
                 "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
             )
     else:
-        log.warning("Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results.")
+        log.warning(
+            "Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results."
+        )
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
