@@ -30,7 +30,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: Goldstein, coherence, LOS displacement
+# TODO: Goldstein, LOS displacement
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
@@ -384,7 +384,6 @@ class S1IWSwath:
                     arr[i] = nodataval
         return arr
 
-    # use metadata and range coordinate to compute topographic phase
     def phi_topo(self, rg):
         """Computes the topographic phase using slant range indices.
 
