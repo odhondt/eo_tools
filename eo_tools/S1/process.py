@@ -629,9 +629,9 @@ def sar2geo(
     """
     log.info("Project image with the lookup table.")
 
-    with rio.open(sar_file) as ds_slc:
-        arr = ds_slc.read()
-        prof_src = ds_slc.profile.copy()
+    with rio.open(sar_file) as ds_sar:
+        arr = ds_sar.read()
+        prof_src = ds_sar.profile.copy()
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
