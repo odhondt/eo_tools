@@ -928,17 +928,16 @@ def _process_bursts(
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
 
                 # reramp secondary
-                arr_s *= np.exp(-1j * pdb_s)
-                # arr_s = ne.evaluate("arr_s * exp(-1j * pdb_s)")
+                # arr_s *= np.exp(-1j * pdb_s)
+                arr_s = ne.evaluate("arr_s * exp(-1j * pdb_s)")
 
                 # compute topographic phases
                 rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
                 pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
                 pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-                pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
-                arr_s *= pha_topo
-                # arr_s = ne.evaluate("arr_s * exp(-1j * (pht_p - pht_s))").astype(np.complex64)
-                # print(f"Pha topo error {np.nanmean(arr_s0 - arr_s)}")
+                # pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+                # arr_s *= pha_topo
+                arr_s = ne.evaluate("arr_s * exp(-1j * (pht_p - pht_s))").astype(np.complex64)
 
                 lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
                 lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
