@@ -51,19 +51,33 @@ class S1IWSwath:
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
+
+        # read raster file
         dir_tiff = Path(f"{safe_dir}/measurement/")
+        pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+        try:
+            self.pth_tiff = list(pth_tiff)[0]
+        except IndexError:
+            raise FileNotFoundError("Tiff file is missing.")
+
+        # read metadata file
         dir_xml = Path(f"{safe_dir}/annotation/")
         pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
-        pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
-        pth_xml = list(pth_xml)[0]
+        try:
+            pth_xml = list(pth_xml)[0]
+        except IndexError:
+            raise FileNotFoundError("Metadata file is missing.")
+
+        # read calibration file
         dir_cal = Path(f"{safe_dir}/annotation/calibration")
         pth_cal = dir_cal.glob(f"calibration*iw{iw}*{pol}*.xml")
-        pth_cal = list(pth_cal)[0]
-        self.pth_tiff = list(pth_tiff)[0]
+        try:
+            pth_cal = list(pth_cal)[0]
+        except IndexError:
+            raise FileNotFoundError("Calibration file is missing.")
+        
         self.meta = read_metadata(pth_xml)
-
         self.start_time = self.meta["product"]["adsHeader"]["startTime"]
-
         burst_info = self.meta["product"]["swathTiming"]
         self.lines_per_burst = int(burst_info["linesPerBurst"])
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
@@ -539,7 +553,7 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
 
     Returns:
         array: projected image
-    """    
+    """
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
