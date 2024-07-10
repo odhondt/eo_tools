@@ -55,6 +55,11 @@ class S1IWSwath:
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
 
+        # check product type using dir name
+        parts = Path(safe_dir).stem.split("_")
+        if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
+            raise RuntimeError("Unexpected product name. Should start with S1{A,B}_IW_SLC.")
+
         # read raster file
         dir_tiff = Path(f"{safe_dir}/measurement/")
         pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
@@ -229,12 +234,12 @@ class S1IWSwath:
         interp_pos, interp_vel = sv_interpolator(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Interpolate orbits")
+        log.info("Orbit interpolation")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Terrain correction (LUT computation)")
+        log.info("Range-Doppler terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
             # removing first pos to get smaller numbers, is this useful?
             dem_x.ravel() - pos[0, 0],
