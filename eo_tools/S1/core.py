@@ -61,7 +61,7 @@ class S1IWSwath:
             raise RuntimeError("Unexpected product name. Should start with S1{A,B}_IW_SLC.")
 
         # read raster file
-        dir_tiff = Path(f"{safe_dir}/measurement/")
+        dir_tiff = Path(safe_dir) / "measurement"
         pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
         try:
             self.pth_tiff = list(pth_tiff)[0]
@@ -69,7 +69,7 @@ class S1IWSwath:
             raise FileNotFoundError("Tiff file is missing.")
 
         # read metadata file
-        dir_xml = Path(f"{safe_dir}/annotation/")
+        dir_xml = Path(safe_dir) / "annotation"
         pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
         try:
             pth_xml = list(pth_xml)[0]
@@ -77,7 +77,7 @@ class S1IWSwath:
             raise FileNotFoundError("Metadata file is missing.")
 
         # read calibration file
-        dir_cal = Path(f"{safe_dir}/annotation/calibration")
+        dir_cal = Path(safe_dir) / "annotation" / "calibration"
         pth_cal = dir_cal.glob(f"calibration*iw{iw}*{pol}*.xml")
         try:
             pth_cal = list(pth_cal)[0]
