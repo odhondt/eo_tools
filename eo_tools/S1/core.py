@@ -166,7 +166,6 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
 
-    # TODO check parameter validity
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -183,6 +182,9 @@ class S1IWSwath:
             raise ValueError(
                 f"Invalid burst index (must be between 1 and {self.burst_count})"
             )
+
+        if dem_upsampling < 0:
+            raise ValueError("dem_upsampling must be > 0")
 
         meta = self.meta
 
