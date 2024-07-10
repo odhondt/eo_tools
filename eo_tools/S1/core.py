@@ -43,13 +43,14 @@ class S1IWSwath:
     - Computing the topographic phase from slant range values
     """
 
-    def __init__(self, safe_dir, iw=1, pol="vv"):
+    def __init__(self, safe_dir, iw=1, pol="vv", dir_orb="/tmp"):
         """Object intialization
 
         Args:
             safe_dir (str): Directory containing the (unzipped) product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
+            dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
@@ -100,7 +101,7 @@ class S1IWSwath:
         # read state vectors
         # TODO add log message about available orbit
         product = identify(safe_dir)
-        zip_orb = product.getOSV("/tmp", returnMatch=True)
+        zip_orb = product.getOSV(dir_orb, returnMatch=True)
         with ZipFile(zip_orb) as zf:
             file_orb = zf.namelist()[0]
             with zf.open(file_orb) as f:
