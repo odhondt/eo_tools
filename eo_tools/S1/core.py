@@ -58,7 +58,9 @@ class S1IWSwath:
         # check product type using dir name
         parts = Path(safe_dir).stem.split("_")
         if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
-            raise RuntimeError("Unexpected product name. Should start with S1{A,B}_IW_SLC.")
+            raise RuntimeError(
+                "Unexpected product name. Should start with S1{A,B}_IW_SLC."
+            )
 
         # read raster file
         dir_tiff = Path(safe_dir) / "measurement"
@@ -223,10 +225,12 @@ class S1IWSwath:
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
 
-        # keeping a few points before and after burst
+        # crop a few minutes before and after burst
         t_end_burst = t0_az + dt_az * naz
         t_sv_burst = self.state_vectors["t"]
-        cnd = (t_sv_burst > t0_az - 360) & (t_sv_burst < t_end_burst + 360)
+        t_spacing = 10
+        t_pad = t_spacing * 36
+        cnd = (t_sv_burst > t0_az - t_pad) & (t_sv_burst < t_end_burst + t_pad)
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
