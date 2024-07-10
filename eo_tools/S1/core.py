@@ -225,9 +225,10 @@ class S1IWSwath:
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
 
-        # crop a few minutes before and after burst
         t_end_burst = t0_az + dt_az * naz
         t_sv_burst = self.state_vectors["t"]
+
+        # crop a few minutes before and after burst
         t_spacing = 10
         t_pad = t_spacing * 36
         cnd = (t_sv_burst > t0_az - t_pad) & (t_sv_burst < t_end_burst + t_pad)
@@ -245,7 +246,7 @@ class S1IWSwath:
 
         log.info("Range-Doppler terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
-            # removing first pos to get smaller numbers, is this useful?
+            # Removing first pos to get more precision. Is this useful?
             dem_x.ravel() - pos[0, 0],
             dem_y.ravel() - pos[0, 1],
             dem_z.ravel() - pos[0, 2],
@@ -465,7 +466,6 @@ class S1IWSwath:
         Returns:
             int: number of overlapping lines.
         """
-        # TODO fix with correct burst count
         if burst_idx < 2 or burst_idx > self.burst_count:
             raise ValueError(
                 f"Invalid burst index (must be between 2 and {self.burst_count})"
@@ -474,7 +474,6 @@ class S1IWSwath:
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
         burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_1 = isoparse(burst_1["azimuthTime"])
         burst_2 = burst_info["burstList"]["burst"][burst_idx]
@@ -582,7 +581,9 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
-def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
+def resample(
+    arr, file_dem, file_out, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
+):
 
     # replace nan to work with map_coordinates
     # TODO: use finite NaN values, i.e -9999
@@ -599,33 +600,33 @@ def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False
     # TODO: avoid mask warping
     log.info("Warp to match DEM geometry")
 
-    width = az_p2g.shape[1]
-    height = az_p2g.shape[0]
-    wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
-    msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
-    # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
-    valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    wped[valid] = map_coordinates(
-        arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
-    )
-    msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
+    # width = az_p2g.shape[1]
+    # height = az_p2g.shape[0]
+    # wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
+    # msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
+    # valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
+    # wped[valid] = map_coordinates(
+    #     arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
+    # )
+    # msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
 
-    wped[~valid] = nodataval
-    wped[msk_re] = nodataval
-    wped = wped.reshape(height, width)
+    # wped[~valid] = nodataval
+    # wped[msk_re] = nodataval
+    # wped = wped.reshape(height, width)
+    wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
     if write_phase:
         phi = np.angle(wped)
-        # TODO: change nodata
-        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
+        nodata = -9999
+        phi[np.isnan(wped)] = nodata
+        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": nodata})
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(phi, 1)
     else:
-        # TODO: change nodata
         if np.iscomplexobj(arr):
-            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": 0})
+            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": np.nan})
             with rasterio.open(file_out, "w", **out_prof) as dst:
                 # here we write real and imaginary separately because of rioxarray's limitations
                 # TODO: try writing complex anyway and change rioxarray computations in `core` notebook
