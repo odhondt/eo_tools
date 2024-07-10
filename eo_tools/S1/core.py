@@ -78,7 +78,7 @@ class S1IWSwath:
             pth_cal = list(pth_cal)[0]
         except IndexError:
             raise FileNotFoundError("Calibration file is missing.")
-        
+
         self.meta = read_metadata(pth_xml)
         self.start_time = self.meta["product"]["adsHeader"]["startTime"]
         burst_info = self.meta["product"]["swathTiming"]
@@ -97,11 +97,21 @@ class S1IWSwath:
         log.info(f"- Reading metadata file {pth_xml}")
         log.info(f"- Reading calibration file {pth_cal}")
         log.info(f"- Setting up raster path {self.pth_tiff}")
+        log.info(f"- Looking for available OSV (Orbit State Vectors)")
 
         # read state vectors
-        # TODO add log message about available orbit
         product = identify(safe_dir)
         zip_orb = product.getOSV(dir_orb, returnMatch=True)
+        if not zip_orb:
+            raise RuntimeError("No orbit file available for this product")
+
+        if "POEORB" in zip_orb:
+            log.info("-- Precise orbit found")
+        elif "RESORB" in zip_orb:
+            log.info("-- Restituted orbit found")
+        else:
+            raise RuntimeError("Unknown orbit file")
+
         with ZipFile(zip_orb) as zf:
             file_orb = zf.namelist()[0]
             with zf.open(file_orb) as f:
