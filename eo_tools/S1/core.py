@@ -14,6 +14,8 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
+from pyproj import Transformer
+from joblib import Parallel, delayed
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -834,8 +836,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
 
 # TODO produce right composite crs for each DEM
 def lla_to_ecef(lat, lon, alt, dem_crs):
-    from pyproj import Transformer
-    from joblib import Parallel, delayed
 
     # TODO: use parameter instead
     WGS84_crs = "EPSG:4326+5773"
