@@ -584,36 +584,34 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
 def resample(
     arr, file_dem, file_out, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
 ):
+    """Reproject array to using a lookup table.
 
-    # replace nan to work with map_coordinates
-    # TODO: use finite NaN values, i.e -9999
-    if np.iscomplexobj(arr):
-        nodataval = 0.0 + 1j * 0.0
-    else:
-        nodataval = 0
-    msk = arr == nodataval
-
+    Args:
+        arr (array): image in the SAR geometry
+        file_dem (str): file of the original DEM used to compute the lookup table
+        file_out (str): output file
+        az_p2g (array): azimuth coordinates of the lookup table
+        rg_p2g (array): range coordinates of the lookup table
+        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        write_phase (bool): writes the array's phase . Defaults to False.
+    """
     # retrieve dem profile
+
+    dst_height, dst_width = az_p2g.shape
+
     with rasterio.open(file_dem) as ds_dem:
         out_prof = ds_dem.profile.copy()
 
-    # TODO: avoid mask warping
+        # account for DEM resampling
+        dst_trans = ds_dem.transform * ds_dem.transform.scale(
+            (ds_dem.width / dst_width), (ds_dem.height / dst_height)
+        )
+
+    out_prof.update({"width": dst_width, "height": dst_height, "transform": dst_trans})
+
     log.info("Warp to match DEM geometry")
-
-    # width = az_p2g.shape[1]
-    # height = az_p2g.shape[0]
-    # wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
-    # msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
-    # valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    # wped[valid] = map_coordinates(
-    #     arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
-    # )
-    # msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
-
-    # wped[~valid] = nodataval
-    # wped[msk_re] = nodataval
-    # wped = wped.reshape(height, width)
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
+
 
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
