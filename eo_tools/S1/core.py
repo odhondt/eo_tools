@@ -626,8 +626,7 @@ def resample(
         if np.iscomplexobj(arr):
             out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": np.nan})
             with rasterio.open(file_out, "w", **out_prof) as dst:
-                # here we write real and imaginary separately because of rioxarray's limitations
-                # TODO: try writing complex anyway and change rioxarray computations in `core` notebook
+                # real outputs to avoid complex cast warnings in rasterio
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
