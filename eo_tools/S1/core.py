@@ -14,6 +14,8 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
+from pyproj import Transformer
+from joblib import Parallel, delayed
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -30,7 +32,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: Goldstein, coherence, LOS displacement
+# TODO: Goldstein, LOS displacement
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
@@ -41,29 +43,51 @@ class S1IWSwath:
     - Computing the topographic phase from slant range values
     """
 
-    def __init__(self, safe_dir, iw=1, pol="vv"):
+    def __init__(self, safe_dir, iw=1, pol="vv", dir_orb="/tmp"):
         """Object intialization
 
         Args:
             safe_dir (str): Directory containing the (unzipped) product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
+            dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
-        dir_tiff = Path(f"{safe_dir}/measurement/")
-        dir_xml = Path(f"{safe_dir}/annotation/")
-        pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+
+        # check product type using dir name
+        parts = Path(safe_dir).stem.split("_")
+        if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
+            raise RuntimeError(
+                "Unexpected product name. Should start with S1{A,B}_IW_SLC."
+            )
+
+        # read raster file
+        dir_tiff = Path(safe_dir) / "measurement"
         pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
-        pth_xml = list(pth_xml)[0]
-        dir_cal = Path(f"{safe_dir}/annotation/calibration")
+        try:
+            self.pth_tiff = list(pth_tiff)[0]
+        except IndexError:
+            raise FileNotFoundError("Tiff file is missing.")
+
+        # read metadata file
+        dir_xml = Path(safe_dir) / "annotation"
+        pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+        try:
+            pth_xml = list(pth_xml)[0]
+        except IndexError:
+            raise FileNotFoundError("Metadata file is missing.")
+
+        # read calibration file
+        dir_cal = Path(safe_dir) / "annotation" / "calibration"
         pth_cal = dir_cal.glob(f"calibration*iw{iw}*{pol}*.xml")
-        pth_cal = list(pth_cal)[0]
-        self.pth_tiff = list(pth_tiff)[0]
+        try:
+            pth_cal = list(pth_cal)[0]
+        except IndexError:
+            raise FileNotFoundError("Calibration file is missing.")
+
         self.meta = read_metadata(pth_xml)
-
         self.start_time = self.meta["product"]["adsHeader"]["startTime"]
-
         burst_info = self.meta["product"]["swathTiming"]
         self.lines_per_burst = int(burst_info["linesPerBurst"])
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
@@ -80,11 +104,21 @@ class S1IWSwath:
         log.info(f"- Reading metadata file {pth_xml}")
         log.info(f"- Reading calibration file {pth_cal}")
         log.info(f"- Setting up raster path {self.pth_tiff}")
+        log.info(f"- Looking for available OSV (Orbit State Vectors)")
 
         # read state vectors
-        # TODO add log message about available orbit
         product = identify(safe_dir)
-        zip_orb = product.getOSV("/tmp", returnMatch=True)
+        zip_orb = product.getOSV(dir_orb, returnMatch=True)
+        if not zip_orb:
+            raise RuntimeError("No orbit file available for this product")
+
+        if "POEORB" in zip_orb:
+            log.info("-- Precise orbit found")
+        elif "RESORB" in zip_orb:
+            log.info("-- Restituted orbit found")
+        else:
+            raise RuntimeError("Unknown orbit file")
+
         with ZipFile(zip_orb) as zf:
             file_orb = zf.namelist()[0]
             with zf.open(file_orb) as f:
@@ -139,7 +173,6 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
 
-    # TODO check parameter validity
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -156,6 +189,9 @@ class S1IWSwath:
             raise ValueError(
                 f"Invalid burst index (must be between 1 and {self.burst_count})"
             )
+
+        if dem_upsampling < 0:
+            raise ValueError("dem_upsampling must be > 0")
 
         meta = self.meta
 
@@ -189,10 +225,13 @@ class S1IWSwath:
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
 
-        # keeping a few points before and after burst
         t_end_burst = t0_az + dt_az * naz
         t_sv_burst = self.state_vectors["t"]
-        cnd = (t_sv_burst > t0_az - 360) & (t_sv_burst < t_end_burst + 360)
+
+        # crop a few minutes before and after burst
+        t_spacing = 10
+        t_pad = t_spacing * 36
+        cnd = (t_sv_burst > t0_az - t_pad) & (t_sv_burst < t_end_burst + t_pad)
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
@@ -200,14 +239,14 @@ class S1IWSwath:
         interp_pos, interp_vel = sv_interpolator(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Interpolate orbits")
+        log.info("Orbit interpolation")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Terrain correction (LUT computation)")
+        log.info("Range-Doppler terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
-            # removing first pos to get smaller numbers, is this useful?
+            # Removing first pos to get more precision. Is this useful?
             dem_x.ravel() - pos[0, 0],
             dem_y.ravel() - pos[0, 1],
             dem_z.ravel() - pos[0, 2],
@@ -384,7 +423,6 @@ class S1IWSwath:
                     arr[i] = nodataval
         return arr
 
-    # use metadata and range coordinate to compute topographic phase
     def phi_topo(self, rg):
         """Computes the topographic phase using slant range indices.
 
@@ -428,7 +466,6 @@ class S1IWSwath:
         Returns:
             int: number of overlapping lines.
         """
-        # TODO fix with correct burst count
         if burst_idx < 2 or burst_idx > self.burst_count:
             raise ValueError(
                 f"Invalid burst index (must be between 2 and {self.burst_count})"
@@ -437,7 +474,6 @@ class S1IWSwath:
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
         burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_1 = isoparse(burst_1["azimuthTime"])
         burst_2 = burst_info["burstList"]["burst"][burst_idx]
@@ -540,58 +576,57 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
 
     Returns:
         array: projected image
-    """    
+    """
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
-def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
+def resample(
+    arr, file_dem, file_out, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
+):
+    """Reproject array to using a lookup table.
 
-    # replace nan to work with map_coordinates
-    # TODO: use finite NaN values, i.e -9999
-    if np.iscomplexobj(arr):
-        nodataval = 0.0 + 1j * 0.0
-    else:
-        nodataval = 0
-    msk = arr == nodataval
-
+    Args:
+        arr (array): image in the SAR geometry
+        file_dem (str): file of the original DEM used to compute the lookup table
+        file_out (str): output file
+        az_p2g (array): azimuth coordinates of the lookup table
+        rg_p2g (array): range coordinates of the lookup table
+        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        write_phase (bool): writes the array's phase . Defaults to False.
+    """
     # retrieve dem profile
+
+    dst_height, dst_width = az_p2g.shape
+
     with rasterio.open(file_dem) as ds_dem:
         out_prof = ds_dem.profile.copy()
 
-    # TODO: avoid mask warping
+        # account for DEM resampling
+        dst_trans = ds_dem.transform * ds_dem.transform.scale(
+            (ds_dem.width / dst_width), (ds_dem.height / dst_height)
+        )
+
+    out_prof.update({"width": dst_width, "height": dst_height, "transform": dst_trans})
+
     log.info("Warp to match DEM geometry")
+    wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
-    width = az_p2g.shape[1]
-    height = az_p2g.shape[0]
-    wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
-    msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
-    # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
-    valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    wped[valid] = map_coordinates(
-        arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
-    )
-    msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
-
-    wped[~valid] = nodataval
-    wped[msk_re] = nodataval
-    wped = wped.reshape(height, width)
 
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
     if write_phase:
         phi = np.angle(wped)
-        # TODO: change nodata
-        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
+        nodata = -9999
+        phi[np.isnan(wped)] = nodata
+        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": nodata})
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(phi, 1)
     else:
-        # TODO: change nodata
         if np.iscomplexobj(arr):
-            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": 0})
+            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": np.nan})
             with rasterio.open(file_out, "w", **out_prof) as dst:
-                # here we write real and imaginary separately because of rioxarray's limitations
-                # TODO: try writing complex anyway and change rioxarray computations in `core` notebook
+                # real outputs to avoid complex cast warnings in rasterio
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
@@ -821,8 +856,6 @@ def load_dem_coords(file_dem, upscale_factor=2):
 
 # TODO produce right composite crs for each DEM
 def lla_to_ecef(lat, lon, alt, dem_crs):
-    from pyproj import Transformer
-    from joblib import Parallel, delayed
 
     # TODO: use parameter instead
     WGS84_crs = "EPSG:4326+5773"

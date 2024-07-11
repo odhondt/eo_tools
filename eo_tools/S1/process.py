@@ -36,7 +36,7 @@ def prepare_insar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    skip_preprocessing: bool = False
+    skip_preprocessing: bool = False,
 ) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -52,7 +52,7 @@ def prepare_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
 
     Returns:
         str: output directory
@@ -77,8 +77,8 @@ def prepare_insar(
         gdf_burst_sec = gdf_burst_sec[gdf_burst_sec.intersects(shp)]
 
     if gdf_burst_prm.empty:
-        raise ValueError(
-            "The list of bursts to process is empty. Make sure shp intersects with the product."
+        raise RuntimeError(
+            "The list of bursts to process is empty. Make sure shp intersects the product."
         )
 
     # identify corresponding subswaths
@@ -110,7 +110,7 @@ def prepare_insar(
     meta_sec = info_sec.scanMetadata()
     orbnum = meta_prm["orbitNumber_rel"]
     if meta_sec["orbitNumber_rel"] != orbnum:
-        raise ValueError("Images must be from the same relative orbit.")
+        raise RuntimeError("Images must be from the same relative orbit.")
 
     # parse dates
     datestr_prm = meta_prm["start"]
@@ -156,14 +156,16 @@ def prepare_insar(
                     dem_force_download=dem_force_download,
                 )
                 os.rename(
-                    f"{out_dir}/primary.tif", f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif"
+                    f"{out_dir}/primary.tif",
+                    f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(
-                    f"{out_dir}/secondary.tif", f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif"
+                    f"{out_dir}/secondary.tif",
+                    f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
-                log.info("Processing is skipped.")
+                log.info("Skipping preprocessing.")
     return out_dir
 
 
@@ -184,7 +186,7 @@ def geocode_and_merge_iw(
         var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
         shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
@@ -196,7 +198,7 @@ def geocode_and_merge_iw(
         else:
             pol_ = [pol.lower()]
     elif isinstance(pol, list):
-            pol_ = [p.lower() for p in pol]
+        pol_ = [p.lower() for p in pol]
     else:
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
@@ -261,11 +263,7 @@ def geocode_and_merge_iw(
                 else:
                     file_out = f"{input_dir}/phi_{p}.tif"
                 log.info(f"Merging file {Path(file_out).name}")
-                da_to_merge = [
-                    # riox.open_rasterio(file, masked=True) for file in tmp_files
-                    riox.open_rasterio(file)
-                    for file in tmp_files
-                ]
+                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
                     raise NotImplementedError(
@@ -307,7 +305,7 @@ def process_insar(
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     clip_to_shape: bool = True,
-    skip_preprocessing:bool = False,
+    skip_preprocessing: bool = False,
 ) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -340,7 +338,9 @@ def process_insar(
     """
 
     if not np.any([coherence, interferogram]):
-        raise ValueError("At least one of `coherence` and `interferogram` must be True")
+        raise ValueError(
+            "At least one of `write_coherence` and `write_interferogram` must be True."
+        )
 
     # prepare pair for interferogram computation
     out_dir = prepare_insar(
@@ -355,7 +355,7 @@ def process_insar(
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
-        skip_preprocessing=skip_preprocessing
+        skip_preprocessing=skip_preprocessing,
     )
 
     var_names = []
@@ -390,30 +390,36 @@ def process_insar(
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
                 coherence(
-                    file_prm,
-                    file_sec,
-                    file_coh,
-                    boxcar_coherence,
-                    True,
-                    file_ifg,
-                    filter_ifg,
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                    file_complex_ifg=file_ifg,
+                    filter_ifg=filter_ifg,
                 )
             elif write_coherence and not write_interferogram:
                 file_coh = f"{out_dir}/coh_{pattern}.tif"
-                coherence(file_prm, file_sec, file_coh, boxcar_coherence, True)
+                coherence(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                )
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(file_prm, file_sec, file_ifg)
+                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
 
             if write_primary_amplitude:
                 file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(file_prm, file_ampl)
+                amplitude(file_in=file_prm, file_out=file_ampl)
 
             if write_secondary_amplitude:
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(file_sec, file_ampl)
+                amplitude(file_in=file_sec, file_out=file_ampl)
 
-    # by default, we use iw and pol which exists
+    # by default, we use iw and pol which exist
     geocode_and_merge_iw(
         input_dir=Path(out_dir).parent,
         var_names=var_names,
@@ -479,7 +485,7 @@ def preprocess_insar_iw(
     prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
     sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
 
-    is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in prm_burst_info[0]
+    is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in sec_burst_info[0]
 
     if is_burst_id:
         prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
@@ -489,11 +495,13 @@ def preprocess_insar_iw(
                 "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
             )
     else:
-        log.warning("Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results.")
+        log.warning(
+            "Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results."
+        )
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
-    if max_burst is None:
+    if not max_burst:
         max_burst_ = prm.burst_count
     else:
         max_burst_ = max_burst
@@ -596,7 +604,7 @@ def preprocess_insar_iw(
 
 
 def sar2geo(
-    slc_file: str,
+    sar_file: str,
     lut_file: str,
     out_file: str,
     mlt_az: int = 1,
@@ -608,7 +616,7 @@ def sar2geo(
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
-        slc_file (str): file in the SLC radar geometry
+        sar_file (str): file in the SAR geometry
         lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (str): output file
         mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
@@ -621,9 +629,9 @@ def sar2geo(
     """
     log.info("Project image with the lookup table.")
 
-    with rio.open(slc_file) as ds_slc:
-        arr = ds_slc.read()
-        prof_src = ds_slc.profile.copy()
+    with rio.open(sar_file) as ds_sar:
+        arr = ds_sar.read()
+        prof_src = ds_sar.profile.copy()
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
@@ -711,7 +719,6 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-# TODO optional chunk processing
 def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     """Compute a complex interferogram from two SLC image files.
 
@@ -733,7 +740,6 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
         dst.write(ifg, 1)
 
 
-# TODO optional chunk processing
 def amplitude(file_in: str, file_out: str) -> None:
     """Compute the amplitude of a complex-valued image.
 

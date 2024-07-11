@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 # Uncomment these lines to test conda imports
 # import sys
 # sys.path.remove("/eo_tools")
-# import eo_tools 
+# import eo_tools
 # print(f"EO-Tools imported from:")
 # print(f"{eo_tools.__file__=}")
 
@@ -60,13 +60,13 @@ out_dir_prev = f"{outputs_prefix}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 if os.path.isdir(out_dir_prev):
     remove(out_dir_prev)
 
-out_dir = process_insar(
+process_args = dict(
     dir_prm=primary_dir,
     dir_sec=secondary_dir,
     outputs_prefix=outputs_prefix,
     aoi_name=None,
     shp=shp,
-    pol="Vh",
+    pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     write_coherence=True,
     write_interferogram=True,
@@ -81,7 +81,52 @@ out_dir = process_insar(
     multilook=[1, 4],
     warp_kernel="bicubic",
     clip_to_shape=True,
-    # skip_preprocessing=True
+)
+
+out_dir = process_insar(
+   **process_args 
 )
 
 # %%
+# Optional test
+check_outputs = True
+if check_outputs:
+    import rioxarray as riox
+    from xarray.testing import assert_allclose
+    log = logging.getLogger(__name__)
+    test_args = dict(
+        dir_prm=primary_dir,
+        dir_sec=secondary_dir,
+        outputs_prefix=outputs_prefix,
+        aoi_name=None,
+        shp=shp,
+        pol="vv",
+        subswaths=["IW1", "IW2", "IW3"],
+        write_coherence=True,
+        write_interferogram=True,
+        write_primary_amplitude=True,
+        write_secondary_amplitude=True,
+        apply_fast_esd=True,
+        dem_upsampling=1.8,
+        dem_force_download=False,
+        dem_buffer_arc_sec=40,
+        boxcar_coherence=[3, 10],
+        filter_ifg=True,
+        multilook=[1, 4],
+        warp_kernel="bicubic",
+        clip_to_shape=True,
+    )
+
+    if test_args != process_args or file_aoi != "/eo_tools/data/Morocco_tiny.geojson":
+        raise ValueError("Wrong setup for output checking")
+    else:
+        log.info("Checking output validity")
+        dir_ref = "/eo_tools/data/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+        for var in ["phi", "coh", "amp_prm", "amp_sec"]:
+            da_ref = riox.open_rasterio(f"{dir_ref}/{var}_vv.tif", masked=True)
+            da_out = riox.open_rasterio(f"{out_dir_prev}/{var}_vv.tif", masked=True)
+            try:
+                assert_allclose(da_ref, da_out)
+                log.info(f"{var} outputs are OK")
+            except:
+                raise RuntimeError(f"Variable {var} deviates from reference")
