@@ -501,7 +501,7 @@ def preprocess_insar_iw(
 
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
-    if max_burst is None:
+    if not max_burst:
         max_burst_ = prm.burst_count
     else:
         max_burst_ = max_burst
