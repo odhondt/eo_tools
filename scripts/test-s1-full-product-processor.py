@@ -127,5 +127,6 @@ if check_outputs:
             da_out = riox.open_rasterio(f"{out_dir_prev}/{var}_vv.tif", masked=True)
             try:
                 assert_allclose(da_ref, da_out)
+                log.info(f"{var} outputs are OK")
             except:
                 raise RuntimeError(f"Variable {var} deviates from reference")
