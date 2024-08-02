@@ -276,7 +276,7 @@ def geocode_and_merge_iw(
                     ).rio.clip([shp], all_touched=True)
                 else:
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(file_out)
+                merged.rio.to_raster(file_out, driver="COG")
                 # clean tmp files
                 for file in tmp_files:
                     remove(file)
