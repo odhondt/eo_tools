@@ -276,7 +276,13 @@ def geocode_and_merge_iw(
                     ).rio.clip([shp], all_touched=True)
                 else:
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(file_out, driver="COG", compress="deflate")
+                merged.rio.to_raster(
+                    file_out,
+                    driver="COG",
+                    compress="zstd",
+                    num_threads="all_cpus",
+                    overview_resampling="nearest",
+                )
                 # clean tmp files
                 for file in tmp_files:
                     remove(file)
@@ -657,6 +663,12 @@ def sar2geo(
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
+    cog_dict = dict(
+        driver="COG",
+        compress="zstd",
+        num_threads="all_cpus",
+        overview_resampling="nearest",
+    )
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
@@ -665,8 +677,7 @@ def sar2geo(
             {
                 "dtype": phi.dtype.name,
                 "nodata": nodata,
-                "driver": "COG",
-                "compress": "deflate",
+                **cog_dict
             }
         )
         # removing COG incompatible options
@@ -684,8 +695,7 @@ def sar2geo(
                 {
                     "dtype": mag.dtype.name,
                     "nodata": nodata,
-                    "driver": "COG",
-                    "compress": "deflate",
+                    **cog_dict
                 }
             )
             # removing incompatible options
