@@ -698,13 +698,7 @@ def sar2geo(
             # Using COG only if real-valued
             if not np.iscomplexobj(arr_out):
                 nodata = 0
-                prof_dst.update(
-                    {
-                        "driver": "COG",
-                        "compress": "deflate",
-                        "nodata": nodata,
-                    }
-                )
+                prof_dst.update({"driver": "COG", "nodata": nodata, **cog_dict})
                 prof_dst.pop("blockysize", None)
                 prof_dst.pop("tiled", None)
                 prof_dst.pop("interleave", None)
@@ -712,7 +706,7 @@ def sar2geo(
             else:
                 prof_dst.update(
                     {
-                        "compress": "deflate",
+                        "compress": "zstd",
                     }
                 )
             with rio.open(out_file, "w", **prof_dst) as dst:
