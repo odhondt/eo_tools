@@ -281,6 +281,7 @@ def geocode_and_merge_iw(
                     driver="COG",
                     compress="zstd",
                     num_threads="all_cpus",
+                    resampling="nearest",
                     overview_resampling="nearest",
                 )
                 # clean tmp files
@@ -667,19 +668,14 @@ def sar2geo(
         driver="COG",
         compress="zstd",
         num_threads="all_cpus",
+        resampling="nearest",
         overview_resampling="nearest",
     )
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
-        prof_dst.update(
-            {
-                "dtype": phi.dtype.name,
-                "nodata": nodata,
-                **cog_dict
-            }
-        )
+        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
         # removing COG incompatible options
         prof_dst.pop("blockysize", None)
         prof_dst.pop("tiled", None)
@@ -691,13 +687,7 @@ def sar2geo(
             mag = np.abs(arr_out)
             nodata = 0
             mag[np.isnan(mag)] = nodata
-            prof_dst.update(
-                {
-                    "dtype": mag.dtype.name,
-                    "nodata": nodata,
-                    **cog_dict
-                }
-            )
+            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
             # removing incompatible options
             prof_dst.pop("blockysize", None)
             prof_dst.pop("tiled", None)
