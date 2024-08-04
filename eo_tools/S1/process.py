@@ -741,7 +741,7 @@ def amplitude(file_in: str, file_out: str) -> None:
     log.info("Computing amplitude")
     with rio.open(file_in) as ds_prm:
         prm = ds_prm.read(1)
-        prof = ds_prm.profile
+        prof = ds_prm.profile.copy()
     amp = np.abs(prm)
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
