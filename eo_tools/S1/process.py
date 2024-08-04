@@ -726,7 +726,7 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     ifg = prm * sec.conj()
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    prof.update({"compress": "zstd", "num_threads": "all_cpus"})
+    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
 
@@ -745,9 +745,10 @@ def amplitude(file_in: str, file_out: str) -> None:
     amp = np.abs(prm)
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    prof.update(
-        {"dtype": amp.dtype.name, "compress": "zstd", "num_threads": "all_cpus"}
-    )
+    # prof.update(
+    # {"dtype": amp.dtype.name, "compress": "zstd", "num_threads": "all_cpus"}
+    # )
+    prof.update({"dtype": amp.dtype.name})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(amp, 1)
 
@@ -833,8 +834,8 @@ def coherence(
     da_coh.rio.write_nodata(nodataval, inplace=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
-    # da_coh.rio.to_raster(file_out)
-    da_coh.rio.to_raster(file_out, compress="zstd", num_threads="all_cpus")
+    da_coh.rio.to_raster(file_out)
+    # da_coh.rio.to_raster(file_out, compress="zstd", num_threads="all_cpus")
 
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
@@ -849,10 +850,10 @@ def coherence(
                 dims=("band", "y", "x"),
             )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
-        # da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
-        da_ifg.rio.to_raster(
-            file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
-        )
+        da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
+        # da_ifg.rio.to_raster(
+        #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
+        # )
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
@@ -882,8 +883,8 @@ def _process_bursts(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
-        compress="zstd",
-        num_threads="all_cpus",
+        # compress="zstd",
+        # num_threads="all_cpus",
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
@@ -1037,7 +1038,8 @@ def _stitch_bursts(
 
         prof = src.profile.copy()
         prof.update(
-            dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
+            dict(width=nrg, height=siz)
+            # dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
         )
         with rio.open(file_out, "w", **prof) as dst:
 
@@ -1109,7 +1111,8 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
 
     merged = merge_arrays(to_merge, parse_coordinates=False)
     merged.rio.to_raster(
-        file_out, compress="zstd", num_threads="all_cpus"
+        file_out
+        # file_out, compress="zstd", num_threads="all_cpus"
     )  # , windowed=False, tiled=True)
 
 
