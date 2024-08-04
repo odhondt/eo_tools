@@ -276,7 +276,14 @@ def geocode_and_merge_iw(
                     ).rio.clip([shp], all_touched=True)
                 else:
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(file_out)
+                merged.rio.to_raster(
+                    file_out,
+                    driver="COG",
+                    compress="zstd",
+                    num_threads="all_cpus",
+                    resampling="nearest",
+                    overview_resampling="nearest",
+                )
                 # clean tmp files
                 for file in tmp_files:
                     remove(file)
@@ -657,18 +664,18 @@ def sar2geo(
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
+    cog_dict = dict(
+        driver="COG",
+        compress="zstd",
+        num_threads="all_cpus",
+        resampling="nearest",
+        overview_resampling="nearest",
+    )
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
-        prof_dst.update(
-            {
-                "dtype": phi.dtype.name,
-                "nodata": nodata,
-                "driver": "COG",
-                "compress": "deflate",
-            }
-        )
+        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
         # removing COG incompatible options
         prof_dst.pop("blockysize", None)
         prof_dst.pop("tiled", None)
@@ -680,14 +687,7 @@ def sar2geo(
             mag = np.abs(arr_out)
             nodata = 0
             mag[np.isnan(mag)] = nodata
-            prof_dst.update(
-                {
-                    "dtype": mag.dtype.name,
-                    "nodata": nodata,
-                    "driver": "COG",
-                    "compress": "deflate",
-                }
-            )
+            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
             # removing incompatible options
             prof_dst.pop("blockysize", None)
             prof_dst.pop("tiled", None)
@@ -698,23 +698,13 @@ def sar2geo(
             # Using COG only if real-valued
             if not np.iscomplexobj(arr_out):
                 nodata = 0
-                prof_dst.update(
-                    {
-                        "driver": "COG",
-                        "compress": "deflate",
-                        "nodata": nodata,
-                    }
-                )
+                prof_dst.update({"driver": "COG", "nodata": nodata, **cog_dict})
                 prof_dst.pop("blockysize", None)
                 prof_dst.pop("tiled", None)
                 prof_dst.pop("interleave", None)
                 arr_out[np.isnan(arr_out)] = nodata
             else:
-                prof_dst.update(
-                    {
-                        "compress": "deflate",
-                    }
-                )
+                prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(arr_out, 1)
 
@@ -730,12 +720,13 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     log.info("Computing interferogram")
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
-        prof = ds_prm.profile
+        prof = ds_prm.profile.copy()
     with rio.open(file_sec) as ds_sec:
         sec = ds_sec.read(1)
     ifg = prm * sec.conj()
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
 
@@ -750,10 +741,13 @@ def amplitude(file_in: str, file_out: str) -> None:
     log.info("Computing amplitude")
     with rio.open(file_in) as ds_prm:
         prm = ds_prm.read(1)
-        prof = ds_prm.profile
+        prof = ds_prm.profile.copy()
     amp = np.abs(prm)
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # prof.update(
+    # {"dtype": amp.dtype.name, "compress": "zstd", "num_threads": "all_cpus"}
+    # )
     prof.update({"dtype": amp.dtype.name})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(amp, 1)
@@ -841,6 +835,7 @@ def coherence(
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
+    # da_coh.rio.to_raster(file_out, compress="zstd", num_threads="all_cpus")
 
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
@@ -856,6 +851,9 @@ def coherence(
             )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
         da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
+        # da_ifg.rio.to_raster(
+        #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
+        # )
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
@@ -885,6 +883,8 @@ def _process_bursts(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
+        # compress="zstd",
+        # num_threads="all_cpus",
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
@@ -1037,7 +1037,10 @@ def _stitch_bursts(
             raise ValueError("Empty burst list")
 
         prof = src.profile.copy()
-        prof.update(dict(width=nrg, height=siz))
+        prof.update(
+            dict(width=nrg, height=siz)
+            # dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
+        )
         with rio.open(file_out, "w", **prof) as dst:
 
             log.info("Stitching bursts to make a continuous image")
@@ -1107,7 +1110,10 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         to_merge.append(lut)
 
     merged = merge_arrays(to_merge, parse_coordinates=False)
-    merged.rio.to_raster(file_out)  # , windowed=False, tiled=True)
+    merged.rio.to_raster(
+        file_out
+        # file_out, compress="zstd", num_threads="all_cpus"
+    )  # , windowed=False, tiled=True)
 
 
 def _child_process(func, args):
