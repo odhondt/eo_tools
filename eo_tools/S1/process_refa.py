@@ -888,6 +888,13 @@ def _process_bursts(
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
+    file_dem, gcps = prm.fetch_dem(
+        min_burst,
+        max_burst,
+        dir_dem,
+        buffer_arc_sec=dem_buffer_arc_sec,
+        force_download=dem_force_download,
+    )
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
@@ -895,12 +902,12 @@ def _process_bursts(
                 log.info(f"---- Processing burst {burst_idx} ----")
 
                 # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
-                file_dem = prm.fetch_dem_burst(
-                    burst_idx,
-                    dir_dem,
-                    buffer_arc_sec=dem_buffer_arc_sec,
-                    force_download=dem_force_download,
-                )
+                # file_dem = prm.fetch_dem_burst(
+                #     burst_idx,
+                #     dir_dem,
+                #     buffer_arc_sec=dem_buffer_arc_sec,
+                #     force_download=dem_force_download,
+                # )
                 az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
                     file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
                 )

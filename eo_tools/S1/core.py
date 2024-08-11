@@ -216,7 +216,7 @@ class S1IWSwath:
             self.pth_tiff, first_line=first_line, number_of_lines=num_bursts*self.lines_per_burst
         )
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
-        return file_dem
+        return file_dem, gcps
 
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
