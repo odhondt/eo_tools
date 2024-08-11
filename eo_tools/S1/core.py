@@ -173,6 +173,51 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
 
+    def fetch_dem(
+        self, min_burst=1, max_burst=None, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+    ):
+        """Downloads the DEM for a given burst
+
+        Args:
+            min_burst (int, optional): Minimum burst index. Defaults to 1.
+            max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
+            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
+
+        Returns:
+            str: path to the downloaded file
+        """
+
+
+        if not max_burst:
+            max_burst_ = self.burst_count
+        else:
+            max_burst_ = max_burst
+
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid min burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < 1 or max_burst_ > self.burst_count:
+            raise ValueError(
+                f"Invalid max burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < min_burst:
+            raise ValueError("max_burst must be >= min_burst")
+
+        num_bursts = max_burst_ - min_burst + 1
+
+        first_line = (min_burst - 1) * self.lines_per_burst
+
+        name_dem = f"dem-b{min_burst}-{max_burst_}-{self.pth_tiff.stem}.tiff"
+        file_dem = f"{dir_dem}/{name_dem}"
+        gcps, _ = read_gcps(
+            self.pth_tiff, first_line=first_line, number_of_lines=num_bursts*self.lines_per_burst
+        )
+        auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
+        return file_dem
+
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
