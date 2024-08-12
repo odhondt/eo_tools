@@ -173,8 +173,15 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
 
+    # TODO: add upsampling option
     def fetch_dem(
-        self, min_burst=1, max_burst=None, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+        self,
+        min_burst=1,
+        max_burst=None,
+        dir_dem="/tmp",
+        buffer_arc_sec=40,
+        force_download=False,
+        upscale_factor=1,
     ):
         """Downloads the DEM for a given burst
 
@@ -188,7 +195,6 @@ class S1IWSwath:
         Returns:
             str: path to the downloaded file
         """
-
 
         if not max_burst:
             max_burst_ = self.burst_count
@@ -213,9 +219,11 @@ class S1IWSwath:
         name_dem = f"dem-b{min_burst}-{max_burst_}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
         gcps, _ = read_gcps(
-            self.pth_tiff, first_line=first_line, number_of_lines=num_bursts*self.lines_per_burst
+            self.pth_tiff,
+            first_line=first_line,
+            number_of_lines=num_bursts * self.lines_per_burst,
         )
-        auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
+        auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
         return file_dem, gcps
 
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
@@ -657,7 +665,6 @@ def resample(
     log.info("Warp to match DEM geometry")
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
-
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
     if write_phase:
@@ -839,7 +846,8 @@ def sv_interpolator_poly(state_vectors):
 
 
 # TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
-def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
+# TODO: add upsampling option
+def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_factor=1):
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
@@ -856,7 +864,7 @@ def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
     shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
 
     if not os.path.exists(file_dem) or force_download:
-        retrieve_dem(shp, file_dem, dem_name="nasadem")
+        retrieve_dem(shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor)
     else:
         log.info("--DEM already on disk")
 
