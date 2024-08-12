@@ -216,7 +216,7 @@ class S1IWSwath:
 
         first_line = (min_burst - 1) * self.lines_per_burst
 
-        name_dem = f"dem-b{min_burst}-{max_burst_}-{self.pth_tiff.stem}.tiff"
+        name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
         gcps, _ = read_gcps(
             self.pth_tiff,
