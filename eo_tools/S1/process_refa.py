@@ -1122,6 +1122,14 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         # file_out, compress="zstd", num_threads="all_cpus"
     )  # , windowed=False, tiled=True)
 
+def _find_burst_window(idx_burst, gcps):
+    # TODO:
+    # - filter burst gcps using first line, last line
+    # - compute bounding box
+    # - compute integer values using DEM step
+    # - compute DEM bounding box
+    # - normalize values using origin coordinates (min of dem bbox)
+    pass
 
 def _child_process(func, args):
     # convenience function to make code prettier
