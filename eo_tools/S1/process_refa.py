@@ -19,6 +19,8 @@ from typing import Union, List
 from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
+from math import floor, ceil
+from osgeo import gdal
 
 log = logging.getLogger(__name__)
 
@@ -536,7 +538,8 @@ def preprocess_insar_iw(
     nrg = prm.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    luts = _child_process(
+    # luts = _child_process(
+    file_lut = _child_process(
         _process_bursts,
         (
             prm,
@@ -556,45 +559,45 @@ def preprocess_insar_iw(
         ),
     )
 
-    if (max_burst_ > min_burst) & apply_fast_esd:
-        _child_process(
-            _apply_fast_esd,
-            (
-                tmp_prm,
-                tmp_sec,
-                min_burst,
-                max_burst_,
-                prm.lines_per_burst,
-                nrg,
-                overlap,
-            ),
-        )
+    # if (max_burst_ > min_burst) & apply_fast_esd:
+    #     _child_process(
+    #         _apply_fast_esd,
+    #         (
+    #             tmp_prm,
+    #             tmp_sec,
+    #             min_burst,
+    #             max_burst_,
+    #             prm.lines_per_burst,
+    #             nrg,
+    #             overlap,
+    #         ),
+    #     )
 
-    if max_burst_ > min_burst:
-        _child_process(
-            _stitch_bursts,
-            (
-                tmp_sec,
-                f"{dir_out}/secondary.tif",
-                prm.lines_per_burst,
-                max_burst_ - min_burst + 1,
-                overlap,
-            ),
-        )
+    # if max_burst_ > min_burst:
+    #     _child_process(
+    #         _stitch_bursts,
+    #         (
+    #             tmp_sec,
+    #             f"{dir_out}/secondary.tif",
+    #             prm.lines_per_burst,
+    #             max_burst_ - min_burst + 1,
+    #             overlap,
+    #         ),
+    #     )
 
-        _child_process(
-            _stitch_bursts,
-            (
-                tmp_prm,
-                f"{dir_out}/primary.tif",
-                prm.lines_per_burst,
-                max_burst_ - min_burst + 1,
-                overlap,
-            ),
-        )
-    _child_process(
-        _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
-    )
+    #     _child_process(
+    #         _stitch_bursts,
+    #         (
+    #             tmp_prm,
+    #             f"{dir_out}/primary.tif",
+    #             prm.lines_per_burst,
+    #             max_burst_ - min_burst + 1,
+    #             overlap,
+    #         ),
+    #     )
+    # _child_process(
+    #     _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+    # )
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -875,7 +878,7 @@ def _process_bursts(
     dem_force_download,
     warp_kernel,
 ):
-    luts = []
+    # luts = []
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -894,67 +897,119 @@ def _process_bursts(
         dir_dem,
         buffer_arc_sec=dem_buffer_arc_sec,
         force_download=dem_force_download,
+        upscale_factor=dem_upsampling,
     )
-    with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
-        with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
+    file_lut = f"{dir_out}/lut.tif"
+    with rio.open(file_dem) as ds_dem:
+        width_lut = ds_dem.width
+        height_lut = ds_dem.height
+        crs_lut = ds_dem.crs
+        transform_lut = ds_dem.transform
 
-            for burst_idx in range(min_burst, max_burst + 1):
-                log.info(f"---- Processing burst {burst_idx} ----")
+    prof_lut = dict(
+        width=width_lut,
+        height=height_lut,
+        count=2,
+        dtype=np.float64,
+        crs=crs_lut,
+        transform=transform_lut,
+    )
 
-                # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
-                # file_dem = prm.fetch_dem_burst(
-                #     burst_idx,
-                #     dir_dem,
-                #     buffer_arc_sec=dem_buffer_arc_sec,
-                #     force_download=dem_force_download,
-                # )
-                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-                )
-                az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
-                )
+    with rio.open(file_lut, "w", **prof_lut) as ds_lut:
+        with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+            with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
-                # read primary and secondary burst rasters
-                arr_p = prm.read_burst(burst_idx, True)
-                arr_s = sec.read_burst(burst_idx, True)
+                for burst_idx in range(min_burst, max_burst + 1):
+                    log.info(f"---- Processing burst {burst_idx} ----")
 
-                # deramp secondary
-                pdb_s = sec.deramp_burst(burst_idx)
-                arr_s *= np.exp(1j * pdb_s)
+                    # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
+                    # file_dem = prm.fetch_dem_burst(
+                    #     burst_idx,
+                    #     dir_dem,
+                    #     buffer_arc_sec=dem_buffer_arc_sec,
+                    #     force_download=dem_force_download,
+                    # )
+                    burst_window = _find_burst_window(
+                        burst_idx, prm.lines_per_burst, gcps, dem_upsampling
+                    )
 
-                # project Secondary LUT into Primary grid
-                az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+                    # use virtual raster to keep using the same geocoding function
+                    file_dem_burst = f"{dir_out}/dem_burst.vrt"
+                    gdal.Translate(
+                        destName=file_dem_burst,
+                        srcDS=file_dem,
+                        format="VRT",
+                        srcWin=burst_window,
+                    )
+                    # this implementation upsamples DEM at download
+                    az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+                        file_dem_burst,
+                        # file_dem,
+                        burst_idx=burst_idx,
+                        dem_upsampling=1,
+                        # file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                    )
+                    az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+                        file_dem_burst,
+                        # file_dem,
+                        burst_idx=burst_idx,
+                        dem_upsampling=1,
+                        # file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                    )
 
-                # warp raster secondary and deramping phase
-                arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
-                pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
+                    # read primary and secondary burst rasters
+                    arr_p = prm.read_burst(burst_idx, True)
+                    arr_s = sec.read_burst(burst_idx, True)
 
-                # reramp secondary
-                arr_s *= np.exp(-1j * pdb_s)
+                    # deramp secondary
+                    pdb_s = sec.deramp_burst(burst_idx)
+                    arr_s *= np.exp(1j * pdb_s)
 
-                # compute topographic phases
-                rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
-                pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-                pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-                pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+                    # project Secondary LUT into Primary grid
+                    az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
-                lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
-                luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+                    # warp raster secondary and deramping phase
+                    arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                    pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
 
-                arr_s *= pha_topo
+                    # reramp secondary
+                    arr_s *= np.exp(-1j * pdb_s)
 
-                first_line = (burst_idx - min_burst) * prm.lines_per_burst
-                ds_prm.write(
-                    arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
-                )
-                ds_sec.write(
-                    arr_s,
-                    1,
-                    window=Window(0, first_line, nrg, prm.lines_per_burst),
-                )
-    return luts
+                    # compute topographic phases
+                    rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(
+                        0, arr_p.shape[1]
+                    )
+                    pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+                    pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+                    pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+
+                    # lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
+                    # lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
+                    # luts.append(f"{dir_out}/lut_{burst_idx}.tif")
+
+                    arr_s *= pha_topo
+
+                    first_line = (burst_idx - min_burst) * prm.lines_per_burst
+                    ds_prm.write(
+                        arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+                    )
+                    ds_sec.write(
+                        arr_s,
+                        1,
+                        window=Window(0, first_line, nrg, prm.lines_per_burst),
+                    )
+                    ds_lut.write(
+                        az_p2g,
+                        1,
+                        window=Window(*burst_window),
+                    )
+                    ds_lut.write(
+                        rg_p2g,
+                        2,
+                        window=Window(*burst_window),
+                    )
+    # return luts
+    return file_lut
 
 
 def _apply_fast_esd(
@@ -1122,14 +1177,35 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         # file_out, compress="zstd", num_threads="all_cpus"
     )  # , windowed=False, tiled=True)
 
-def _find_burst_window(idx_burst, gcps):
-    # TODO:
-    # - filter burst gcps using first line, last line
-    # - compute bounding box
-    # - compute integer values using DEM step
-    # - compute DEM bounding box
-    # - normalize values using origin coordinates (min of dem bbox)
-    pass
+
+# could as well be part of the swath class
+def _find_burst_window(burst_idx, lines_per_burst, gcps, dem_upsampling):
+
+    # must be changed if DEM has not the 1sec resolution
+    step = 1 / 3600 / dem_upsampling
+    first_line = (burst_idx - 1) * lines_per_burst
+    last_line = burst_idx * lines_per_burst
+
+    # DEM raster origin
+    x0 = np.min(np.array([p.x for p in gcps]))
+    y0 = np.min(np.array([p.y for p in gcps]))
+    x0 = int(floor(x0 / step) * step)
+    y0 = int(floor(y0 / step) * step)
+
+    gcps_burst = [it for it in gcps if it.row >= first_line and it.row <= last_line]
+
+    # burst bounding box in pixels
+    minmax = lambda x: (x.min(), x.max())
+    xmin, xmax = minmax(np.array([p.x for p in gcps_burst]))
+    ymin, ymax = minmax(np.array([p.y for p in gcps_burst]))
+    xmin = int(floor(xmin / step) * step) - x0
+    xmax = int(ceil(xmax / step) * step) - x0
+    ymin = int(floor(ymin / step) * step) - y0
+    ymax = int(ceil(ymax / step) * step) - y0
+
+    # returns gdal and rio window compatible parameters
+    return xmin, ymin, xmax - xmin, ymax - ymin
+
 
 def _child_process(func, args):
     # convenience function to make code prettier
