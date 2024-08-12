@@ -45,8 +45,9 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", upscale_factor=1):
     if upscale_factor == 1:
         dem.rio.to_raster(file_out)
     elif upscale_factor > 0:
-        new_width = dem.rio.width * upscale_factor
-        new_height = dem.rio.height * upscale_factor
+        log.info("Upsampling DEM")
+        new_width = int(dem.rio.width * upscale_factor)
+        new_height = int(dem.rio.height * upscale_factor)
         dem_upsampled = dem.rio.reproject(
             dem.rio.crs,
             shape=(new_height, new_width),
