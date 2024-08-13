@@ -557,6 +557,7 @@ def preprocess_insar_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             warp_kernel,
+            overlap,
         ),
     )
 
@@ -878,7 +879,10 @@ def _process_bursts(
     dem_buffer_arc_sec,
     dem_force_download,
     warp_kernel,
+    overlap,
 ):
+
+    H = int(overlap / 2)
     # luts = []
     prof_tmp = dict(
         width=nrg,
@@ -921,7 +925,7 @@ def _process_bursts(
 
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
-
+            off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
@@ -936,6 +940,7 @@ def _process_bursts(
                     burst_idx, prm.lines_per_burst, gcps, transform_lut
                 )
                 # apply DEM buffer
+                # TODO: correct this to work with upsampling
                 burst_bbox = (
                     np.maximum(0, burst_bbox[0] - dem_buffer_arc_sec),
                     np.maximum(0, burst_bbox[1] - dem_buffer_arc_sec),
@@ -1010,10 +1015,15 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-                # TODO: apply azimuth offsets of stitched bursts (slc) 
+                # TODO: apply azimuth offsets of stitched bursts (slc)
                 c0, r0, c1, r1 = burst_bbox
+                off_az += prm.lines_per_burst - H 
+                if burst_idx > min_burst:
+                    msk_overlap = (az_p2g < H)
+                    az_p2g[msk_overlap] = np.nan
+                    rg_p2g[msk_overlap] = np.nan
                 msk = ~np.isnan(az_p2g)
-                arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk]
+                arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
                 arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
 
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
