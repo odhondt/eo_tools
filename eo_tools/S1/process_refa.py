@@ -21,6 +21,7 @@ from pathlib import Path
 from shapely.geometry import shape
 from math import floor, ceil
 from osgeo import gdal
+from rasterio.transform import AffineTransformer
 
 log = logging.getLogger(__name__)
 
@@ -918,7 +919,6 @@ def _process_bursts(
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
 
-    import matplotlib.pyplot as plt
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
 
@@ -932,8 +932,22 @@ def _process_bursts(
                 #     buffer_arc_sec=dem_buffer_arc_sec,
                 #     force_download=dem_force_download,
                 # )
-                burst_window = _find_burst_window(
-                    burst_idx, prm.lines_per_burst, gcps, dem_upsampling
+                burst_bbox = _find_burst_bbox(
+                    burst_idx, prm.lines_per_burst, gcps, transform_lut
+                )
+                # apply DEM buffer
+                burst_bbox = (
+                    np.maximum(0, burst_bbox[0] - dem_buffer_arc_sec),
+                    np.maximum(0, burst_bbox[1] - dem_buffer_arc_sec),
+                    np.minimum(width_lut - 1, burst_bbox[2] + dem_buffer_arc_sec),
+                    np.minimum(height_lut - 1, burst_bbox[3] + dem_buffer_arc_sec),
+                )
+
+                burst_window = (
+                    burst_bbox[0],
+                    burst_bbox[1],
+                    burst_bbox[2] - burst_bbox[0],
+                    burst_bbox[3] - burst_bbox[1],
                 )
 
                 # use virtual raster to keep using the same geocoding function
@@ -944,7 +958,8 @@ def _process_bursts(
                     format="VRT",
                     srcWin=burst_window,
                 )
-                # this implementation upsamples DEM at download
+
+                # this implementation upsamples DEM at download, not during geocoding
                 az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
                     file_dem_burst,
                     # file_dem,
@@ -960,9 +975,6 @@ def _process_bursts(
                     # file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
                 )
 
-                plt.figure()
-                plt.imshow(az_p2g)
-                plt.show()
                 # read primary and secondary burst rasters
                 arr_p = prm.read_burst(burst_idx, True)
                 arr_s = sec.read_burst(burst_idx, True)
@@ -987,10 +999,6 @@ def _process_bursts(
                 pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-                # lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                # lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
-                # luts.append(f"{dir_out}/lut_{burst_idx}.tif")
-
                 arr_s *= pha_topo
 
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
@@ -1002,31 +1010,15 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-                c0 = burst_window[0]
-                r0 = burst_window[1]
-                c1 = c0 + burst_window[2]
-                r1 = r0 + burst_window[3]
+                # TODO: apply azimuth offsets of stitched bursts (slc) 
+                c0, r0, c1, r1 = burst_bbox
                 msk = ~np.isnan(az_p2g)
                 arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk]
                 arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
 
-                plt.figure()
-                plt.imshow(arr_lut[0])
-                plt.show()
-
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
         ds_lut.write(arr_lut)
-        # ds_lut.write(
-        #     az_p2g,
-        #     1,
-        #     window=Window(*burst_window),
-        # )
-        # ds_lut.write(
-        #     rg_p2g,
-        #     2,
-        #     window=Window(*burst_window),
-        # )
-    # return luts
+
     return file_lut
 
 
@@ -1197,38 +1189,31 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
 
 
 # could as well be part of the swath class
-def _find_burst_window(burst_idx, lines_per_burst, gcps, dem_upsampling):
+def _find_burst_bbox(burst_idx, lines_per_burst, gcps, dem_transform):
 
-    # must be changed if DEM has not the 1sec resolution
-    step = 1 / 3600 / dem_upsampling
     first_line = (burst_idx - 1) * lines_per_burst
     last_line = burst_idx * lines_per_burst
 
-    # DEM raster origin
-    x0 = np.min(np.array([p.x for p in gcps]))
-    y0 = np.min(np.array([p.y for p in gcps]))
-    log.info(f"raster lat lon origin {x0}, {y0}")
-    x0 = int(floor(x0 / step))
-    y0 = int(floor(y0 / step))
-    log.info(f"raster origin {x0}, {y0}")
-
+    # filter burst gcps
     gcps_burst = [it for it in gcps if it.row >= first_line and it.row <= last_line]
 
-    # burst bounding box in pixels
+    # burst bounding box in lat lon
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps_burst]))
     ymin, ymax = minmax(np.array([p.y for p in gcps_burst]))
 
-    log.info(f"burst lat lon origin {xmin}, {ymin}")
-    xmin = int(floor(xmin / step)) - x0
-    xmax = int(ceil(xmax / step)) - x0
-    ymin = int(floor(ymin / step)) - y0
-    ymax = int(ceil(ymax / step)) - y0
-    log.info(f"burst pixel origin {xmin}, {ymin}")
-    log.info(f"burst pixel size {xmax-xmin}, {ymax-xmin}")
+    # convert to pixel indices
+    tf = AffineTransformer(dem_transform)
+    corner1 = tf.rowcol(xmin, ymin)
+    corner2 = tf.rowcol(xmax, ymax)
 
-    # returns gdal and rio window compatible parameters
-    return xmin, ymin, xmax - xmin, ymax - ymin
+    # bounding box min max can be reversed
+    rmin = np.minimum(corner1[0], corner2[0])
+    rmax = np.maximum(corner1[0], corner2[0])
+    cmin = np.minimum(corner1[1], corner2[1])
+    cmax = np.maximum(corner1[1], corner2[1])
+
+    return cmin, rmin, cmax, rmax
 
 
 def _child_process(func, args):
