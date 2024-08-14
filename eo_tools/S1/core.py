@@ -173,7 +173,6 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
         return file_dem
 
-    # TODO: add upsampling option
     def fetch_dem(
         self,
         min_burst=1,
@@ -226,7 +225,7 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
         return file_dem, gcps
 
-    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
+    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
@@ -266,7 +265,10 @@ class S1IWSwath:
         # orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
         # state_vectors = orbit_list["orbit"]
 
-        log.info("DEM upsampling and extract coordinates")
+        if dem_upsampling != 1:
+            log.info("DEM resampling and extract coordinates")
+        else:
+            log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
@@ -869,25 +871,30 @@ def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_fa
         log.info("--DEM already on disk")
 
 
-# TODO add resampling options
-def load_dem_coords(file_dem, upscale_factor=2):
+# TODO add resampling type option
+def load_dem_coords(file_dem, upscale_factor=1):
 
     with rasterio.open(file_dem) as ds:
-        # on-the-fly resampling
-        alt = ds.read(
-            out_shape=(
-                ds.count,
-                int(ds.height * upscale_factor),
-                int(ds.width * upscale_factor),
-            ),
-            resampling=Resampling.bilinear,
-            # resampling=Resampling.cubic,
-        )[0]
-        # scale image transform
-        dem_prof = ds.profile.copy()
-        dem_trans = ds.transform * ds.transform.scale(
-            (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
-        )
+        if upscale_factor != 1:
+            # on-read resampling
+            alt = ds.read(
+                out_shape=(
+                    ds.count,
+                    int(ds.height * upscale_factor),
+                    int(ds.width * upscale_factor),
+                ),
+                resampling=Resampling.bilinear,
+                # resampling=Resampling.cubic,
+            )[0]
+            # scale image transform
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform * ds.transform.scale(
+                (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
+            )
+        else:
+            alt = ds.read(1)
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform.copy()
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
