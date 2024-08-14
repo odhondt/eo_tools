@@ -894,7 +894,7 @@ def load_dem_coords(file_dem, upscale_factor=1):
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
-            dem_trans = ds.transform.copy()
+            dem_trans = ds.transform
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
