@@ -21,6 +21,8 @@ from pyroSAR import identify
 from xmltodict import parse
 from zipfile import ZipFile
 
+from eo_tools.bench import timeit
+
 # from cv2 import remap, INTER_LANCZOS4, INTER_LINEAR, INTER_CUBIC
 # WARP_RELATIVE_MAP only in dev version for now
 
@@ -215,7 +217,10 @@ class S1IWSwath:
 
         first_line = (min_burst - 1) * self.lines_per_burst
 
-        name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
+        if min_burst < max_burst_:
+            name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
+        else:
+            name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
         gcps, _ = read_gcps(
             self.pth_tiff,
@@ -225,6 +230,7 @@ class S1IWSwath:
         auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
         return file_dem, gcps
 
+    @timeit
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -872,6 +878,7 @@ def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_fa
 
 
 # TODO add resampling type option
+@timeit
 def load_dem_coords(file_dem, upscale_factor=1):
 
     with rasterio.open(file_dem) as ds:
@@ -915,6 +922,7 @@ def load_dem_coords(file_dem, upscale_factor=1):
 
 
 # TODO produce right composite crs for each DEM
+@timeit
 def lla_to_ecef(lat, lon, alt, dem_crs):
 
     # TODO: use parameter instead
@@ -950,7 +958,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
 
     return dem_x, dem_y, dem_z
 
-
+@timeit
 @njit(parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):

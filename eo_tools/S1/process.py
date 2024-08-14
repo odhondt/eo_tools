@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
 
+from eo_tools.bench import timeit
+
 log = logging.getLogger(__name__)
 
 
@@ -858,7 +860,7 @@ def coherence(
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
-
+@timeit
 def _process_bursts(
     prm,
     sec,

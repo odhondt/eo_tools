@@ -53,6 +53,6 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", upscale_factor=1):
             shape=(new_height, new_width),
             resampling=Resampling.bilinear,
         )
-        dem_upsampled.rio.to_raster(file_out)
+        dem_upsampled.rio.to_raster(file_out, tiled=True)
     else:
         raise ValueError("Upsampling factor must be positive.")
