@@ -937,15 +937,19 @@ def _process_bursts(
                 #     force_download=dem_force_download,
                 # )
                 burst_bbox = _find_burst_bbox(
-                    burst_idx, prm.lines_per_burst, gcps, transform_lut
+                    burst_idx,
+                    prm.lines_per_burst,
+                    gcps,
+                    transform_lut,
+                    dem_buffer_arc_sec,
                 )
-                # apply DEM buffer
-                # TODO: correct this to work with upsampling
+
+                # extra caution, might not be needed
                 burst_bbox = (
-                    np.maximum(0, burst_bbox[0] - dem_buffer_arc_sec),
-                    np.maximum(0, burst_bbox[1] - dem_buffer_arc_sec),
-                    np.minimum(width_lut - 1, burst_bbox[2] + dem_buffer_arc_sec),
-                    np.minimum(height_lut - 1, burst_bbox[3] + dem_buffer_arc_sec),
+                    np.maximum(0, burst_bbox[0]),
+                    np.maximum(0, burst_bbox[1]),
+                    np.minimum(width_lut - 1, burst_bbox[2]),
+                    np.minimum(height_lut - 1, burst_bbox[3]),
                 )
 
                 burst_window = (
@@ -1015,16 +1019,15 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-                # TODO: apply azimuth offsets of stitched bursts (slc)
                 c0, r0, c1, r1 = burst_bbox
-                off_az += prm.lines_per_burst - H 
                 if burst_idx > min_burst:
-                    msk_overlap = (az_p2g < H)
+                    msk_overlap = az_p2g < H
                     az_p2g[msk_overlap] = np.nan
                     rg_p2g[msk_overlap] = np.nan
                 msk = ~np.isnan(az_p2g)
                 arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
                 arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
+                off_az += prm.lines_per_burst - 2 * H
 
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
         ds_lut.write(arr_lut)
@@ -1199,7 +1202,9 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
 
 
 # could as well be part of the swath class
-def _find_burst_bbox(burst_idx, lines_per_burst, gcps, dem_transform):
+def _find_burst_bbox(
+    burst_idx, lines_per_burst, gcps, dem_transform, dem_buffer_arcsec
+):
 
     first_line = (burst_idx - 1) * lines_per_burst
     last_line = burst_idx * lines_per_burst
@@ -1214,10 +1219,10 @@ def _find_burst_bbox(burst_idx, lines_per_burst, gcps, dem_transform):
 
     # convert to pixel indices
     tf = AffineTransformer(dem_transform)
-    corner1 = tf.rowcol(xmin, ymin)
-    corner2 = tf.rowcol(xmax, ymax)
+    corner1 = tf.rowcol(xmin - dem_buffer_arcsec, ymin - dem_buffer_arcsec)
+    corner2 = tf.rowcol(xmax + dem_buffer_arcsec, ymax + dem_buffer_arcsec)
 
-    # bounding box min max can be reversed
+    # bounding box min-max can be reversed
     rmin = np.minimum(corner1[0], corner2[0])
     rmax = np.maximum(corner1[0], corner2[0])
     cmin = np.minimum(corner1[1], corner2[1])
