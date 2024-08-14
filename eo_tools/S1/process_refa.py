@@ -540,7 +540,7 @@ def preprocess_insar_iw(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # luts = _child_process(
-    file_lut = _child_process(
+    _child_process(
         _process_bursts,
         (
             prm,
@@ -561,44 +561,44 @@ def preprocess_insar_iw(
         ),
     )
 
-    # if (max_burst_ > min_burst) & apply_fast_esd:
-    #     _child_process(
-    #         _apply_fast_esd,
-    #         (
-    #             tmp_prm,
-    #             tmp_sec,
-    #             min_burst,
-    #             max_burst_,
-    #             prm.lines_per_burst,
-    #             nrg,
-    #             overlap,
-    #         ),
-    #     )
+    if (max_burst_ > min_burst) & apply_fast_esd:
+        _child_process(
+            _apply_fast_esd,
+            (
+                tmp_prm,
+                tmp_sec,
+                min_burst,
+                max_burst_,
+                prm.lines_per_burst,
+                nrg,
+                overlap,
+            ),
+        )
 
-    # if max_burst_ > min_burst:
-    #     _child_process(
-    #         _stitch_bursts,
-    #         (
-    #             tmp_sec,
-    #             f"{dir_out}/secondary.tif",
-    #             prm.lines_per_burst,
-    #             max_burst_ - min_burst + 1,
-    #             overlap,
-    #         ),
-    #     )
+    if max_burst_ > min_burst:
+        _child_process(
+            _stitch_bursts,
+            (
+                tmp_sec,
+                f"{dir_out}/secondary.tif",
+                prm.lines_per_burst,
+                max_burst_ - min_burst + 1,
+                overlap,
+            ),
+        )
 
-    #     _child_process(
-    #         _stitch_bursts,
-    #         (
-    #             tmp_prm,
-    #             f"{dir_out}/primary.tif",
-    #             prm.lines_per_burst,
-    #             max_burst_ - min_burst + 1,
-    #             overlap,
-    #         ),
-    #     )
+        _child_process(
+            _stitch_bursts,
+            (
+                tmp_prm,
+                f"{dir_out}/primary.tif",
+                prm.lines_per_burst,
+                max_burst_ - min_burst + 1,
+                overlap,
+            ),
+        )
     # _child_process(
-    #     _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+        # _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
     # )
 
     log.info("Cleaning temporary files")
@@ -607,10 +607,10 @@ def preprocess_insar_iw(
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
-    for i in range(min_burst, max_burst_ + 1):
-        fname = f"{dir_out}/lut_{i}.tif"
-        if os.path.isfile(fname):
-            os.remove(fname)
+    # for i in range(min_burst, max_burst_ + 1):
+    #     fname = f"{dir_out}/lut_{i}.tif"
+    #     if os.path.isfile(fname):
+    #         os.remove(fname)
 
     log.info("Done")
 
@@ -1032,7 +1032,7 @@ def _process_bursts(
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
         ds_lut.write(arr_lut)
 
-    return file_lut
+    # return file_lut
 
 
 def _apply_fast_esd(
@@ -1222,7 +1222,7 @@ def _find_burst_bbox(
     corner1 = tf.rowcol(xmin - dem_buffer_arcsec, ymin - dem_buffer_arcsec)
     corner2 = tf.rowcol(xmax + dem_buffer_arcsec, ymax + dem_buffer_arcsec)
 
-    # bounding box min-max can be reversed
+    # in pixel bounding box, min-max may need re-ordering
     rmin = np.minimum(corner1[0], corner2[0])
     rmax = np.maximum(corner1[0], corner2[0])
     cmin = np.minimum(corner1[1], corner2[1])
