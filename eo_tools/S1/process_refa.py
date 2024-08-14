@@ -922,7 +922,7 @@ def _process_bursts(
         nodata=np.nan,
     )
 
-    # arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
+    arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
 
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
@@ -967,7 +967,7 @@ def _process_bursts(
                     srcDS=file_dem,
                     format="VRT",
                     srcWin=burst_window,
-                    creationOptions = ['BLOCKXSIZE=7329', 'BLOCKYSIZE=1']
+                    creationOptions = ['BLOCKXSIZE=512', 'BLOCKYSIZE=512']
                 )
 
                 # this implementation upsamples DEM at download, not during geocoding
@@ -1021,18 +1021,18 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-                # c0, r0, c1, r1 = burst_bbox
-                # if burst_idx > min_burst:
-                #     msk_overlap = az_p2g < H
-                #     az_p2g[msk_overlap] = np.nan
-                #     rg_p2g[msk_overlap] = np.nan
-                # msk = ~np.isnan(az_p2g)
-                # arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
-                # arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
-                # off_az += prm.lines_per_burst - 2 * H
+                c0, r0, c1, r1 = burst_bbox
+                if burst_idx > min_burst:
+                    msk_overlap = az_p2g < H
+                    az_p2g[msk_overlap] = np.nan
+                    rg_p2g[msk_overlap] = np.nan
+                msk = ~np.isnan(az_p2g)
+                arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
+                arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
+                off_az += prm.lines_per_burst - 2 * H
 
-    # with rio.open(file_lut, "w", **prof_lut) as ds_lut:
-        # ds_lut.write(arr_lut)
+    with rio.open(file_lut, "w", **prof_lut) as ds_lut:
+        ds_lut.write(arr_lut)
 
     # return file_lut
 
@@ -1208,6 +1208,7 @@ def _find_burst_bbox(
     burst_idx, lines_per_burst, gcps, dem_transform, dem_buffer_arcsec
 ):
 
+    log.info(f"find_burst_windows buf arcsec: {dem_buffer_arcsec}")
     first_line = (burst_idx - 1) * lines_per_burst
     last_line = burst_idx * lines_per_burst
 
@@ -1221,8 +1222,8 @@ def _find_burst_bbox(
 
     # convert to pixel indices
     tf = AffineTransformer(dem_transform)
-    corner1 = tf.rowcol(xmin - dem_buffer_arcsec, ymin - dem_buffer_arcsec)
-    corner2 = tf.rowcol(xmax + dem_buffer_arcsec, ymax + dem_buffer_arcsec)
+    corner1 = tf.rowcol(xmin - dem_buffer_arcsec/3600, ymin - dem_buffer_arcsec/3600)
+    corner2 = tf.rowcol(xmax + dem_buffer_arcsec/3600, ymax + dem_buffer_arcsec/3600)
 
     # in pixel bounding box, min-max may need re-ordering
     rmin = np.minimum(corner1[0], corner2[0])

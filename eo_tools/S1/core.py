@@ -856,6 +856,7 @@ def sv_interpolator_poly(state_vectors):
 # TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
 # TODO: add upsampling option
 def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_factor=1):
+    log.info(f"auto_dem buf arcsec: {buffer_arc_sec}")
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
@@ -902,6 +903,8 @@ def load_dem_coords(file_dem, upscale_factor=1):
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
+    
+    log.info(f"DEM profile {dem_prof}")
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -956,6 +959,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
         dem_y[b1:b2] = chunked[i][1]
         dem_z[b1:b2] = chunked[i][2]
 
+    log.info(f"demx shape: {dem_x.shape}")
     return dem_x, dem_y, dem_z
 
 @timeit
