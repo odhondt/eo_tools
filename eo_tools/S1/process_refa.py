@@ -677,15 +677,16 @@ def sar2geo(
         resampling="nearest",
         overview_resampling="nearest",
     )
+    # incompatible with COG, not needed (?) elsewhere
+    prof_dst.pop("blockxsize", None)
+    prof_dst.pop("blockysize", None)
+    prof_dst.pop("tiled", None)
+    prof_dst.pop("interleave", None)
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
         prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
-        # removing COG incompatible options
-        prof_dst.pop("blockysize", None)
-        prof_dst.pop("tiled", None)
-        prof_dst.pop("interleave", None)
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
@@ -694,10 +695,6 @@ def sar2geo(
             nodata = 0
             mag[np.isnan(mag)] = nodata
             prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
-            # removing incompatible options
-            prof_dst.pop("blockysize", None)
-            prof_dst.pop("tiled", None)
-            prof_dst.pop("interleave", None)
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -705,9 +702,6 @@ def sar2geo(
             if not np.iscomplexobj(arr_out):
                 nodata = 0
                 prof_dst.update({"driver": "COG", "nodata": nodata, **cog_dict})
-                prof_dst.pop("blockysize", None)
-                prof_dst.pop("tiled", None)
-                prof_dst.pop("interleave", None)
                 arr_out[np.isnan(arr_out)] = nodata
             else:
                 prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
@@ -920,6 +914,9 @@ def _process_bursts(
         crs=crs_lut,
         transform=transform_lut,
         nodata=np.nan,
+        tiled=True,
+        blockxsize=512,
+        blockysize=512
     )
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
@@ -1208,7 +1205,6 @@ def _find_burst_bbox(
     burst_idx, lines_per_burst, gcps, dem_transform, dem_buffer_arcsec
 ):
 
-    log.info(f"find_burst_windows buf arcsec: {dem_buffer_arcsec}")
     first_line = (burst_idx - 1) * lines_per_burst
     last_line = burst_idx * lines_per_burst
 

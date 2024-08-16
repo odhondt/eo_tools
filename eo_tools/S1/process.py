@@ -666,6 +666,11 @@ def sar2geo(
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
+    # incompatible with COG, not needed (?) elsewhere
+    prof_dst.pop("blockxsize", None)
+    prof_dst.pop("blockysize", None)
+    prof_dst.pop("tiled", None)
+    prof_dst.pop("interleave", None)
     cog_dict = dict(
         driver="COG",
         compress="zstd",
@@ -679,9 +684,6 @@ def sar2geo(
         phi[np.isnan(phi)] = nodata
         prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
         # removing COG incompatible options
-        prof_dst.pop("blockysize", None)
-        prof_dst.pop("tiled", None)
-        prof_dst.pop("interleave", None)
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
@@ -691,9 +693,6 @@ def sar2geo(
             mag[np.isnan(mag)] = nodata
             prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
             # removing incompatible options
-            prof_dst.pop("blockysize", None)
-            prof_dst.pop("tiled", None)
-            prof_dst.pop("interleave", None)
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -701,9 +700,6 @@ def sar2geo(
             if not np.iscomplexobj(arr_out):
                 nodata = 0
                 prof_dst.update({"driver": "COG", "nodata": nodata, **cog_dict})
-                prof_dst.pop("blockysize", None)
-                prof_dst.pop("tiled", None)
-                prof_dst.pop("interleave", None)
                 arr_out[np.isnan(arr_out)] = nodata
             else:
                 prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
