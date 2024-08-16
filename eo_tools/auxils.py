@@ -217,8 +217,6 @@ def load_metadata(zip_path, subswath, polarization):
     for item in metadata_file_list:
         if subswath.lower() in item and polarization.lower() in item:
             target_file = item
-    for it in metadata_file_list:
-        print(it)
     if zip_path.endswith(".zip"):
         return archive.open(target_file)
     else:
