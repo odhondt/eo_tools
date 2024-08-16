@@ -541,26 +541,25 @@ def preprocess_insar_iw(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # luts = _child_process(
-    _child_process(
-        _process_bursts,
-        (
-            prm,
-            sec,
-            tmp_prm,
-            tmp_sec,
-            dir_out,
-            dir_dem,
-            naz,
-            nrg,
-            min_burst,
-            max_burst_,
-            dem_upsampling,
-            dem_buffer_arc_sec,
-            dem_force_download,
-            warp_kernel,
-            overlap,
-        ),
+    # _child_process(
+    _process_bursts (
+        prm,
+        sec,
+        tmp_prm,
+        tmp_sec,
+        dir_out,
+        dir_dem,
+        naz,
+        nrg,
+        min_burst,
+        max_burst_,
+        dem_upsampling,
+        dem_buffer_arc_sec,
+        dem_force_download,
+        warp_kernel,
+        overlap,
     )
+    # )
 
     if (max_burst_ > min_burst) & apply_fast_esd:
         _child_process(
@@ -928,54 +927,57 @@ def _process_bursts(
                 log.info(f"---- Processing burst {burst_idx} ----")
 
                 # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
-                # file_dem = prm.fetch_dem_burst(
+
+                # burst_bbox = _find_burst_bbox(
                 #     burst_idx,
-                #     dir_dem,
-                #     buffer_arc_sec=dem_buffer_arc_sec,
-                #     force_download=dem_force_download,
+                #     prm.lines_per_burst,
+                #     gcps,
+                #     transform_lut,
+                #     dem_buffer_arc_sec,
                 # )
-                burst_bbox = _find_burst_bbox(
-                    burst_idx,
-                    prm.lines_per_burst,
-                    gcps,
-                    transform_lut,
-                    dem_buffer_arc_sec,
-                )
 
-                # extra caution, might not be needed
-                burst_bbox = (
-                    np.maximum(0, burst_bbox[0]),
-                    np.maximum(0, burst_bbox[1]),
-                    np.minimum(width_lut - 1, burst_bbox[2]),
-                    np.minimum(height_lut - 1, burst_bbox[3]),
-                )
+                # burst_bbox = (
+                #     np.maximum(0, burst_bbox[0]),
+                #     np.maximum(0, burst_bbox[1]),
+                #     np.minimum(width_lut - 1, burst_bbox[2]),
+                #     np.minimum(height_lut - 1, burst_bbox[3]),
+                # )
 
-                burst_window = (
-                    burst_bbox[0],
-                    burst_bbox[1],
-                    burst_bbox[2] - burst_bbox[0],
-                    burst_bbox[3] - burst_bbox[1],
-                )
+                # burst_window = (
+                #     burst_bbox[0],
+                #     burst_bbox[1],
+                #     burst_bbox[2] - burst_bbox[0],
+                #     burst_bbox[3] - burst_bbox[1],
+                # )
+
+                file_dem_burst = f"{dir_out}/dem_burst.tif"
+                burst_geoms = prm.gdf_burst_geom
+                burst_geom =  burst_geoms[burst_geoms["burst"]==burst_idx].iloc[0]
+                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec/3600)
+                print(shp)
+                dem = riox.open_rasterio(file_dem, masked=True).rio.clip([shp])
+                dem.rio.to_raster(file_dem_burst)
+
 
                 # use virtual raster to keep using the same geocoding function
-                file_dem_burst = f"{dir_out}/dem_burst.vrt"
-                gdal.Translate(
-                    destName=file_dem_burst,
-                    srcDS=file_dem,
-                    format="VRT",
-                    srcWin=burst_window,
-                    creationOptions = ['BLOCKXSIZE=512', 'BLOCKYSIZE=512']
-                )
+                # file_dem_burst = f"{dir_out}/dem_burst.vrt"
+                # gdal.Translate(
+                #     destName=file_dem_burst,
+                #     srcDS=file_dem,
+                #     format="VRT",
+                #     srcWin=burst_window,
+                #     creationOptions = ['BLOCKXSIZE=512', 'BLOCKYSIZE=512']
+                # )
 
                 # this implementation upsamples DEM at download, not during geocoding
-                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
+                az_p2g, rg_p2g, _ = prm.geocode_burst(
                     file_dem_burst,
                     # file_dem,
                     burst_idx=burst_idx,
                     dem_upsampling=1,
                     # file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
                 )
-                az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
+                az_s2g, rg_s2g, _ = sec.geocode_burst(
                     file_dem_burst,
                     # file_dem,
                     burst_idx=burst_idx,
@@ -1018,7 +1020,22 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-                c0, r0, c1, r1 = burst_bbox
+
+                # c0, r0, c1, r1 = burst_bbox
+                # find pixel indices in destination raster
+                b = shp.bounds
+                print(b)
+                tf = AffineTransformer(transform_lut)
+                corner1 = tf.rowcol(*b[:2])
+                corner2 = tf.rowcol(*b[2:])
+                print(corner1, corner2)
+
+                # in pixel bounding box, min-max may need re-ordering
+                r0 = np.minimum(corner1[0], corner2[0])
+                r1 = np.maximum(corner1[0], corner2[0])
+                c0 = np.minimum(corner1[1], corner2[1])
+                c1 = np.maximum(corner1[1], corner2[1])
+
                 if burst_idx > min_burst:
                     msk_overlap = az_p2g < H
                     az_p2g[msk_overlap] = np.nan

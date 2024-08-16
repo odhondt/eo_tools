@@ -9,6 +9,7 @@ from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
+from eo_tools.auxils import get_burst_geometry
 from shapely.geometry import box
 from rasterio.enums import Resampling
 from numba import njit, prange
@@ -20,6 +21,7 @@ from joblib import Parallel, delayed
 from pyroSAR import identify
 from xmltodict import parse
 from zipfile import ZipFile
+
 
 from eo_tools.bench import timeit
 
@@ -56,6 +58,12 @@ class S1IWSwath:
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
+
+        if not isinstance(iw, int) or iw < 1 or iw > 3:
+            raise ValueError("Parameter 'iw' must an int be between 1 and 3")
+
+        if pol not in ["vv", "vh"]:
+            raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
         # check product type using dir name
         parts = Path(safe_dir).stem.split("_")
@@ -101,6 +109,13 @@ class S1IWSwath:
         calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
         BN_str = calvec[0]["betaNought"]["#text"]
         self.beta_nought = float(BN_str.split(" ")[0])
+
+        # read burst geometries
+        self.gdf_burst_geom = get_burst_geometry(
+            path=safe_dir, target_subswaths=f"IW{iw}", polarization=pol.upper()
+        )
+        if self.gdf_burst_geom.empty:
+            raise RuntimeError("Invalid product: no burst geometry was found.")
 
         log.info(f"S1IWSwath Initialization:")
         log.info(f"- Reading metadata file {pth_xml}")
@@ -222,12 +237,32 @@ class S1IWSwath:
         else:
             name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
+
         gcps, _ = read_gcps(
             self.pth_tiff,
             first_line=first_line,
             number_of_lines=num_bursts * self.lines_per_burst,
         )
-        auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
+
+        # use buffer bounds around union of burst geometries
+        geom_all = self.gdf_burst_geom
+        geom_sub = (
+            geom_all[
+                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst)
+            ]
+            .union_all()
+            .buffer(buffer_arc_sec / 3600)
+        )
+        shp = box(*geom_sub.bounds)
+
+        # auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
+        if not os.path.exists(file_dem) or force_download:
+            retrieve_dem(
+                shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+            )
+        else:
+            log.info("--DEM already on disk")
+
         return file_dem, gcps
 
     @timeit
@@ -856,7 +891,6 @@ def sv_interpolator_poly(state_vectors):
 # TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
 # TODO: add upsampling option
 def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_factor=1):
-    log.info(f"auto_dem buf arcsec: {buffer_arc_sec}")
     minmax = lambda x: (x.min(), x.max())
     xmin, xmax = minmax(np.array([p.x for p in gcps]))
     ymin, ymax = minmax(np.array([p.y for p in gcps]))
@@ -903,8 +937,7 @@ def load_dem_coords(file_dem, upscale_factor=1):
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
-    
-    log.info(f"DEM profile {dem_prof}")
+
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -961,6 +994,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
 
     log.info(f"demx shape: {dem_x.shape}")
     return dem_x, dem_y, dem_z
+
 
 @timeit
 @njit(parallel=True)
