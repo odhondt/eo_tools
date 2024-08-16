@@ -6,6 +6,7 @@ import numpy as np
 import xarray as xr
 import rasterio as rio
 from rasterio.windows import Window
+import rasterio.mask
 import rioxarray as riox
 from rioxarray.merge import merge_arrays
 import warnings
@@ -22,7 +23,9 @@ from shapely.geometry import shape
 from math import floor, ceil
 from osgeo import gdal
 from rasterio.transform import AffineTransformer
+from rasterio.features import geometry_window
 from eo_tools.bench import timeit
+
 
 log = logging.getLogger(__name__)
 
@@ -541,25 +544,26 @@ def preprocess_insar_iw(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # luts = _child_process(
-    # _child_process(
-    _process_bursts (
-        prm,
-        sec,
-        tmp_prm,
-        tmp_sec,
-        dir_out,
-        dir_dem,
-        naz,
-        nrg,
-        min_burst,
-        max_burst_,
-        dem_upsampling,
-        dem_buffer_arc_sec,
-        dem_force_download,
-        warp_kernel,
-        overlap,
+    _child_process(
+        _process_bursts,
+        (
+            prm,
+            sec,
+            tmp_prm,
+            tmp_sec,
+            dir_out,
+            dir_dem,
+            naz,
+            nrg,
+            min_burst,
+            max_burst_,
+            dem_upsampling,
+            dem_buffer_arc_sec,
+            dem_force_download,
+            warp_kernel,
+            overlap,
+        ),
     )
-    # )
 
     if (max_burst_ > min_burst) & apply_fast_esd:
         _child_process(
@@ -598,7 +602,7 @@ def preprocess_insar_iw(
             ),
         )
     # _child_process(
-        # _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
+    # _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
     # )
 
     log.info("Cleaning temporary files")
@@ -857,6 +861,7 @@ def coherence(
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
+
 @timeit
 def _process_bursts(
     prm,
@@ -890,6 +895,7 @@ def _process_bursts(
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
+    #TODO: remove gcps from function
     file_dem, gcps = prm.fetch_dem(
         min_burst,
         max_burst,
@@ -915,7 +921,7 @@ def _process_bursts(
         nodata=np.nan,
         tiled=True,
         blockxsize=512,
-        blockysize=512
+        blockysize=512,
     )
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
@@ -952,12 +958,31 @@ def _process_bursts(
 
                 file_dem_burst = f"{dir_out}/dem_burst.tif"
                 burst_geoms = prm.gdf_burst_geom
-                burst_geom =  burst_geoms[burst_geoms["burst"]==burst_idx].iloc[0]
-                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec/3600)
-                print(shp)
-                dem = riox.open_rasterio(file_dem, masked=True).rio.clip([shp])
-                dem.rio.to_raster(file_dem_burst)
+                burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
+                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
 
+                with rio.open(file_dem) as ds_dem:
+                    dem_masked, dem_masked_transform = rasterio.mask.mask(
+                        ds_dem, shapes=[shp], crop=True
+                    )
+                    dem_masked_prof = ds_dem.profile.copy()
+                    dem_masked_prof.update(
+                        {
+                            "width": dem_masked.shape[2],
+                            "height": dem_masked.shape[1],
+                            "transform": dem_masked_transform,
+                        }
+                    )
+                    print(dem_masked_prof)
+                    with rio.open(
+                        file_dem_burst, "w", **dem_masked_prof
+                    ) as ds_dem_masked:
+                        ds_dem_masked.write(dem_masked)
+                    # pixel position in the LUT
+                    slices = geometry_window(ds_dem, shapes=[shp]).toslices()
+                    print(slices)
+                # dem = riox.open_rasterio(file_dem, masked=True).rio.clip([shp])
+                # dem.rio.to_raster(file_dem_burst)
 
                 # use virtual raster to keep using the same geocoding function
                 # file_dem_burst = f"{dir_out}/dem_burst.vrt"
@@ -1023,26 +1048,29 @@ def _process_bursts(
 
                 # c0, r0, c1, r1 = burst_bbox
                 # find pixel indices in destination raster
-                b = shp.bounds
-                print(b)
-                tf = AffineTransformer(transform_lut)
-                corner1 = tf.rowcol(*b[:2])
-                corner2 = tf.rowcol(*b[2:])
-                print(corner1, corner2)
+                # b = shp.bounds
+                # print(b)
+                # tf = AffineTransformer(transform_lut)
+                # corner1 = tf.rowcol(*b[:2])
+                # corner2 = tf.rowcol(*b[2:])
+                # print(corner1, corner2)
 
-                # in pixel bounding box, min-max may need re-ordering
-                r0 = np.minimum(corner1[0], corner2[0])
-                r1 = np.maximum(corner1[0], corner2[0])
-                c0 = np.minimum(corner1[1], corner2[1])
-                c1 = np.maximum(corner1[1], corner2[1])
+                # # in pixel bounding box, min-max may need re-ordering
+                # r0 = np.minimum(corner1[0], corner2[0])
+                # r1 = np.maximum(corner1[0], corner2[0])
+                # c0 = np.minimum(corner1[1], corner2[1])
+                # c1 = np.maximum(corner1[1], corner2[1])
+                # print(r0, r1, c0, c1)
 
                 if burst_idx > min_burst:
                     msk_overlap = az_p2g < H
                     az_p2g[msk_overlap] = np.nan
                     rg_p2g[msk_overlap] = np.nan
                 msk = ~np.isnan(az_p2g)
-                arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
-                arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
+                # arr_lut[0, r0:r1, c0:c1][msk] = az_p2g[msk] + off_az
+                # arr_lut[1, r0:r1, c0:c1][msk] = rg_p2g[msk]
                 off_az += prm.lines_per_burst - 2 * H
 
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
@@ -1235,8 +1263,12 @@ def _find_burst_bbox(
 
     # convert to pixel indices
     tf = AffineTransformer(dem_transform)
-    corner1 = tf.rowcol(xmin - dem_buffer_arcsec/3600, ymin - dem_buffer_arcsec/3600)
-    corner2 = tf.rowcol(xmax + dem_buffer_arcsec/3600, ymax + dem_buffer_arcsec/3600)
+    corner1 = tf.rowcol(
+        xmin - dem_buffer_arcsec / 3600, ymin - dem_buffer_arcsec / 3600
+    )
+    corner2 = tf.rowcol(
+        xmax + dem_buffer_arcsec / 3600, ymax + dem_buffer_arcsec / 3600
+    )
 
     # in pixel bounding box, min-max may need re-ordering
     rmin = np.minimum(corner1[0], corner2[0])
