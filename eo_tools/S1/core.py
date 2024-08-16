@@ -933,11 +933,15 @@ def load_dem_coords(file_dem, upscale_factor=1):
             dem_trans = ds.transform * ds.transform.scale(
                 (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
             )
+            nodata = ds.nodata
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
+            nodata = ds.nodata
 
+
+    
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -952,9 +956,16 @@ def load_dem_coords(file_dem, upscale_factor=1):
         lon_ = dem_trans[4] * iy + dem_trans[5]
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
+    
+    # make sure nodata is nan in output
+    if not np.isnan(nodata):
+        msk = alt==nodata
+    alt = alt.astype("float64")
+    if not np.isnan(nodata):
+        alt[msk] = np.nan
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt.astype("float64"), dem_prof
+    return lat, lon, alt, dem_prof
 
 
 # TODO produce right composite crs for each DEM
@@ -1025,6 +1036,8 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         x_val = xx[i]
         y_val = yy[i]
         z_val = zz[i]
+        if np.isnan(x_val):
+            continue
         a = 0
         b = num_orbits - 1
         fa, _, _, _ = doppler_freq(
