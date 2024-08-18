@@ -12,7 +12,7 @@ from eo_tools.S1.util import remap
 from eo_tools.auxils import get_burst_geometry
 from shapely.geometry import box
 from rasterio.enums import Resampling
-from numba import njit, prange
+from numba import njit, prange, float64, int64
 from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
 from pyproj import Transformer
@@ -349,6 +349,7 @@ class S1IWSwath:
             pos - pos[0],
             vel,
             tol=1e-8,
+            maxiter=10000
             # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
         )
 
@@ -597,8 +598,8 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     log.info("Projecting secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
-
-@njit(nogil=True, parallel=True)
+@timeit
+@njit(nogil=True, parallel=True, cache=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
@@ -1005,8 +1006,10 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     return dem_x, dem_y, dem_z
 
 
-@timeit
-@njit(parallel=True)
+# sig = (float64[:], float64[:], float64[:], float64[:, :], float64[:, :], float64, int64)
+# @timeit
+# @njit(sig, parallel=True)
+@njit(nogil=True, cache=True, parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
         factors = t - np.floor(t)
@@ -1051,11 +1054,11 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             r_zd[i] = np.nan
             continue
 
-        if abs(fa) < tol:
+        if np.abs(fa) < tol:
             i_zd[i] = a
             r_zd[i] = 0
             continue
-        elif abs(fb) < tol:
+        elif np.abs(fb) < tol:
             i_zd[i] = b
             r_zd[i] = 0
             continue
@@ -1066,7 +1069,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         )
 
         its = 0
-        while abs(fc) > tol and its < maxiter:
+        while np.abs(fc) > tol and its < maxiter:
             its += 1
             if fa * fc < 0:
                 b = c
