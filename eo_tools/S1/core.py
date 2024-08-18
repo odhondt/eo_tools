@@ -238,11 +238,11 @@ class S1IWSwath:
             name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
 
-        gcps, _ = read_gcps(
-            self.pth_tiff,
-            first_line=first_line,
-            number_of_lines=num_bursts * self.lines_per_burst,
-        )
+        # gcps, _ = read_gcps(
+        #     self.pth_tiff,
+        #     first_line=first_line,
+        #     number_of_lines=num_bursts * self.lines_per_burst,
+        # )
 
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
@@ -263,7 +263,7 @@ class S1IWSwath:
         else:
             log.info("--DEM already on disk")
 
-        return file_dem, gcps
+        return file_dem#, gcps
 
     @timeit
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
@@ -940,8 +940,6 @@ def load_dem_coords(file_dem, upscale_factor=1):
             dem_trans = ds.transform
             nodata = ds.nodata
 
-
-    
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -956,10 +954,10 @@ def load_dem_coords(file_dem, upscale_factor=1):
         lon_ = dem_trans[4] * iy + dem_trans[5]
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
-    
+
     # make sure nodata is nan in output
     if not np.isnan(nodata):
-        msk = alt==nodata
+        msk = alt == nodata
     alt = alt.astype("float64")
     if not np.isnan(nodata):
         alt[msk] = np.nan
