@@ -893,7 +893,7 @@ def _process_bursts(
         # num_threads="all_cpus",
         tiled=True,
         blockxsize=512,
-        blockysize=512
+        blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
@@ -904,7 +904,6 @@ def _process_bursts(
         buffer_arc_sec=dem_buffer_arc_sec,
         force_download=dem_force_download,
         upscale_factor=dem_upsampling,
-
     )
     file_lut = f"{dir_out}/lut.tif"
     with rio.open(file_dem) as ds_dem:
@@ -947,7 +946,6 @@ def _process_bursts(
                     # pixel position to write burst in the LUT
                     slices = w.toslices()
 
-
                 # use virtual raster to keep using the same geocoding function
                 file_dem_burst = f"{dir_out}/dem_burst.vrt"
                 gdal.Translate(
@@ -955,7 +953,7 @@ def _process_bursts(
                     srcDS=file_dem,
                     format="VRT",
                     srcWin=burst_window,
-                    creationOptions = ['BLOCKXSIZE=512', 'BLOCKYSIZE=512']
+                    creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
                 )
 
                 # this implementation upsamples DEM at download, not during geocoding
@@ -1191,40 +1189,6 @@ def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
         file_out
         # file_out, compress="zstd", num_threads="all_cpus"
     )  # , windowed=False, tiled=True)
-
-
-# could as well be part of the swath class
-def _find_burst_bbox(
-    burst_idx, lines_per_burst, gcps, dem_transform, dem_buffer_arcsec
-):
-
-    first_line = (burst_idx - 1) * lines_per_burst
-    last_line = burst_idx * lines_per_burst
-
-    # filter burst gcps
-    gcps_burst = [it for it in gcps if it.row >= first_line and it.row <= last_line]
-
-    # burst bounding box in lat lon
-    minmax = lambda x: (x.min(), x.max())
-    xmin, xmax = minmax(np.array([p.x for p in gcps_burst]))
-    ymin, ymax = minmax(np.array([p.y for p in gcps_burst]))
-
-    # convert to pixel indices
-    tf = AffineTransformer(dem_transform)
-    corner1 = tf.rowcol(
-        xmin - dem_buffer_arcsec / 3600, ymin - dem_buffer_arcsec / 3600
-    )
-    corner2 = tf.rowcol(
-        xmax + dem_buffer_arcsec / 3600, ymax + dem_buffer_arcsec / 3600
-    )
-
-    # in pixel bounding box, min-max may need re-ordering
-    rmin = np.minimum(corner1[0], corner2[0])
-    rmax = np.maximum(corner1[0], corner2[0])
-    cmin = np.minimum(corner1[1], corner2[1])
-    cmax = np.maximum(corner1[1], corner2[1])
-
-    return cmin, rmin, cmax, rmax
 
 
 def _child_process(func, args):
