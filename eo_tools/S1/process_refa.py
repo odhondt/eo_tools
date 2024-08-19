@@ -1144,53 +1144,6 @@ def _stitch_bursts(
                 off_dst += nlines
 
 
-def _make_da_from_dem(arr, dem_prof):
-
-    darr = xr.DataArray(
-        data=arr,
-        dims=("band", "y", "x"),
-    )
-    darr = darr.chunk(chunks="auto")
-    darr.rio.write_crs(dem_prof["crs"], inplace=True)
-    darr.rio.write_transform(dem_prof["transform"], inplace=True)
-    darr.attrs["_FillValue"] = np.nan
-    return darr
-
-
-def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
-
-    log.info("Merging LUT")
-    off = 0
-    H = int(overlap / 2)
-    naz = lines_per_burst
-    to_merge = []
-    for i, file_lut in enumerate(files_lut):
-        # lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
-        lut = riox.open_rasterio(file_lut)  # , chunks=True)#, lock=False)
-        # lut = riox.open_rasterio(file_lut, cache=False)
-        cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
-        lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
-
-        if i == 0:
-            off2 = off
-        else:
-            off2 = off - H
-        lut[0] += off2
-        if i == 0:
-            off += naz - H
-        else:
-            off += naz - 2 * H
-        lut.attrs["_FillValue"] = np.nan
-        lut.rio.write_nodata(np.nan)
-        to_merge.append(lut)
-
-    merged = merge_arrays(to_merge, parse_coordinates=False)
-    merged.rio.to_raster(
-        file_out
-        # file_out, compress="zstd", num_threads="all_cpus"
-    )  # , windowed=False, tiled=True)
-
-
 def _child_process(func, args):
     # convenience function to make code prettier
     with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
