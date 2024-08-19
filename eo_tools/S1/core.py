@@ -622,6 +622,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     az_s2p = np.full((naz, nrg), np.nan)
     rg_s2p = np.full((naz, nrg), np.nan)
+    p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -649,7 +650,9 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
                     # - separate into 2 triangles
                     # - test if each point falls into triangle 1 or 2
                     # - interpolate the secondary range and azimuth using triangle vertices
-                    p = np.array([a, r])
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
@@ -661,7 +664,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     return az_s2p, rg_s2p
 
-
+@timeit
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     """Aligns the secondary image to the geometry of the primary
 
@@ -1006,9 +1009,6 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     return dem_x, dem_y, dem_z
 
 
-# sig = (float64[:], float64[:], float64[:], float64[:, :], float64[:, :], float64, int64)
-# @timeit
-# @njit(sig, parallel=True)
 @njit(nogil=True, cache=True, parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):

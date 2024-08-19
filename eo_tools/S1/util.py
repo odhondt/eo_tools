@@ -38,6 +38,7 @@ def boxcar(img, dimaz, dimrg):
         imgout[msk] = np.nan
     return imgout
 
+
 def presum(img, m, n):
     """m by n presumming of an image
 
@@ -62,8 +63,8 @@ def presum(img, m, n):
     # and validity of parameters m, n
     M = int(np.floor(img.shape[0] / int(m)) * m)
     N = int(np.floor(img.shape[1] / int(n)) * n)
-    img0 = img[:M, :N]#.copy()  # keep for readability
-    s = img0[::m]#.copy()
+    img0 = img[:M, :N]  # .copy()  # keep for readability
+    s = img0[::m]  # .copy()
     for i in range(1, m):
         s += img0[i::m]
     t = s[:, ::n]
@@ -166,7 +167,7 @@ def remap(img, rr, cc, kernel="bicubic"):
 
     Returns:
         array: Resampled image with same dimensions as rr and cc.
-    """    
+    """
     if np.iscomplexobj(img):
         return _remap(img.real, rr, cc, kernel) + 1j * _remap(img.imag, rr, cc, kernel)
     else:
