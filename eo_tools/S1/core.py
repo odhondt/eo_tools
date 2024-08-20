@@ -241,9 +241,9 @@ class S1IWSwath:
             str: path to the downloaded file
         """
 
-        return self.fetch_dem(burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download)
-
-
+        return self.fetch_dem(
+            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
+        )
 
     @timeit
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
@@ -329,7 +329,7 @@ class S1IWSwath:
             pos - pos[0],
             vel,
             tol=1e-8,
-            maxiter=10000
+            maxiter=10000,
             # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
         )
 
@@ -578,6 +578,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     log.info("Projecting secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
+
 @timeit
 @njit(nogil=True, parallel=True, cache=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
@@ -643,6 +644,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
                         rg_s2p[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)
 
     return az_s2p, rg_s2p
+
 
 @timeit
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
@@ -811,17 +813,6 @@ def read_metadata(pth_xml):
     return meta
 
 
-def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
-    with rasterio.open(pth_tiff) as src:
-        gcps, gcps_crs = src.gcps
-        gcps_burst = [
-            it
-            for it in gcps
-            if it.row >= first_line and it.row <= first_line + number_of_lines
-        ]
-    return gcps_burst, gcps_crs
-
-
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
 
     with rasterio.open(pth_tiff) as src:
@@ -870,30 +861,6 @@ def sv_interpolator_poly(state_vectors):
         return np.vstack((pvx(t_arr), pvy(t_arr), pvz(t_arr))).T
 
     return interp_pos, interp_vel
-
-
-# TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
-# TODO: add upsampling option
-def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False, upscale_factor=1):
-    minmax = lambda x: (x.min(), x.max())
-    xmin, xmax = minmax(np.array([p.x for p in gcps]))
-    ymin, ymax = minmax(np.array([p.y for p in gcps]))
-
-    # DEM dependent
-    step = 1 / 3600
-
-    xmin = floor(xmin / step) * step
-    xmax = ceil(xmax / step) * step
-    ymin = floor(ymin / step) * step
-    ymax = ceil(ymax / step) * step
-
-    off = buffer_arc_sec / 3600
-    shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
-
-    if not os.path.exists(file_dem) or force_download:
-        retrieve_dem(shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor)
-    else:
-        log.info("--DEM already on disk")
 
 
 # TODO add resampling type option
