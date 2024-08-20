@@ -41,7 +41,7 @@ def prepare_insar(
     apply_fast_esd: bool = False,
     warp_kernel: str = "bicubic",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -57,7 +57,7 @@ def prepare_insar(
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
 
@@ -312,7 +312,7 @@ def process_insar(
     write_secondary_amplitude: bool = False,
     apply_fast_esd: bool = False,
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
     dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     filter_ifg: bool = True,
@@ -460,7 +460,7 @@ def preprocess_insar_iw(
     warp_kernel: str = "bicubic",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 

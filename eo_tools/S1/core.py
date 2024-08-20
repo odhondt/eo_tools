@@ -23,10 +23,6 @@ from zipfile import ZipFile
 
 from eo_tools.bench import timeit
 
-# from cv2 import remap, INTER_LANCZOS4, INTER_LINEAR, INTER_CUBIC
-# WARP_RELATIVE_MAP only in dev version for now
-
-# benchmark & debug
 
 
 import logging
@@ -34,7 +30,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: Goldstein, LOS displacement
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
@@ -102,7 +97,6 @@ class S1IWSwath:
         self.burst_count = int(burst_info["burstList"]["@count"])
 
         # extract beta_nought to rescale data
-        # TODO: more advanced calibration (sigma nought)
         calinfo = read_metadata(pth_cal)
         calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
         BN_str = calvec[0]["betaNought"]["#text"]
@@ -164,7 +158,7 @@ class S1IWSwath:
         max_burst=None,
         dir_dem="/tmp",
         buffer_arc_sec=40,
-        force_download=False,
+        force_download=True,
         upscale_factor=1,
     ):
         """Downloads the DEM for a given burst range
@@ -174,7 +168,7 @@ class S1IWSwath:
             max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
-            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
 
         Returns:
             str: path to the downloaded file
@@ -225,7 +219,7 @@ class S1IWSwath:
     # kept for backwards compatibility
     @timeit
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=True
     ):
         """Downloads the DEM for a given burst
 
