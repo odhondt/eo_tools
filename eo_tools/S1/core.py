@@ -160,36 +160,6 @@ class S1IWSwath:
             [float(it["VZ"]["#text"]) for it in orbdata]
         )
 
-    def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
-    ):
-        """Downloads the DEM for a given burst
-
-        Args:
-            burst_idx (int, optional): Burst index. Defaults to 1.
-            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
-            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
-            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
-
-        Returns:
-            str: path to the downloaded file
-        """
-
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
-
-        first_line = (burst_idx - 1) * self.lines_per_burst
-
-        name_dem = f"dem-b{burst_idx}-{self.pth_tiff.stem}.tiff"
-        file_dem = f"{dir_dem}/{name_dem}"
-        gcps, _ = read_gcps(
-            self.pth_tiff, first_line=first_line, number_of_lines=self.lines_per_burst
-        )
-        auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
-        return file_dem
-
     def fetch_dem(
         self,
         min_burst=1,
@@ -199,13 +169,13 @@ class S1IWSwath:
         force_download=False,
         upscale_factor=1,
     ):
-        """Downloads the DEM for a given burst
+        """Downloads the DEM for a given burst range
 
         Args:
             min_burst (int, optional): Minimum burst index. Defaults to 1.
             max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
-            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
 
         Returns:
@@ -228,21 +198,11 @@ class S1IWSwath:
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
 
-        num_bursts = max_burst_ - min_burst + 1
-
-        first_line = (min_burst - 1) * self.lines_per_burst
-
         if min_burst < max_burst_:
             name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
         else:
             name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
         file_dem = f"{dir_dem}/{name_dem}"
-
-        # gcps, _ = read_gcps(
-        #     self.pth_tiff,
-        #     first_line=first_line,
-        #     number_of_lines=num_bursts * self.lines_per_burst,
-        # )
 
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
@@ -255,7 +215,6 @@ class S1IWSwath:
         )
         shp = box(*geom_sub.bounds)
 
-        # auto_dem(file_dem, gcps, buffer_arc_sec, force_download, upscale_factor)
         if not os.path.exists(file_dem) or force_download:
             retrieve_dem(
                 shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
@@ -263,7 +222,28 @@ class S1IWSwath:
         else:
             log.info("--DEM already on disk")
 
-        return file_dem#, gcps
+        return file_dem
+
+    # kept for backwards compatibility
+    @timeit
+    def fetch_dem_burst(
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+    ):
+        """Downloads the DEM for a given burst
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
+
+        Returns:
+            str: path to the downloaded file
+        """
+
+        return self.fetch_dem(burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download)
+
+
 
     @timeit
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
