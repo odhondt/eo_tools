@@ -3,7 +3,6 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
-from math import floor, ceil
 from scipy.interpolate import CubicHermiteSpline
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
@@ -12,8 +11,7 @@ from eo_tools.S1.util import remap
 from eo_tools.auxils import get_burst_geometry
 from shapely.geometry import box
 from rasterio.enums import Resampling
-from numba import njit, prange, float64, int64
-from scipy.ndimage import map_coordinates
+from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
 from joblib import Parallel, delayed
