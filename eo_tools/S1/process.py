@@ -19,8 +19,10 @@ from typing import Union, List
 from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
-
+from osgeo import gdal
+from rasterio.features import geometry_window
 from eo_tools.bench import timeit
+
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +38,7 @@ def prepare_insar(
     apply_fast_esd: bool = False,
     warp_kernel: str = "bicubic",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -52,7 +54,7 @@ def prepare_insar(
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
 
@@ -307,7 +309,7 @@ def process_insar(
     write_secondary_amplitude: bool = False,
     apply_fast_esd: bool = False,
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
     dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     filter_ifg: bool = True,
@@ -455,7 +457,7 @@ def preprocess_insar_iw(
     warp_kernel: str = "bicubic",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = False,
+    dem_force_download: bool = True,
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -538,7 +540,7 @@ def preprocess_insar_iw(
     nrg = prm.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    luts = _child_process(
+    _child_process(
         _process_bursts,
         (
             prm,
@@ -555,6 +557,7 @@ def preprocess_insar_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             warp_kernel,
+            overlap,
         ),
     )
 
@@ -594,9 +597,7 @@ def preprocess_insar_iw(
                 overlap,
             ),
         )
-    _child_process(
-        _merge_luts, (luts, f"{dir_out}/lut.tif", prm.lines_per_burst, overlap, 4)
-    )
+
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -604,10 +605,7 @@ def preprocess_insar_iw(
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
-    for i in range(min_burst, max_burst_ + 1):
-        fname = f"{dir_out}/lut_{i}.tif"
-        if os.path.isfile(fname):
-            os.remove(fname)
+
 
     log.info("Done")
 
@@ -666,11 +664,6 @@ def sar2geo(
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
-    # incompatible with COG, not needed (?) elsewhere
-    prof_dst.pop("blockxsize", None)
-    prof_dst.pop("blockysize", None)
-    prof_dst.pop("tiled", None)
-    prof_dst.pop("interleave", None)
     cog_dict = dict(
         driver="COG",
         compress="zstd",
@@ -678,12 +671,16 @@ def sar2geo(
         resampling="nearest",
         overview_resampling="nearest",
     )
+    # incompatible with COG, not needed (?) elsewhere
+    prof_dst.pop("blockxsize", None)
+    prof_dst.pop("blockysize", None)
+    prof_dst.pop("tiled", None)
+    prof_dst.pop("interleave", None)
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
         prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
-        # removing COG incompatible options
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(phi, 1)
     else:
@@ -692,7 +689,6 @@ def sar2geo(
             nodata = 0
             mag[np.isnan(mag)] = nodata
             prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
-            # removing incompatible options
             with rio.open(out_file, "w", **prof_dst) as dst:
                 dst.write(mag, 1)
         else:
@@ -856,6 +852,7 @@ def coherence(
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
+
 @timeit
 def _process_bursts(
     prm,
@@ -872,8 +869,10 @@ def _process_bursts(
     dem_buffer_arc_sec,
     dem_force_download,
     warp_kernel,
+    overlap,
 ):
-    luts = []
+
+    H = int(overlap / 2)
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -883,27 +882,81 @@ def _process_bursts(
         nodata=np.nan,
         # compress="zstd",
         # num_threads="all_cpus",
+        tiled=True,
+        blockxsize=512,
+        blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
+    file_dem = prm.fetch_dem(
+        min_burst,
+        max_burst,
+        dir_dem,
+        buffer_arc_sec=dem_buffer_arc_sec,
+        force_download=dem_force_download,
+        upscale_factor=dem_upsampling,
+    )
+    file_lut = f"{dir_out}/lut.tif"
+    with rio.open(file_dem) as ds_dem:
+        width_lut = ds_dem.width
+        height_lut = ds_dem.height
+        crs_lut = ds_dem.crs
+        transform_lut = ds_dem.transform
+
+    prof_lut = dict(
+        width=width_lut,
+        height=height_lut,
+        count=2,
+        dtype=np.float64,
+        crs=crs_lut,
+        transform=transform_lut,
+        nodata=np.nan,
+        tiled=True,
+        blockxsize=512,
+        blockysize=512,
+    )
+
+    arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
+
     with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
         with rio.open(tmp_sec, "w", **prof_tmp) as ds_sec:
-
+            off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
                 # compute geocoding LUTs (lookup tables) for Primary and Secondary bursts
-                file_dem = prm.fetch_dem_burst(
-                    burst_idx,
-                    dir_dem,
-                    buffer_arc_sec=dem_buffer_arc_sec,
-                    force_download=dem_force_download,
+                file_dem_burst = f"{dir_out}/dem_burst.tif"
+                burst_geoms = prm.gdf_burst_geom
+                burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
+                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
+
+                with rio.open(file_dem) as ds_dem:
+                    w = geometry_window(ds_dem, shapes=[shp])
+                    # window to read in the DEM
+                    burst_window = [w.col_off, w.row_off, w.width, w.height]
+                    # pixel position to write burst in the LUT
+                    slices = w.toslices()
+
+                # use virtual raster to keep using the same geocoding function
+                file_dem_burst = f"{dir_out}/dem_burst.vrt"
+                gdal.Translate(
+                    destName=file_dem_burst,
+                    srcDS=file_dem,
+                    format="VRT",
+                    srcWin=burst_window,
+                    creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
                 )
-                az_p2g, rg_p2g, dem_profile = prm.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+
+                # this implementation upsamples DEM at download, not during geocoding
+                az_p2g, rg_p2g, _ = prm.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx,
+                    dem_upsampling=1,
                 )
-                az_s2g, rg_s2g, dem_profile = sec.geocode_burst(
-                    file_dem, burst_idx=burst_idx, dem_upsampling=dem_upsampling
+                az_s2g, rg_s2g, _ = sec.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx,
+                    dem_upsampling=1,
                 )
 
                 # read primary and secondary burst rasters
@@ -930,13 +983,11 @@ def _process_bursts(
                 pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-                lut_da = _make_da_from_dem(np.stack((az_p2g, rg_p2g)), dem_profile)
-                lut_da.rio.to_raster(f"{dir_out}/lut_{burst_idx}.tif", Tiled=True)
-                luts.append(f"{dir_out}/lut_{burst_idx}.tif")
-
                 arr_s *= pha_topo
 
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
+
+                # write the coregistered SLCs
                 ds_prm.write(
                     arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
                 )
@@ -945,7 +996,21 @@ def _process_bursts(
                     1,
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
-    return luts
+
+                # place overlapping burst LUT with azimuth offset
+                if burst_idx > min_burst:
+                    msk_overlap = az_p2g < H
+                    az_p2g[msk_overlap] = np.nan
+                    rg_p2g[msk_overlap] = np.nan
+                msk = ~np.isnan(az_p2g)
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
+                off_az += prm.lines_per_burst - 2 * H
+
+
+    with rio.open(file_lut, "w", **prof_lut) as ds_lut:
+        ds_lut.write(arr_lut)
+
 
 
 def _apply_fast_esd(
@@ -1065,53 +1130,6 @@ def _stitch_bursts(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
                 off_dst += nlines
-
-
-def _make_da_from_dem(arr, dem_prof):
-
-    darr = xr.DataArray(
-        data=arr,
-        dims=("band", "y", "x"),
-    )
-    darr = darr.chunk(chunks="auto")
-    darr.rio.write_crs(dem_prof["crs"], inplace=True)
-    darr.rio.write_transform(dem_prof["transform"], inplace=True)
-    darr.attrs["_FillValue"] = np.nan
-    return darr
-
-
-def _merge_luts(files_lut, file_out, lines_per_burst, overlap, offset=4):
-
-    log.info("Merging LUT")
-    off = 0
-    H = int(overlap / 2)
-    naz = lines_per_burst
-    to_merge = []
-    for i, file_lut in enumerate(files_lut):
-        # lut = riox.open_rasterio(file_lut, chunks=True, lock=False)
-        lut = riox.open_rasterio(file_lut)  # , chunks=True)#, lock=False)
-        # lut = riox.open_rasterio(file_lut, cache=False)
-        cnd = (lut[0] >= H - offset) & (lut[0] < naz - H + offset)
-        lut = lut.where(xr.broadcast(cnd, lut)[0], np.nan)
-
-        if i == 0:
-            off2 = off
-        else:
-            off2 = off - H
-        lut[0] += off2
-        if i == 0:
-            off += naz - H
-        else:
-            off += naz - 2 * H
-        lut.attrs["_FillValue"] = np.nan
-        lut.rio.write_nodata(np.nan)
-        to_merge.append(lut)
-
-    merged = merge_arrays(to_merge, parse_coordinates=False)
-    merged.rio.to_raster(
-        file_out
-        # file_out, compress="zstd", num_threads="all_cpus"
-    )  # , windowed=False, tiled=True)
 
 
 def _child_process(func, args):
