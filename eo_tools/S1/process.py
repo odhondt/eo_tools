@@ -27,6 +27,155 @@ from eo_tools.bench import timeit
 log = logging.getLogger(__name__)
 
 
+def process_insar(
+    dir_prm: str,
+    dir_sec: str,
+    outputs_prefix: str,
+    aoi_name: str = None,
+    shp: shape = None,
+    pol: Union[str, List[str]] = "full",
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    write_coherence: bool = True,
+    write_interferogram: bool = True,
+    write_primary_amplitude: bool = True,
+    write_secondary_amplitude: bool = False,
+    apply_fast_esd: bool = False,
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = True,
+    dem_buffer_arc_sec: float = 40,
+    boxcar_coherence: Union[int, List[int]] = [3, 10],
+    filter_ifg: bool = True,
+    multilook: List[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+) -> str:
+    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
+    AOI crop is optional.
+
+    Args:
+        dir_prm (str): primary image (SLC Sentinel-1 product directory).
+        dir_sec (str): secondary image (SLC Sentinel-1 productdirectory).
+        outputs_prefix (str): location in which the product subdirectory will be created
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
+        write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
+        write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
+        write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
+        apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
+        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
+        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+
+    Returns:
+        str: output directory
+    """
+
+    if not np.any([coherence, interferogram]):
+        raise ValueError(
+            "At least one of `write_coherence` and `write_interferogram` must be True."
+        )
+
+    # prepare pair for interferogram computation
+    out_dir = prepare_insar(
+        dir_prm=dir_prm,
+        dir_sec=dir_sec,
+        outputs_prefix=outputs_prefix,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol=pol,
+        apply_fast_esd=apply_fast_esd,
+        subswaths=subswaths,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+    )
+
+    var_names = []
+    if write_coherence:
+        var_names.append("coh")
+    if write_interferogram:
+        var_names.append("ifg")
+    if write_primary_amplitude:
+        var_names.append("amp_prm")
+    if write_secondary_amplitude:
+        var_names.append("amp_sec")
+
+    if isinstance(pol, str):
+        if pol == "full":
+            pol_ = ["vv", "vh"]
+        else:
+            pol_ = [pol.lower()]
+    elif isinstance(pol, list):
+        pol_ = [p.lower() for p in pol]
+
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
+    for pattern in patterns:
+        file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
+        file_sec = f"{out_dir}/slc_sec_{pattern}.tif"
+
+        if os.path.isfile(file_prm) and os.path.isfile(file_sec):
+            log.info(
+                f"---- Interferometric outputs for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+            if write_coherence and write_interferogram:
+                file_coh = f"{out_dir}/coh_{pattern}.tif"
+                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
+                coherence(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                    file_complex_ifg=file_ifg,
+                    filter_ifg=filter_ifg,
+                )
+            elif write_coherence and not write_interferogram:
+                file_coh = f"{out_dir}/coh_{pattern}.tif"
+                coherence(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_coh,
+                    box_size=boxcar_coherence,
+                    magnitude=True,
+                )
+            elif not write_coherence and write_interferogram:
+                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
+                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
+
+            if write_primary_amplitude:
+                file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
+                amplitude(file_in=file_prm, file_out=file_ampl)
+
+            if write_secondary_amplitude:
+                file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
+                amplitude(file_in=file_sec, file_out=file_ampl)
+
+    # by default, we use iw and pol which exist
+    geocode_and_merge_iw(
+        input_dir=Path(out_dir).parent,
+        var_names=var_names,
+        shp=shp,
+        pol=["vv", "vh"],
+        subswaths=["IW1", "IW2", "IW3"],
+        multilook=multilook,
+        warp_kernel=warp_kernel,
+        clip_to_shape=clip_to_shape,
+    )
+    return Path(out_dir).parent
+
+
 def prepare_insar(
     dir_prm: str,
     dir_sec: str,
@@ -295,155 +444,6 @@ def geocode_and_merge_iw(
             raise FileNotFoundError(f"No file was found for variable {var}")
 
 
-def process_insar(
-    dir_prm: str,
-    dir_sec: str,
-    outputs_prefix: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    write_coherence: bool = True,
-    write_interferogram: bool = True,
-    write_primary_amplitude: bool = True,
-    write_secondary_amplitude: bool = False,
-    apply_fast_esd: bool = False,
-    dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
-    dem_buffer_arc_sec: float = 40,
-    boxcar_coherence: Union[int, List[int]] = [3, 10],
-    filter_ifg: bool = True,
-    multilook: List[int] = [1, 4],
-    warp_kernel: str = "bicubic",
-    clip_to_shape: bool = True,
-    skip_preprocessing: bool = False,
-) -> str:
-    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
-    AOI crop is optional.
-
-    Args:
-        dir_prm (str): primary image (SLC Sentinel-1 product directory).
-        dir_sec (str): secondary image (SLC Sentinel-1 productdirectory).
-        outputs_prefix (str): location in which the product subdirectory will be created
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
-        write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
-        write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
-        write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
-        apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
-        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
-        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
-        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
-        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
-        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
-
-    Returns:
-        str: output directory
-    """
-
-    if not np.any([coherence, interferogram]):
-        raise ValueError(
-            "At least one of `write_coherence` and `write_interferogram` must be True."
-        )
-
-    # prepare pair for interferogram computation
-    out_dir = prepare_insar(
-        dir_prm=dir_prm,
-        dir_sec=dir_sec,
-        outputs_prefix=outputs_prefix,
-        aoi_name=aoi_name,
-        shp=shp,
-        pol=pol,
-        apply_fast_esd=apply_fast_esd,
-        subswaths=subswaths,
-        dem_upsampling=dem_upsampling,
-        dem_force_download=dem_force_download,
-        dem_buffer_arc_sec=dem_buffer_arc_sec,
-        skip_preprocessing=skip_preprocessing,
-    )
-
-    var_names = []
-    if write_coherence:
-        var_names.append("coh")
-    if write_interferogram:
-        var_names.append("ifg")
-    if write_primary_amplitude:
-        var_names.append("amp_prm")
-    if write_secondary_amplitude:
-        var_names.append("amp_sec")
-
-    if isinstance(pol, str):
-        if pol == "full":
-            pol_ = ["vv", "vh"]
-        else:
-            pol_ = [pol.lower()]
-    elif isinstance(pol, list):
-        pol_ = [p.lower() for p in pol]
-
-    iw_idx = [iw[2] for iw in subswaths]
-    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
-    for pattern in patterns:
-        file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
-        file_sec = f"{out_dir}/slc_sec_{pattern}.tif"
-
-        if os.path.isfile(file_prm) and os.path.isfile(file_sec):
-            log.info(
-                f"---- Interferometric outputs for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
-            if write_coherence and write_interferogram:
-                file_coh = f"{out_dir}/coh_{pattern}.tif"
-                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                coherence(
-                    file_prm=file_prm,
-                    file_sec=file_sec,
-                    file_out=file_coh,
-                    box_size=boxcar_coherence,
-                    magnitude=True,
-                    file_complex_ifg=file_ifg,
-                    filter_ifg=filter_ifg,
-                )
-            elif write_coherence and not write_interferogram:
-                file_coh = f"{out_dir}/coh_{pattern}.tif"
-                coherence(
-                    file_prm=file_prm,
-                    file_sec=file_sec,
-                    file_out=file_coh,
-                    box_size=boxcar_coherence,
-                    magnitude=True,
-                )
-            elif not write_coherence and write_interferogram:
-                file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
-
-            if write_primary_amplitude:
-                file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(file_in=file_prm, file_out=file_ampl)
-
-            if write_secondary_amplitude:
-                file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(file_in=file_sec, file_out=file_ampl)
-
-    # by default, we use iw and pol which exist
-    geocode_and_merge_iw(
-        input_dir=Path(out_dir).parent,
-        var_names=var_names,
-        shp=shp,
-        pol=["vv", "vh"],
-        subswaths=["IW1", "IW2", "IW3"],
-        multilook=multilook,
-        warp_kernel=warp_kernel,
-        clip_to_shape=clip_to_shape,
-    )
-    return Path(out_dir).parent
-
-
 def preprocess_insar_iw(
     dir_primary: str,
     dir_secondary: str,
@@ -598,14 +598,12 @@ def preprocess_insar_iw(
             ),
         )
 
-
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
-
 
     log.info("Done")
 
@@ -1007,10 +1005,8 @@ def _process_bursts(
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
                 off_az += prm.lines_per_burst - 2 * H
 
-
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
         ds_lut.write(arr_lut)
-
 
 
 def _apply_fast_esd(
