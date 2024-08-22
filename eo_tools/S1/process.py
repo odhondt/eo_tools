@@ -23,6 +23,8 @@ from osgeo import gdal
 from rasterio.features import geometry_window
 from eo_tools.bench import timeit
 
+# use child processes
+USE_CP = True
 
 log = logging.getLogger(__name__)
 
@@ -854,7 +856,6 @@ def coherence(
 # Auxiliary functions which are not supposed to be used outside of the processor
 
 
-@timeit
 def _process_bursts(
     prm,
     sec,
@@ -1133,6 +1134,9 @@ def _stitch_bursts(
 
 def _child_process(func, args):
     # convenience function to make code prettier
-    with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-        res = e.submit(func, *args).result()
-    return res
+    if USE_CP:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+            res = e.submit(func, *args).result()
+        return res
+    else:
+        return func(*args)
