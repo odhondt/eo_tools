@@ -217,7 +217,6 @@ class S1IWSwath:
         return file_dem
 
     # kept for backwards compatibility
-    @timeit
     def fetch_dem_burst(
         self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=True
     ):
@@ -237,7 +236,6 @@ class S1IWSwath:
             burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
         )
 
-    @timeit
     def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -571,7 +569,6 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
-@timeit
 @njit(nogil=True, parallel=True, cache=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
@@ -638,7 +635,6 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
     return az_s2p, rg_s2p
 
 
-@timeit
 def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
     """Aligns the secondary image to the geometry of the primary
 
@@ -856,7 +852,6 @@ def sv_interpolator_poly(state_vectors):
 
 
 # TODO add resampling type option
-@timeit
 def load_dem_coords(file_dem, upscale_factor=1):
 
     with rasterio.open(file_dem) as ds:
@@ -910,7 +905,6 @@ def load_dem_coords(file_dem, upscale_factor=1):
 
 
 # TODO produce right composite crs for each DEM
-@timeit
 def lla_to_ecef(lat, lon, alt, dem_crs):
 
     # TODO: use parameter instead

@@ -856,7 +856,6 @@ def coherence(
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
-@timeit
 def _process_bursts(
     prm,
     sec,
