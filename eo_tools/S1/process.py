@@ -115,6 +115,8 @@ def process_insar(
     if write_secondary_amplitude:
         var_names.append("amp_sec")
 
+
+
     if isinstance(pol, str):
         if pol == "full":
             pol_ = ["vv", "vh"]
@@ -220,6 +222,9 @@ def prepare_insar(
         aoi_substr = ""
     else:
         aoi_substr = f"_{aoi_name}"
+
+    if not isinstance(subswaths, list):
+        raise ValueError("Subswaths have to be a list like ['IW1', 'IW2'].")
 
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
