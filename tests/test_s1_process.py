@@ -6,7 +6,12 @@ import xarray as xr
 from eo_tools.S1.process import coherence, process_insar
 import geopandas as gpd
 import multiprocessing
-multiprocessing.set_start_method('forkserver', force=True)
+
+multiprocessing.set_start_method("forkserver", force=True)
+import warnings
+import rasterio
+
+from glob import glob
 
 
 # TODO create dataArrays instead of datasets
@@ -29,8 +34,14 @@ def create_test_data():
 
 def test_coherence(create_test_data):
     prm_file, sec_file, out_file = create_test_data
-    coherence(prm_file, sec_file, out_file)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", category=rasterio.errors.NotGeoreferencedWarning
+        )
+        coherence(prm_file, sec_file, out_file)
     assert os.path.exists(out_file)
+
 
 def test_process_insar(tmp_path):
 
@@ -43,6 +54,7 @@ def test_process_insar(tmp_path):
     ]
     primary_dir = f"{data_dir}/{ids[0]}.SAFE"
     secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
+
     process_args = dict(
         dir_prm=primary_dir,
         dir_sec=secondary_dir,
@@ -63,12 +75,14 @@ def test_process_insar(tmp_path):
         boxcar_coherence=[3, 10],
         filter_ifg=True,
         multilook=[2, 8],
-        # multilook=[4, 16],
         warp_kernel="nearest",
-        # warp_kernel="bicubic",
         clip_to_shape=True,
     )
-    out_dir = process_insar(
-        **process_args 
-    )
+    # ignore zero division inherent to "fake" test data
+    out_dir = process_insar(**process_args)
     assert out_dir
+    for name in ("coh", "phi", "amp_prm"):
+        assert glob(f"{out_dir}/{name}_vv.tif")
+    for iw in ("iw1", "iw2"):
+        for name in ("slc_prm", "slc_sec", "coh", "amp_prm", "lut"):
+            assert glob(f"{out_dir}/sar/{name}_vv_{iw}.tif")
