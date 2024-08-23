@@ -499,6 +499,9 @@ def preprocess_insar_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
+    
+    if dem_force_download:
+        log.warning("dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec.")
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -1015,8 +1018,11 @@ def _process_bursts(
             arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
             off_az += prm.lines_per_burst - 2 * H
 
+    remove(file_dem_burst)
+
     with rio.open(file_lut, "w", **prof_lut) as ds_lut:
         ds_lut.write(arr_lut)
+    
 
 
 def _apply_fast_esd(
