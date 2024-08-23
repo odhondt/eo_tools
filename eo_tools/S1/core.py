@@ -938,7 +938,6 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
         dem_y[b1:b2] = chunked[i][1]
         dem_z[b1:b2] = chunked[i][2]
 
-    log.info(f"demx shape: {dem_x.shape}")
     return dem_x, dem_y, dem_z
 
 
