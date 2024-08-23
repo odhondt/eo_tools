@@ -224,7 +224,7 @@ def prepare_insar(
         aoi_substr = f"_{aoi_name}"
 
     if not isinstance(subswaths, list):
-        raise ValueError("Subswaths have to be a list like ['IW1', 'IW2'].")
+        raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
 
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
