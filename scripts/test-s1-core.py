@@ -1,9 +1,12 @@
 # %%
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import align, coregister
-from eo_tools_dev.util import show_insar_phi
-
 from eo_tools.S1.util import presum
+from eo_tools_dev.util import show_cog, serve_map, palette_phi
+from math import pi
+import folium
+from folium import LayerControl
+
 import numpy as np
 import os
 
@@ -166,3 +169,12 @@ phi = np.arctan2(ifg[1], ifg[0])
 phi = phi.fillna(nodata)
 phi.attrs["_FillValue"] = nodata
 phi.rio.to_raster(f"{out_dir}/merged_phi.tif", nodata=nodata)
+
+ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
+m = folium.Map()
+_ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+_ = show_cog(f"{out_dir}/merged_phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+LayerControl().add_to(m)
+
+# open in a browser
+serve_map(m)
