@@ -1,6 +1,7 @@
 import folium
-
-
+import tempfile
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+import webbrowser
 import os
 import numpy as np
 import json
@@ -332,6 +333,42 @@ def show_cog(url, folium_map=None, port=8085, **kwargs):
     m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
     return m
+
+def serve_map(map_object, port=8000):
+    """Opens folium map in a browser by starting a local server.
+
+    Args:
+        map_object (folim.Map): map to display
+        port (int, optional): port on localhost. Defaults to 8000.
+    """    
+    # temporary file to store the html map
+    with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp_file:
+        map_filename = tmp_file.name
+        map_dir = os.path.dirname(map_filename)  # Directory of the temp file
+        map_object.save(map_filename)
+
+    def start_server():
+        os.chdir(map_dir)
+        
+        handler = SimpleHTTPRequestHandler
+        httpd = HTTPServer(("", port), handler)
+        print(f"Serving map on http://localhost:{port}/{os.path.basename(map_filename)}")
+        
+        # Open the map in the default web browser
+        webbrowser.open(f"http://localhost:{port}/{os.path.basename(map_filename)}")
+
+        # hit ctrl-c to serve
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\nServer stopped by user.")
+        finally:
+            # delete the temporary file after server stops
+            os.remove(map_filename)
+            httpd.server_close()
+            print("Temporary file deleted and server closed.")
+
+    start_server()
 
 
 # TODO: Other band combinations ( NDVI, ...)

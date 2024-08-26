@@ -2,13 +2,11 @@ import pytest
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import range_doppler
 import numpy as np
-import pytest
-from numba import njit, prange
 
 
 @pytest.fixture
 def create_swath():
-    safe_dir = "./data/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
+    safe_dir = "./data/S1/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
     iw = 1
     pol = "vh"
     return S1IWSwath(safe_dir, iw, pol)

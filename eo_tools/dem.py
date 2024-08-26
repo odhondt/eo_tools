@@ -2,11 +2,12 @@ import logging
 from pystac_client.client import Client
 import rioxarray as riox
 from rioxarray.merge import merge_arrays
+from rasterio.enums import Resampling
 
 log = logging.getLogger(__name__)
 
 
-def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30"):
+def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", upscale_factor=1):
     """Downloads a DEM for a given geometry from Microsoft Planetary Computer
 
     Args:
@@ -15,6 +16,7 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30"):
         dem_name (str, optional): One of the available collections ('alos-dem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'nasadem'). Defaults to "cop-dem-glo-30".
         tmp_dir (str, optional): Temporary directory where the tiles to be merged and cropped will be stored. Defaults to "/tmp".
         clear_tmp_files (bool, optional): Delete original tiles. Set to False if these are to be reused.
+        upscale_factor (float, optional): Upsampling factor.
     """
 
     log.info("Retrieve DEM")
@@ -40,4 +42,17 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30"):
         to_merge.append(da)
 
     dem = merge_arrays(to_merge).rio.clip([shp], all_touched=True)
-    dem.rio.to_raster(file_out)
+    if upscale_factor == 1:
+        dem.rio.to_raster(file_out)
+    elif upscale_factor > 0:
+        log.info("Upsampling DEM")
+        new_width = int(dem.rio.width * upscale_factor)
+        new_height = int(dem.rio.height * upscale_factor)
+        dem_upsampled = dem.rio.reproject(
+            dem.rio.crs,
+            shape=(new_height, new_width),
+            resampling=Resampling.bilinear,
+        )
+        dem_upsampled.rio.to_raster(file_out, tiled=True, blockxsize=512, blockysize=512)
+    else:
+        raise ValueError("Upsampling factor must be positive.")

@@ -3,16 +3,15 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
-from math import floor, ceil
 from scipy.interpolate import CubicHermiteSpline
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
+from eo_tools.auxils import get_burst_geometry
 from shapely.geometry import box
 from rasterio.enums import Resampling
 from numba import njit, prange
-from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
 from pyproj import Transformer
 from joblib import Parallel, delayed
@@ -21,10 +20,9 @@ from pyroSAR import identify
 from xmltodict import parse
 from zipfile import ZipFile
 
-# from cv2 import remap, INTER_LANCZOS4, INTER_LINEAR, INTER_CUBIC
-# WARP_RELATIVE_MAP only in dev version for now
 
-# benchmark & debug
+from eo_tools.bench import timeit
+
 
 
 import logging
@@ -32,7 +30,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: Goldstein, LOS displacement
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
@@ -54,6 +51,12 @@ class S1IWSwath:
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
+
+        if not isinstance(iw, int) or iw < 1 or iw > 3:
+            raise ValueError("Parameter 'iw' must an int be between 1 and 3")
+
+        if pol not in ["vv", "vh"]:
+            raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
         # check product type using dir name
         parts = Path(safe_dir).stem.split("_")
@@ -94,11 +97,17 @@ class S1IWSwath:
         self.burst_count = int(burst_info["burstList"]["@count"])
 
         # extract beta_nought to rescale data
-        # TODO: more advanced calibration (sigma nought)
         calinfo = read_metadata(pth_cal)
         calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
         BN_str = calvec[0]["betaNought"]["#text"]
         self.beta_nought = float(BN_str.split(" ")[0])
+
+        # read burst geometries
+        self.gdf_burst_geom = get_burst_geometry(
+            path=safe_dir, target_subswaths=f"IW{iw}", polarization=pol.upper()
+        )
+        if self.gdf_burst_geom.empty:
+            raise RuntimeError("Invalid product: no burst geometry was found.")
 
         log.info(f"S1IWSwath Initialization:")
         log.info(f"- Reading metadata file {pth_xml}")
@@ -143,8 +152,73 @@ class S1IWSwath:
             [float(it["VZ"]["#text"]) for it in orbdata]
         )
 
+    def fetch_dem(
+        self,
+        min_burst=1,
+        max_burst=None,
+        dir_dem="/tmp",
+        buffer_arc_sec=40,
+        force_download=True,
+        upscale_factor=1,
+    ):
+        """Downloads the DEM for a given burst range
+
+        Args:
+            min_burst (int, optional): Minimum burst index. Defaults to 1.
+            max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
+            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
+
+        Returns:
+            str: path to the downloaded file
+        """
+
+        if not max_burst:
+            max_burst_ = self.burst_count
+        else:
+            max_burst_ = max_burst
+
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid min burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < 1 or max_burst_ > self.burst_count:
+            raise ValueError(
+                f"Invalid max burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < min_burst:
+            raise ValueError("max_burst must be >= min_burst")
+
+        if min_burst < max_burst_:
+            name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
+        else:
+            name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
+        file_dem = f"{dir_dem}/{name_dem}"
+
+        # use buffer bounds around union of burst geometries
+        geom_all = self.gdf_burst_geom
+        geom_sub = (
+            geom_all[
+                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst)
+            ]
+            .union_all()
+            .buffer(buffer_arc_sec / 3600)
+        )
+        shp = box(*geom_sub.bounds)
+
+        if not os.path.exists(file_dem) or force_download:
+            retrieve_dem(
+                shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+            )
+        else:
+            log.info("--DEM already on disk")
+
+        return file_dem
+
+    # kept for backwards compatibility
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=True
     ):
         """Downloads the DEM for a given burst
 
@@ -158,22 +232,11 @@ class S1IWSwath:
             str: path to the downloaded file
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
-
-        first_line = (burst_idx - 1) * self.lines_per_burst
-
-        name_dem = f"dem-b{burst_idx}-{self.pth_tiff.stem}.tiff"
-        file_dem = f"{dir_dem}/{name_dem}"
-        gcps, _ = read_gcps(
-            self.pth_tiff, first_line=first_line, number_of_lines=self.lines_per_burst
+        return self.fetch_dem(
+            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
         )
-        auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
-        return file_dem
 
-    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
+    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
@@ -213,7 +276,10 @@ class S1IWSwath:
         # orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
         # state_vectors = orbit_list["orbit"]
 
-        log.info("DEM upsampling and extract coordinates")
+        if dem_upsampling != 1:
+            log.info("DEM resampling and extract coordinates")
+        else:
+            log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
@@ -253,6 +319,7 @@ class S1IWSwath:
             pos - pos[0],
             vel,
             tol=1e-8,
+            maxiter=10000,
             # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
         )
 
@@ -502,7 +569,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
-@njit(nogil=True, parallel=True)
+@njit(nogil=True, parallel=True, cache=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
@@ -525,6 +592,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     az_s2p = np.full((naz, nrg), np.nan)
     rg_s2p = np.full((naz, nrg), np.nan)
+    p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -552,7 +620,9 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
                     # - separate into 2 triangles
                     # - test if each point falls into triangle 1 or 2
                     # - interpolate the secondary range and azimuth using triangle vertices
-                    p = np.array([a, r])
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
@@ -611,7 +681,6 @@ def resample(
 
     log.info("Warp to match DEM geometry")
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
-
 
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
@@ -732,17 +801,6 @@ def read_metadata(pth_xml):
     return meta
 
 
-def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
-    with rasterio.open(pth_tiff) as src:
-        gcps, gcps_crs = src.gcps
-        gcps_burst = [
-            it
-            for it in gcps
-            if it.row >= first_line and it.row <= first_line + number_of_lines
-        ]
-    return gcps_burst, gcps_crs
-
-
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
 
     with rasterio.open(pth_tiff) as src:
@@ -793,48 +851,33 @@ def sv_interpolator_poly(state_vectors):
     return interp_pos, interp_vel
 
 
-# TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
-def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
-    minmax = lambda x: (x.min(), x.max())
-    xmin, xmax = minmax(np.array([p.x for p in gcps]))
-    ymin, ymax = minmax(np.array([p.y for p in gcps]))
-
-    # DEM dependent
-    step = 1 / 3600
-
-    xmin = floor(xmin / step) * step
-    xmax = ceil(xmax / step) * step
-    ymin = floor(ymin / step) * step
-    ymax = ceil(ymax / step) * step
-
-    off = buffer_arc_sec / 3600
-    shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
-
-    if not os.path.exists(file_dem) or force_download:
-        retrieve_dem(shp, file_dem, dem_name="nasadem")
-    else:
-        log.info("--DEM already on disk")
-
-
-# TODO add resampling options
-def load_dem_coords(file_dem, upscale_factor=2):
+# TODO add resampling type option
+def load_dem_coords(file_dem, upscale_factor=1):
 
     with rasterio.open(file_dem) as ds:
-        # on-the-fly resampling
-        alt = ds.read(
-            out_shape=(
-                ds.count,
-                int(ds.height * upscale_factor),
-                int(ds.width * upscale_factor),
-            ),
-            resampling=Resampling.bilinear,
-            # resampling=Resampling.cubic,
-        )[0]
-        # scale image transform
-        dem_prof = ds.profile.copy()
-        dem_trans = ds.transform * ds.transform.scale(
-            (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
-        )
+        if upscale_factor != 1:
+            # on-read resampling
+            alt = ds.read(
+                out_shape=(
+                    ds.count,
+                    int(ds.height * upscale_factor),
+                    int(ds.width * upscale_factor),
+                ),
+                resampling=Resampling.bilinear,
+                # resampling=Resampling.cubic,
+            )[0]
+            # scale image transform
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform * ds.transform.scale(
+                (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
+            )
+            nodata = ds.nodata
+        else:
+            alt = ds.read(1)
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform
+            nodata = ds.nodata
+
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -850,8 +893,15 @@ def load_dem_coords(file_dem, upscale_factor=2):
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
 
+    # make sure nodata is nan in output
+    if not np.isnan(nodata):
+        msk = alt == nodata
+    alt = alt.astype("float64")
+    if not np.isnan(nodata):
+        alt[msk] = np.nan
+
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt.astype("float64"), dem_prof
+    return lat, lon, alt, dem_prof
 
 
 # TODO produce right composite crs for each DEM
@@ -891,7 +941,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     return dem_x, dem_y, dem_z
 
 
-@njit(parallel=True)
+@njit(nogil=True, cache=True, parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
         factors = t - np.floor(t)
@@ -919,6 +969,8 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         x_val = xx[i]
         y_val = yy[i]
         z_val = zz[i]
+        if np.isnan(x_val):
+            continue
         a = 0
         b = num_orbits - 1
         fa, _, _, _ = doppler_freq(
@@ -934,11 +986,11 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             r_zd[i] = np.nan
             continue
 
-        if abs(fa) < tol:
+        if np.abs(fa) < tol:
             i_zd[i] = a
             r_zd[i] = 0
             continue
-        elif abs(fb) < tol:
+        elif np.abs(fb) < tol:
             i_zd[i] = b
             r_zd[i] = 0
             continue
@@ -949,7 +1001,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         )
 
         its = 0
-        while abs(fc) > tol and its < maxiter:
+        while np.abs(fc) > tol and its < maxiter:
             its += 1
             if fa * fc < 0:
                 b = c
