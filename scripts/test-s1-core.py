@@ -1,4 +1,13 @@
 # %%
+# Uncomment the next block to test conda imports
+
+# import sys
+# sys.path.remove("/eo_tools")
+# sys.path.append("/eo_tools/") # workaround to include eo_tools_dev
+# import eo_tools
+# print(f"EO-Tools imported from:")
+# print(f"{eo_tools.__file__=}")
+
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import align, coregister
 from eo_tools.S1.util import presum
@@ -13,6 +22,8 @@ import os
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 

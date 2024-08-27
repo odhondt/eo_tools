@@ -5,14 +5,15 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("numexpr").setLevel(logging.WARNING)
 
-# Uncomment these lines to test conda imports
+# Uncomment the next block to test conda imports
+
 # import sys
 # sys.path.remove("/eo_tools")
+# sys.path.append("/eo_tools") # workaround to include eo_tools_dev
 # import eo_tools
 # print(f"EO-Tools imported from:")
 # print(f"{eo_tools.__file__=}")
 
-# from folium import LayerControl
 import os
 import geopandas as gpd
 # from eodag import EODataAccessGateway
