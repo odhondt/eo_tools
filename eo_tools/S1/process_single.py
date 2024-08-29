@@ -224,7 +224,7 @@ def process_slc(
         )
 
     # prepare pair for interferogram computation
-    out_dir = prepare_insar(
+    out_dir = prepare_slc(
         dir_prm=dir_prm,
         outputs_prefix=outputs_prefix,
         aoi_name=aoi_name,
