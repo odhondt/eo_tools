@@ -187,6 +187,7 @@ def process_slc(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    cal_type: str = "sigmaNaught",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = True,
@@ -231,6 +232,7 @@ def process_slc(
         shp=shp,
         pol=pol,
         subswaths=subswaths,
+        cal_type=cal_type,
         dir_dem=dir_dem,
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
@@ -433,7 +435,8 @@ def prepare_slc(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    warp_kernel: str = "bicubic",
+    cal_type: str = "sigmaNaought",
+    # warp_kernel: str = "bicubic",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = True,
@@ -535,7 +538,8 @@ def prepare_slc(
                     pol=p.lower(),
                     min_burst=burst_prm_min,
                     max_burst=burst_prm_max,
-                    warp_kernel=warp_kernel,
+                    cal_type=cal_type,
+                    # warp_kernel=warp_kernel,
                     dir_dem=dir_dem,
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
@@ -719,7 +723,7 @@ def preprocess_insar_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
-    if dem_force_download:
+    if not dem_force_download:
         log.warning(
             "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
         )
@@ -849,7 +853,8 @@ def preprocess_slc_iw(
     pol: Union[str, List[str]] = "vv",
     min_burst: int = 1,
     max_burst: int = None,
-    warp_kernel: str = "bicubic",
+    cal_type: str = "sigmaNought",
+    # warp_kernel: str = "bicubic",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
@@ -884,7 +889,7 @@ def preprocess_slc_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
-    if dem_force_download:
+    if not dem_force_download:
         log.warning(
             "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
         )
@@ -938,6 +943,7 @@ def preprocess_slc_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             overlap,
+            cal_type
         ),
     )
 
@@ -1366,9 +1372,7 @@ def _process_bursts(
 
 def _process_bursts_single(
     prm,
-    # sec,
     tmp_prm,
-    # tmp_sec,
     dir_out,
     dir_dem,
     naz,
@@ -1379,6 +1383,7 @@ def _process_bursts_single(
     dem_buffer_arc_sec,
     dem_force_download,
     overlap,
+    cal_type,
 ):
 
     H = int(overlap / 2)
@@ -1464,6 +1469,8 @@ def _process_bursts_single(
 
             # read primary and secondary burst rasters
             arr_p = prm.read_burst(burst_idx, True)
+            cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
+            arr_p /= cal_p
 
             first_line = (burst_idx - min_burst) * prm.lines_per_burst
 
