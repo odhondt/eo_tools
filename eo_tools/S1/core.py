@@ -445,28 +445,27 @@ class S1IWSwath:
 
     @timeit
     def calibration_factor(self, burst_idx=1, cal_type="sigmaNought"):
+        naz = self.lines_per_burst
+        nrg = self.samples_per_burst
+        first_line = (burst_idx - 1) * self.lines_per_burst
+
         str_cols = self.calvec[0]["pixel"]["#text"]
         cols = np.array(list(map(int, str_cols.split(" "))), dtype=int)
         grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
-        grid_gamma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
         list_lines = []
-        # TODO: handle betaNought and gamma
+
         if cal_type == "sigmaNought":
             for i, it in enumerate(self.calvec):
                 list_lines.append(int(it["line"]))
                 str_sigma = it["sigmaNought"]["#text"]
                 line_sigma = list(map(float, str_sigma.split(" ")))
                 grid_sigma[i] = line_sigma
-
-                str_gamma = it["gamma"]["#text"]
-                line_gamma = list(map(float, str_gamma.split(" ")))
-                grid_gamma[i] = line_gamma
             rows = np.array(list_lines, dtype=int)
-            naz = self.lines_per_burst
-            nrg = self.samples_per_burst
-            grid_arr_rg, grid_arr_az = np.meshgrid(np.arange(nrg), np.arange(naz))
-            interp = RegularGridInterpolator((rows, cols), grid_gamma, method="linear")
-            cal_fac = interp((grid_arr_az, grid_arr_rg)) * self.beta_nought
+            grid_arr_rg, grid_arr_az = np.meshgrid(np.arange(nrg), np.arange(first_line, first_line + naz))
+            interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
+            
+            # by default the burst reader uses beta, we have to compensate
+            cal_fac = interp((grid_arr_az, grid_arr_rg)) / self.beta_nought
         elif cal_type == "betaNought":
             cal_fac = 1.0 
         else:
