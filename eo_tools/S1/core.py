@@ -3,7 +3,7 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
-from scipy.interpolate import CubicHermiteSpline
+from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
@@ -22,7 +22,6 @@ from zipfile import ZipFile
 
 
 from eo_tools.bench import timeit
-
 
 
 import logging
@@ -98,8 +97,10 @@ class S1IWSwath:
 
         # extract beta_nought to rescale data
         calinfo = read_metadata(pth_cal)
-        calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
-        BN_str = calvec[0]["betaNought"]["#text"]
+        self.calvec = calinfo["calibration"]["calibrationVectorList"][
+            "calibrationVector"
+        ]
+        BN_str = self.calvec[0]["betaNought"]["#text"]
         self.beta_nought = float(BN_str.split(" ")[0])
 
         # read burst geometries
@@ -441,6 +442,36 @@ class S1IWSwath:
 
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
+
+    @timeit
+    def calibration_factor(self, burst_idx=1, cal_type="sigmaNought"):
+        str_cols = self.calvec[0]["pixel"]["#text"]
+        cols = np.array(list(map(int, str_cols.split(" "))), dtype=int)
+        grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
+        grid_gamma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
+        list_lines = []
+        # TODO: handle betaNought and gamma
+        if cal_type == "sigmaNought":
+            for i, it in enumerate(self.calvec):
+                list_lines.append(int(it["line"]))
+                str_sigma = it["sigmaNought"]["#text"]
+                line_sigma = list(map(float, str_sigma.split(" ")))
+                grid_sigma[i] = line_sigma
+
+                str_gamma = it["gamma"]["#text"]
+                line_gamma = list(map(float, str_gamma.split(" ")))
+                grid_gamma[i] = line_gamma
+            rows = np.array(list_lines, dtype=int)
+            naz = self.lines_per_burst
+            nrg = self.samples_per_burst
+            grid_arr_rg, grid_arr_az = np.meshgrid(np.arange(nrg), np.arange(naz))
+            interp = RegularGridInterpolator((rows, cols), grid_gamma, method="linear")
+            cal_fac = interp((grid_arr_az, grid_arr_rg)) * self.beta_nought
+        elif cal_type == "betaNought":
+            cal_fac = 1.0 
+        else:
+            raise ValueError("Calibration type not recognized (use betaNought or sigmaNought)")
+        return cal_fac
 
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
