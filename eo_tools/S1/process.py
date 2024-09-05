@@ -76,7 +76,7 @@ def process_insar(
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
 
@@ -183,104 +183,6 @@ def process_insar(
     return Path(out_dir).parent
 
 
-def process_slc(
-    dir_slc: str,
-    outputs_prefix: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    dir_dem: str = "/tmp",
-    dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
-    dem_buffer_arc_sec: float = 40,
-    multilook: List[int] = [1, 4],
-    warp_kernel: str = "bicubic",
-    cal_type: str = "sigmaNought",
-    clip_to_shape: bool = True,
-    skip_preprocessing: bool = False,
-) -> str:
-    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
-    AOI crop is optional.
-
-    Args:
-        dir_slc (str): input image (SLC Sentinel-1 product directory).
-        outputs_prefix (str): location in which the product subdirectory will be created
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
-        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
-        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
-        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
-
-    Returns:
-        str: output directory
-    """
-
-    if not np.any([coherence, interferogram]):
-        raise ValueError(
-            "At least one of `write_coherence` and `write_interferogram` must be True."
-        )
-
-    # prepare pair for interferogram computation
-    out_dir = prepare_slc(
-        dir_slc=dir_slc,
-        outputs_prefix=outputs_prefix,
-        aoi_name=aoi_name,
-        shp=shp,
-        pol=pol,
-        subswaths=subswaths,
-        cal_type=cal_type,
-        dir_dem=dir_dem,
-        dem_upsampling=dem_upsampling,
-        dem_force_download=dem_force_download,
-        dem_buffer_arc_sec=dem_buffer_arc_sec,
-        skip_preprocessing=skip_preprocessing,
-    )
-
-    var_names = ["amp"]
-
-    if isinstance(pol, str):
-        if pol == "full":
-            pol_ = ["vv", "vh"]
-        else:
-            pol_ = [pol.lower()]
-    elif isinstance(pol, list):
-        pol_ = [p.lower() for p in pol]
-
-    iw_idx = [iw[2] for iw in subswaths]
-    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
-    for pattern in patterns:
-        file_slc = f"{out_dir}/slc_{pattern}.tif"
-
-        if os.path.isfile(file_slc):
-            log.info(
-                f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
-
-            file_ampl = f"{out_dir}/amp_{pattern}.tif"
-            amplitude(file_in=file_slc, file_out=file_ampl)
-
-    # by default, we use iw and pol which exist
-    geocode_and_merge_iw(
-        input_dir=Path(out_dir).parent,
-        var_names=var_names,
-        shp=shp,
-        pol=["vv", "vh"],
-        subswaths=["IW1", "IW2", "IW3"],
-        multilook=multilook,
-        warp_kernel=warp_kernel,
-        clip_to_shape=clip_to_shape,
-    )
-    return Path(out_dir).parent
-
-
 def prepare_insar(
     dir_prm: str,
     dir_sec: str,
@@ -310,7 +212,7 @@ def prepare_insar(
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
-        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -435,255 +337,6 @@ def prepare_insar(
     return out_dir
 
 
-def prepare_slc(
-    dir_slc: str,
-    outputs_prefix: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    cal_type: str = "beta",
-    # warp_kernel: str = "bicubic",
-    dir_dem: str = "/tmp",
-    dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
-    dem_buffer_arc_sec: float = 40,
-    skip_preprocessing: bool = False,
-) -> str:
-    """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
-
-    Args:
-        dir_slc (str): Input image (SLC Sentinel-1 product directory).
-        outputs_prefix (str): location in which the product subdirectory will be created.
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
-        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
-
-    Returns:
-        str: output directory
-    """
-
-    if aoi_name is None:
-        aoi_substr = ""
-    else:
-        aoi_substr = f"_{aoi_name}"
-
-    if not isinstance(subswaths, list):
-        raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
-
-    # retrieve burst geometries
-    gdf_burst_prm = get_burst_geometry(
-        dir_slc, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
-    )
-
-    # find what subswaths and bursts intersect AOI
-    if shp is not None:
-        gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
-
-    if gdf_burst_prm.empty:
-        raise RuntimeError(
-            "The list of bursts to process is empty. Make sure shp intersects the product."
-        )
-
-    # identify corresponding subswaths
-    sel_subsw_prm = gdf_burst_prm["subswath"]
-    unique_subswaths = np.unique(sel_subsw_prm)
-    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
-
-    # check that polarization is correct
-    info_prm = identify(dir_slc)
-    if isinstance(pol, str):
-        if pol == "full":
-            pol_ = info_prm.polarizations
-        else:
-            if pol.upper() in info_prm.polarizations:
-                pol_ = [pol]
-            else:
-                raise RuntimeError(
-                    f"polarization {pol} does not exists in the source product"
-                )
-    elif isinstance(pol, list):
-        pol_ = [x for x in pol if x in info_prm.polarizations]
-    else:
-        raise RuntimeError("polarizations must be of type str or list")
-
-    meta_prm = info_prm.scanMetadata()
-    # parse dates
-    datestr_prm = meta_prm["start"]
-    date_prm = datetime.strptime(datestr_prm, "%Y%m%dT%H%M%S")
-
-    id_prm = date_prm.strftime("%Y-%m-%d-%H%M%S")
-
-    out_dir = f"{outputs_prefix}/S1_{id_prm}{aoi_substr}/sar"
-    if not os.path.isdir(out_dir):
-        log.info(f"Creating directory {out_dir}")
-        os.makedirs(out_dir)
-    for p in pol_:
-        for subswath in unique_subswaths:
-            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
-
-            # identify bursts to process
-            bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
-                "burst"
-            ].values
-            burst_prm_min = bursts_prm.min()
-            burst_prm_max = bursts_prm.max()
-
-            iw = int(subswath[2])
-            if not os.path.isdir(out_dir):
-                os.mkdir(out_dir)
-            if not skip_preprocessing:
-                preprocess_slc_iw(
-                    dir_slc,
-                    out_dir,
-                    iw=iw,
-                    pol=p.lower(),
-                    min_burst=burst_prm_min,
-                    max_burst=burst_prm_max,
-                    cal_type=cal_type,
-                    # warp_kernel=warp_kernel,
-                    dir_dem=dir_dem,
-                    dem_upsampling=dem_upsampling,
-                    dem_buffer_arc_sec=dem_buffer_arc_sec,
-                    dem_force_download=dem_force_download,
-                )
-                os.rename(
-                    f"{out_dir}/slc.tif",
-                    f"{out_dir}/slc_{p.lower()}_iw{iw}.tif",
-                )
-                os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
-            else:
-                log.info("Skipping preprocessing.")
-    return out_dir
-
-
-def geocode_and_merge_iw(
-    input_dir: str,
-    var_names: List[str],
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    multilook: List[int] = [1, 4],
-    warp_kernel: str = "bicubic",
-    clip_to_shape: bool = True,
-) -> None:
-    """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
-
-    Args:
-        input_dir (str): Interferometric product directory.
-        var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
-        shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
-        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
-        warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
-        clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
-
-    """
-    if isinstance(pol, str):
-        if pol == "full":
-            pol_ = ["vv", "vh"]
-        else:
-            pol_ = [pol.lower()]
-    elif isinstance(pol, list):
-        pol_ = [p.lower() for p in pol]
-    else:
-        raise RuntimeError("polarizations must be of type str or list")
-    iw_idx = [iw[2] for iw in subswaths]
-
-    for var in var_names:
-        no_file_found = True
-        for p in pol_:
-            patterns = [f"{input_dir}/sar/{var}_{p}_iw{iw}.tif" for iw in iw_idx]
-
-            matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
-
-            tmp_files = []
-            if matched_files:
-                no_file_found = False
-            for file_var in matched_files:
-                log.info(f"Geocoding file {Path(file_var).name}.")
-                base_name = Path(file_var).stem
-                parts = base_name.split("_")
-                postfix = "_".join(parts[-2:])
-                file_lut = f"{input_dir}/sar/lut_{postfix}.tif"
-                file_out = f"{input_dir}/sar/{var}_{postfix}_geo.tif"
-
-                if not os.path.exists(file_lut):
-                    raise FileNotFoundError(
-                        f"Corresponding LUT file {file_lut} not found for {file_var}"
-                    )
-
-                # handling phase as a special case
-                if var == "phi":
-                    darr = riox.open_rasterio(file_var)
-                    if not np.iscomplexobj(darr[0]):
-                        warnings.warn(
-                            "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
-                        )
-                if var == "ifg":
-                    file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
-                    sar2geo(
-                        file_var,
-                        file_lut,
-                        file_out,
-                        multilook[0],
-                        multilook[1],
-                        warp_kernel,
-                        write_phase=True,
-                        magnitude_only=False,
-                    )
-                else:
-                    sar2geo(
-                        file_var,
-                        file_lut,
-                        file_out,
-                        multilook[0],
-                        multilook[1],
-                        warp_kernel,
-                        write_phase=False,
-                        magnitude_only=False,
-                    )
-                tmp_files.append(file_out)
-            if tmp_files:
-                if var != "ifg":
-                    file_out = f"{input_dir}/{var}_{p}.tif"
-                else:
-                    file_out = f"{input_dir}/phi_{p}.tif"
-                log.info(f"Merging file {Path(file_out).name}")
-                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
-
-                if any(np.iscomplexobj(it) for it in da_to_merge):
-                    raise NotImplementedError(
-                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
-                    )
-
-                if shp and clip_to_shape:
-                    merged = merge_arrays(
-                        da_to_merge, parse_coordinates=False
-                    ).rio.clip([shp], all_touched=True)
-                else:
-                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(
-                    file_out,
-                    driver="COG",
-                    compress="zstd",
-                    num_threads="all_cpus",
-                    resampling="nearest",
-                    overview_resampling="nearest",
-                )
-                # clean tmp files
-                for file in tmp_files:
-                    remove(file)
-        if no_file_found:
-            raise FileNotFoundError(f"No file was found for variable {var}")
-
-
 def preprocess_insar_iw(
     dir_primary: str,
     dir_secondary: str,
@@ -714,7 +367,7 @@ def preprocess_insar_iw(
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
-        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -856,6 +509,231 @@ def preprocess_insar_iw(
     log.info("Done")
 
 
+def process_slc(
+    dir_slc: str,
+    outputs_prefix: str,
+    aoi_name: str = None,
+    shp: shape = None,
+    pol: Union[str, List[str]] = "full",
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dir_dem: str = "/tmp",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = True,
+    dem_buffer_arc_sec: float = 40,
+    multilook: List[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    cal_type: str = "sigmaNought",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+) -> str:
+    """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
+    AOI crop is optional.
+
+    Args:
+        dir_slc (str): input image (SLC Sentinel-1 product directory).
+        outputs_prefix (str): location in which the product subdirectory will be created
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+
+    Returns:
+        str: output directory
+    """
+
+    if not np.any([coherence, interferogram]):
+        raise ValueError(
+            "At least one of `write_coherence` and `write_interferogram` must be True."
+        )
+
+    # prepare pair for interferogram computation
+    out_dir = prepare_slc(
+        dir_slc=dir_slc,
+        outputs_prefix=outputs_prefix,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol=pol,
+        subswaths=subswaths,
+        cal_type=cal_type,
+        dir_dem=dir_dem,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+    )
+
+    var_names = ["amp"]
+
+    if isinstance(pol, str):
+        if pol == "full":
+            pol_ = ["vv", "vh"]
+        else:
+            pol_ = [pol.lower()]
+    elif isinstance(pol, list):
+        pol_ = [p.lower() for p in pol]
+
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
+    for pattern in patterns:
+        file_slc = f"{out_dir}/slc_{pattern}.tif"
+
+        if os.path.isfile(file_slc):
+            log.info(
+                f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+
+            file_ampl = f"{out_dir}/amp_{pattern}.tif"
+            amplitude(file_in=file_slc, file_out=file_ampl)
+
+    # by default, we use iw and pol which exist
+    geocode_and_merge_iw(
+        input_dir=Path(out_dir).parent,
+        var_names=var_names,
+        shp=shp,
+        pol=["vv", "vh"],
+        subswaths=["IW1", "IW2", "IW3"],
+        multilook=multilook,
+        warp_kernel=warp_kernel,
+        clip_to_shape=clip_to_shape,
+    )
+    return Path(out_dir).parent
+
+
+def prepare_slc(
+    dir_slc: str,
+    outputs_prefix: str,
+    aoi_name: str = None,
+    shp: shape = None,
+    pol: Union[str, List[str]] = "full",
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    cal_type: str = "beta",
+    # warp_kernel: str = "bicubic",
+    dir_dem: str = "/tmp",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = True,
+    dem_buffer_arc_sec: float = 40,
+    skip_preprocessing: bool = False,
+) -> str:
+    """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
+
+    Args:
+        dir_slc (str): Input image (SLC Sentinel-1 product directory).
+        outputs_prefix (str): location in which the product subdirectory will be created.
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
+
+    Returns:
+        str: output directory
+    """
+
+    if aoi_name is None:
+        aoi_substr = ""
+    else:
+        aoi_substr = f"_{aoi_name}"
+
+    if not isinstance(subswaths, list):
+        raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
+
+    # retrieve burst geometries
+    gdf_burst_prm = get_burst_geometry(
+        dir_slc, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+
+    # find what subswaths and bursts intersect AOI
+    if shp is not None:
+        gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
+
+    if gdf_burst_prm.empty:
+        raise RuntimeError(
+            "The list of bursts to process is empty. Make sure shp intersects the product."
+        )
+
+    # identify corresponding subswaths
+    sel_subsw_prm = gdf_burst_prm["subswath"]
+    unique_subswaths = np.unique(sel_subsw_prm)
+    unique_subswaths = [it for it in unique_subswaths if it in subswaths]
+
+    # check that polarization is correct
+    info_prm = identify(dir_slc)
+    if isinstance(pol, str):
+        if pol == "full":
+            pol_ = info_prm.polarizations
+        else:
+            if pol.upper() in info_prm.polarizations:
+                pol_ = [pol]
+            else:
+                raise RuntimeError(
+                    f"polarization {pol} does not exists in the source product"
+                )
+    elif isinstance(pol, list):
+        pol_ = [x for x in pol if x in info_prm.polarizations]
+    else:
+        raise RuntimeError("polarizations must be of type str or list")
+
+    meta_prm = info_prm.scanMetadata()
+    # parse dates
+    datestr_prm = meta_prm["start"]
+    date_prm = datetime.strptime(datestr_prm, "%Y%m%dT%H%M%S")
+
+    id_prm = date_prm.strftime("%Y-%m-%d-%H%M%S")
+
+    out_dir = f"{outputs_prefix}/S1_{id_prm}{aoi_substr}/sar"
+    if not os.path.isdir(out_dir):
+        log.info(f"Creating directory {out_dir}")
+        os.makedirs(out_dir)
+    for p in pol_:
+        for subswath in unique_subswaths:
+            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
+
+            # identify bursts to process
+            bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
+                "burst"
+            ].values
+            burst_prm_min = bursts_prm.min()
+            burst_prm_max = bursts_prm.max()
+
+            iw = int(subswath[2])
+            if not os.path.isdir(out_dir):
+                os.mkdir(out_dir)
+            if not skip_preprocessing:
+                preprocess_slc_iw(
+                    dir_slc,
+                    out_dir,
+                    iw=iw,
+                    pol=p.lower(),
+                    min_burst=burst_prm_min,
+                    max_burst=burst_prm_max,
+                    cal_type=cal_type,
+                    # warp_kernel=warp_kernel,
+                    dir_dem=dir_dem,
+                    dem_upsampling=dem_upsampling,
+                    dem_buffer_arc_sec=dem_buffer_arc_sec,
+                    dem_force_download=dem_force_download,
+                )
+                os.rename(
+                    f"{out_dir}/slc.tif",
+                    f"{out_dir}/slc_{p.lower()}_iw{iw}.tif",
+                )
+                os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
+            else:
+                log.info("Skipping preprocessing.")
+    return out_dir
+
+
 def preprocess_slc_iw(
     dir_slc: str,
     dir_out: str,
@@ -950,7 +828,7 @@ def preprocess_slc_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             overlap,
-            cal_type
+            cal_type,
         ),
     )
 
@@ -972,6 +850,128 @@ def preprocess_slc_iw(
             os.remove(tmp_slc)
 
     log.info("Done")
+
+
+def geocode_and_merge_iw(
+    input_dir: str,
+    var_names: List[str],
+    shp: shape = None,
+    pol: Union[str, List[str]] = "full",
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    multilook: List[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    clip_to_shape: bool = True,
+) -> None:
+    """Geocode and merge subswaths from the SAR geometry to the geographic coordinate system.
+
+    Args:
+        input_dir (str): Interferometric product directory.
+        var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
+        shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
+        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
+        warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
+        clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
+
+    """
+    if isinstance(pol, str):
+        if pol == "full":
+            pol_ = ["vv", "vh"]
+        else:
+            pol_ = [pol.lower()]
+    elif isinstance(pol, list):
+        pol_ = [p.lower() for p in pol]
+    else:
+        raise RuntimeError("polarizations must be of type str or list")
+    iw_idx = [iw[2] for iw in subswaths]
+
+    for var in var_names:
+        no_file_found = True
+        for p in pol_:
+            patterns = [f"{input_dir}/sar/{var}_{p}_iw{iw}.tif" for iw in iw_idx]
+
+            matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
+
+            tmp_files = []
+            if matched_files:
+                no_file_found = False
+            for file_var in matched_files:
+                log.info(f"Geocoding file {Path(file_var).name}.")
+                base_name = Path(file_var).stem
+                parts = base_name.split("_")
+                postfix = "_".join(parts[-2:])
+                file_lut = f"{input_dir}/sar/lut_{postfix}.tif"
+                file_out = f"{input_dir}/sar/{var}_{postfix}_geo.tif"
+
+                if not os.path.exists(file_lut):
+                    raise FileNotFoundError(
+                        f"Corresponding LUT file {file_lut} not found for {file_var}"
+                    )
+
+                # handling phase as a special case
+                if var == "phi":
+                    darr = riox.open_rasterio(file_var)
+                    if not np.iscomplexobj(darr[0]):
+                        warnings.warn(
+                            "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
+                        )
+                if var == "ifg":
+                    file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
+                    sar2geo(
+                        file_var,
+                        file_lut,
+                        file_out,
+                        multilook[0],
+                        multilook[1],
+                        warp_kernel,
+                        write_phase=True,
+                        magnitude_only=False,
+                    )
+                else:
+                    sar2geo(
+                        file_var,
+                        file_lut,
+                        file_out,
+                        multilook[0],
+                        multilook[1],
+                        warp_kernel,
+                        write_phase=False,
+                        magnitude_only=False,
+                    )
+                tmp_files.append(file_out)
+            if tmp_files:
+                if var != "ifg":
+                    file_out = f"{input_dir}/{var}_{p}.tif"
+                else:
+                    file_out = f"{input_dir}/phi_{p}.tif"
+                log.info(f"Merging file {Path(file_out).name}")
+                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
+
+                if any(np.iscomplexobj(it) for it in da_to_merge):
+                    raise NotImplementedError(
+                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+                    )
+
+                if shp and clip_to_shape:
+                    merged = merge_arrays(
+                        da_to_merge, parse_coordinates=False
+                    ).rio.clip([shp], all_touched=True)
+                else:
+                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
+                merged.rio.to_raster(
+                    file_out,
+                    driver="COG",
+                    compress="zstd",
+                    num_threads="all_cpus",
+                    resampling="nearest",
+                    overview_resampling="nearest",
+                )
+                # clean tmp files
+                for file in tmp_files:
+                    remove(file)
+        if no_file_found:
+            raise FileNotFoundError(f"No file was found for variable {var}")
 
 
 def sar2geo(
@@ -1233,7 +1233,7 @@ def _process_bursts_insar(
     dem_force_download,
     warp_kernel,
     overlap,
-    cal_type
+    cal_type,
 ):
 
     H = int(overlap / 2)
