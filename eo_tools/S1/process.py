@@ -21,7 +21,6 @@ from pathlib import Path
 from shapely.geometry import shape
 from osgeo import gdal
 from rasterio.features import geometry_window
-from eo_tools.bench import timeit
 
 # use child processes
 USE_CP = True
@@ -265,7 +264,7 @@ def process_slc(
                 f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
             )
 
-            file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
+            file_ampl = f"{out_dir}/amp_{pattern}.tif"
             amplitude(file_in=file_slc, file_out=file_ampl)
 
     # by default, we use iw and pol which exist
