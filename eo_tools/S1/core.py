@@ -444,7 +444,16 @@ class S1IWSwath:
         return phi_deramp  # .astype("float32")
 
     @timeit
-    def calibration_factor(self, burst_idx=1, cal_type="sigmaNought"):
+    def calibration_factor(self, burst_idx=1, cal_type="beta"):
+        """Computes calibration factor from the metadata.
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+            cal_type (str, optional): Type of calibration. "beta" or "sigma" nought. Defaults to "beta".
+
+        Returns:
+            cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought. 
+        """        
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
         first_line = (burst_idx - 1) * self.lines_per_burst
@@ -454,7 +463,7 @@ class S1IWSwath:
         grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
         list_lines = []
 
-        if cal_type == "sigmaNought":
+        if cal_type == "sigma":
             for i, it in enumerate(self.calvec):
                 list_lines.append(int(it["line"]))
                 str_sigma = it["sigmaNought"]["#text"]
@@ -467,7 +476,7 @@ class S1IWSwath:
             interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
 
             cal_fac = interp((grid_arr_az, grid_arr_rg)) 
-        elif cal_type == "betaNought":
+        elif cal_type == "beta":
             cal_fac = self.beta_nought
         else:
             raise ValueError(
