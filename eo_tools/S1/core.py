@@ -461,15 +461,19 @@ class S1IWSwath:
                 line_sigma = list(map(float, str_sigma.split(" ")))
                 grid_sigma[i] = line_sigma
             rows = np.array(list_lines, dtype=int)
-            grid_arr_rg, grid_arr_az = np.meshgrid(np.arange(nrg), np.arange(first_line, first_line + naz))
+            grid_arr_rg, grid_arr_az = np.meshgrid(
+                np.arange(nrg), np.arange(first_line, first_line + naz)
+            )
             interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
-            
+
             # by default the burst reader uses beta, we have to compensate
             cal_fac = interp((grid_arr_az, grid_arr_rg)) / self.beta_nought
         elif cal_type == "betaNought":
-            cal_fac = 1.0 
+            cal_fac = 1.0
         else:
-            raise ValueError("Calibration type not recognized (use betaNought or sigmaNought)")
+            raise ValueError(
+                "Calibration type not recognized (use betaNought or sigmaNought)"
+            )
         return cal_fac
 
     def read_burst(self, burst_idx=1, remove_invalid=True):
@@ -500,7 +504,7 @@ class S1IWSwath:
             read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
                 np.complex64
             )
-            / self.beta_nought
+            # / self.beta_nought
         )
 
         # not sure about that, should we consider these holes as NaN?
