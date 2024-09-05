@@ -87,7 +87,10 @@ process_args = dict(
     filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
-    clip_to_shape=True,
+    # cal_type="beta",
+    cal_type="gamma",
+    # clip_to_shape=True,
+    clip_to_shape=False,
     # skip_preprocessing=True,
 )
 
