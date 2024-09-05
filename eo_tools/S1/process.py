@@ -204,7 +204,7 @@ def process_slc(
     AOI crop is optional.
 
     Args:
-        dir_prm (str): primary image (SLC Sentinel-1 product directory).
+        dir_slc (str): input image (SLC Sentinel-1 product directory).
         outputs_prefix (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -453,7 +453,7 @@ def prepare_slc(
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
     Args:
-        dir_prm (str): Primary image (SLC Sentinel-1 product directory).
+        dir_slc (str): Input image (SLC Sentinel-1 product directory).
         outputs_prefix (str): location in which the product subdirectory will be created.
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -872,7 +872,7 @@ def preprocess_slc_iw(
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
     Args:
-        dir_primary (str): directory containing the primary SLC product of the pair.
+        dir_slc (str): directory containing the SLC input product.
         dir_out (str): output directory (creating it if does not exist).
         dir_dem (str, optional): directory where DEMs used for geocoding are stored. Defaults to "/tmp".
         iw (int, optional): subswath index. Defaults to 1.
