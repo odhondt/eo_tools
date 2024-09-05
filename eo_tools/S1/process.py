@@ -1332,7 +1332,7 @@ def _process_bursts_insar(
             arr_p = prm.read_burst(burst_idx, True)
             arr_s = sec.read_burst(burst_idx, True)
 
-            # calibration (beta or sigma nought)
+            # radiometric calibration (beta or sigma nought)
             cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
             arr_p /= cal_p
             cal_s = sec.calibration_factor(burst_idx, cal_type=cal_type)
@@ -1487,6 +1487,8 @@ def _process_bursts_slc(
 
             # read primary and secondary burst rasters
             arr_p = prm.read_burst(burst_idx, True)
+
+            # radiometric calibration (beta or sigma nought)
             cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
             arr_p /= cal_p
 
