@@ -50,6 +50,7 @@ def process_insar(
     filter_ifg: bool = True,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -76,6 +77,7 @@ def process_insar(
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
 
@@ -98,6 +100,8 @@ def process_insar(
         pol=pol,
         apply_fast_esd=apply_fast_esd,
         subswaths=subswaths,
+        warp_kernel=warp_kernel,
+        cal_type=cal_type,
         dir_dem=dir_dem,
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
@@ -187,13 +191,13 @@ def process_slc(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    cal_type: str = "sigmaNaught",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = True,
     dem_buffer_arc_sec: float = 40,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
+    cal_type: str = "sigmaNought",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -212,6 +216,7 @@ def process_slc(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
 
@@ -288,6 +293,7 @@ def prepare_insar(
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     apply_fast_esd: bool = False,
     warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = True,
@@ -305,6 +311,8 @@ def prepare_insar(
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
+        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -409,6 +417,7 @@ def prepare_insar(
                     max_burst=burst_prm_max,
                     apply_fast_esd=apply_fast_esd,
                     warp_kernel=warp_kernel,
+                    cal_type=cal_type,
                     dir_dem=dir_dem,
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
@@ -435,7 +444,7 @@ def prepare_slc(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    cal_type: str = "sigmaNaought",
+    cal_type: str = "beta",
     # warp_kernel: str = "bicubic",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
@@ -687,6 +696,7 @@ def preprocess_insar_iw(
     max_burst: int = None,
     apply_fast_esd: bool = True,
     warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
@@ -706,6 +716,7 @@ def preprocess_insar_iw(
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta" 
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -779,7 +790,7 @@ def preprocess_insar_iw(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     _child_process(
-        _process_bursts,
+        _process_bursts_insar,
         (
             prm,
             sec,
@@ -796,6 +807,7 @@ def preprocess_insar_iw(
             dem_force_download,
             warp_kernel,
             overlap,
+            cal_type,
         ),
     )
 
@@ -853,8 +865,7 @@ def preprocess_slc_iw(
     pol: Union[str, List[str]] = "vv",
     min_burst: int = 1,
     max_burst: int = None,
-    cal_type: str = "sigmaNought",
-    # warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
@@ -929,7 +940,7 @@ def preprocess_slc_iw(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     _child_process(
-        _process_bursts_single,
+        _process_bursts_slc,
         (
             prm,
             tmp_prm,
@@ -1210,7 +1221,7 @@ def coherence(
 # Auxiliary functions which are not supposed to be used outside of the processor
 
 
-def _process_bursts(
+def _process_bursts_insar(
     prm,
     sec,
     tmp_prm,
@@ -1226,6 +1237,7 @@ def _process_bursts(
     dem_force_download,
     warp_kernel,
     overlap,
+    cal_type
 ):
 
     H = int(overlap / 2)
@@ -1320,6 +1332,12 @@ def _process_bursts(
             arr_p = prm.read_burst(burst_idx, True)
             arr_s = sec.read_burst(burst_idx, True)
 
+            # calibration (beta or sigma nought)
+            cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
+            arr_p /= cal_p
+            cal_s = sec.calibration_factor(burst_idx, cal_type=cal_type)
+            arr_s /= cal_s
+
             # deramp secondary
             pdb_s = sec.deramp_burst(burst_idx)
             arr_s *= np.exp(1j * pdb_s)
@@ -1370,7 +1388,7 @@ def _process_bursts(
         ds_lut.write(arr_lut)
 
 
-def _process_bursts_single(
+def _process_bursts_slc(
     prm,
     tmp_prm,
     dir_out,
