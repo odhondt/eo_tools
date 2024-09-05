@@ -443,7 +443,6 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
 
-    @timeit
     def calibration_factor(self, burst_idx=1, cal_type="beta"):
         """Computes calibration factor from the metadata.
 
@@ -463,6 +462,7 @@ class S1IWSwath:
         grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
         list_lines = []
 
+        # interpolate values on image grid
         if cal_type == "sigma":
             for i, it in enumerate(self.calvec):
                 list_lines.append(int(it["line"]))
@@ -476,6 +476,7 @@ class S1IWSwath:
             interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
 
             cal_fac = interp((grid_arr_az, grid_arr_rg)) 
+        # for beta, it is a just constant
         elif cal_type == "beta":
             cal_fac = self.beta_nought
         else:
@@ -503,7 +504,6 @@ class S1IWSwath:
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
 
         first_line = (burst_idx - 1) * self.lines_per_burst
 
@@ -512,7 +512,6 @@ class S1IWSwath:
             read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
                 np.complex64
             )
-            # / self.beta_nought
         )
 
         # not sure about that, should we consider these holes as NaN?
