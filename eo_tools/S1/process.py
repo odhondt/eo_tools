@@ -231,7 +231,7 @@ def process_slc(
 
     # prepare pair for interferogram computation
     out_dir = prepare_slc(
-        dir_prm=dir_prm,
+        dir_slc=dir_prm,
         outputs_prefix=outputs_prefix,
         aoi_name=aoi_name,
         shp=shp,
@@ -438,7 +438,7 @@ def prepare_insar(
 
 
 def prepare_slc(
-    dir_prm: str,
+    dir_slc: str,
     outputs_prefix: str,
     aoi_name: str = None,
     shp: shape = None,
@@ -480,7 +480,7 @@ def prepare_slc(
 
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
-        dir_prm, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+        dir_slc, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
 
     # find what subswaths and bursts intersect AOI
@@ -498,7 +498,7 @@ def prepare_slc(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_prm = identify(dir_prm)
+    info_prm = identify(dir_slc)
     if isinstance(pol, str):
         if pol == "full":
             pol_ = info_prm.polarizations
@@ -541,7 +541,7 @@ def prepare_slc(
                 os.mkdir(out_dir)
             if not skip_preprocessing:
                 preprocess_slc_iw(
-                    dir_prm,
+                    dir_slc,
                     out_dir,
                     iw=iw,
                     pol=p.lower(),
@@ -859,7 +859,7 @@ def preprocess_insar_iw(
 
 
 def preprocess_slc_iw(
-    dir_primary: str,
+    dir_slc: str,
     dir_out: str,
     iw: int = 1,
     pol: Union[str, List[str]] = "vv",
@@ -905,45 +905,43 @@ def preprocess_slc_iw(
             "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
         )
 
-    prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
-    # sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
+    slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
-    prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
-    # sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
+    prm_burst_info = slc.meta["product"]["swathTiming"]["burstList"]["burst"]
 
-    overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
+    overlap = np.round(slc.compute_burst_overlap(2)).astype(int)
 
     if not max_burst:
-        max_burst_ = prm.burst_count
+        max_burst_ = slc.burst_count
     else:
         max_burst_ = max_burst
 
     if max_burst_ > min_burst:
-        tmp_prm = f"{dir_out}/tmp_primary.tif"
+        tmp_slc = f"{dir_out}/tmp_primary.tif"
     elif max_burst_ < min_burst:
         raise ValueError("max_burst must be >= min_burst")
     else:
-        tmp_prm = f"{dir_out}/primary.tif"
+        tmp_slc = f"{dir_out}/primary.tif"
 
     if (
-        max_burst_ > prm.burst_count
+        max_burst_ > slc.burst_count
         or max_burst_ < 1
-        or min_burst > prm.burst_count
+        or min_burst > slc.burst_count
         or min_burst < 1
     ):
         raise ValueError(
-            f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
+            f"min_burst and max_burst must be values between 1 and {slc.burst_count}"
         )
 
-    naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
-    nrg = prm.samples_per_burst
+    naz = slc.lines_per_burst * (max_burst_ - min_burst + 1)
+    nrg = slc.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     _child_process(
         _process_bursts_slc,
         (
-            prm,
-            tmp_prm,
+            slc,
+            tmp_slc,
             dir_out,
             dir_dem,
             naz,
@@ -962,9 +960,9 @@ def preprocess_slc_iw(
         _child_process(
             _stitch_bursts,
             (
-                tmp_prm,
+                tmp_slc,
                 f"{dir_out}/primary.tif",
-                prm.lines_per_burst,
+                slc.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
             ),
@@ -972,8 +970,8 @@ def preprocess_slc_iw(
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
-        if os.path.isfile(tmp_prm):
-            os.remove(tmp_prm)
+        if os.path.isfile(tmp_slc):
+            os.remove(tmp_slc)
 
     log.info("Done")
 
@@ -1389,8 +1387,8 @@ def _process_bursts_insar(
 
 
 def _process_bursts_slc(
-    prm,
-    tmp_prm,
+    slc,
+    tmp_slc,
     dir_out,
     dir_dem,
     naz,
@@ -1420,7 +1418,7 @@ def _process_bursts_slc(
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # process individual bursts
-    file_dem = prm.fetch_dem(
+    file_dem = slc.fetch_dem(
         min_burst,
         max_burst,
         dir_dem,
@@ -1450,14 +1448,14 @@ def _process_bursts_slc(
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
 
-    with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm:
+    with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm:
         off_az = 0
         for burst_idx in range(min_burst, max_burst + 1):
             log.info(f"---- Processing burst {burst_idx} ----")
 
             # compute geocoding LUTs (lookup tables) for primary and secondary bursts
             file_dem_burst = f"{dir_out}/dem_burst.tif"
-            burst_geoms = prm.gdf_burst_geom
+            burst_geoms = slc.gdf_burst_geom
             burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
             shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
 
@@ -1479,24 +1477,24 @@ def _process_bursts_slc(
             )
 
             # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _ = prm.geocode_burst(
+            az_p2g, rg_p2g, _ = slc.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx,
                 dem_upsampling=1,
             )
 
             # read primary and secondary burst rasters
-            arr_p = prm.read_burst(burst_idx, True)
+            arr_p = slc.read_burst(burst_idx, True)
 
             # radiometric calibration (beta or sigma nought)
-            cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
+            cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
             arr_p /= cal_p
 
-            first_line = (burst_idx - min_burst) * prm.lines_per_burst
+            first_line = (burst_idx - min_burst) * slc.lines_per_burst
 
             # write the coregistered SLCs
             ds_prm.write(
-                arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+                arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
             )
 
             # place overlapping burst LUT with azimuth offset
@@ -1507,7 +1505,7 @@ def _process_bursts_slc(
             msk = ~np.isnan(az_p2g)
             arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
             arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-            off_az += prm.lines_per_burst - 2 * H
+            off_az += slc.lines_per_burst - 2 * H
 
     remove(file_dem_burst)
 
