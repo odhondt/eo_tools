@@ -466,10 +466,9 @@ class S1IWSwath:
             )
             interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
 
-            # by default the burst reader uses beta, we have to compensate
-            cal_fac = interp((grid_arr_az, grid_arr_rg)) / self.beta_nought
+            cal_fac = interp((grid_arr_az, grid_arr_rg)) 
         elif cal_type == "betaNought":
-            cal_fac = 1.0
+            cal_fac = self.beta_nought
         else:
             raise ValueError(
                 "Calibration type not recognized (use betaNought or sigmaNought)"
