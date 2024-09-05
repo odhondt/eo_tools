@@ -185,7 +185,7 @@ def process_insar(
 
 
 def process_slc(
-    dir_prm: str,
+    dir_slc: str,
     outputs_prefix: str,
     aoi_name: str = None,
     shp: shape = None,
@@ -231,7 +231,7 @@ def process_slc(
 
     # prepare pair for interferogram computation
     out_dir = prepare_slc(
-        dir_slc=dir_prm,
+        dir_slc=dir_slc,
         outputs_prefix=outputs_prefix,
         aoi_name=aoi_name,
         shp=shp,
@@ -245,8 +245,7 @@ def process_slc(
         skip_preprocessing=skip_preprocessing,
     )
 
-    var_names = []
-    var_names.append("amp_prm")
+    var_names = ["amp"]
 
     if isinstance(pol, str):
         if pol == "full":
@@ -259,15 +258,15 @@ def process_slc(
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
     for pattern in patterns:
-        file_prm = f"{out_dir}/slc_prm_{pattern}.tif"
+        file_slc = f"{out_dir}/slc_{pattern}.tif"
 
-        if os.path.isfile(file_prm):
+        if os.path.isfile(file_slc):
             log.info(
                 f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
             )
 
             file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-            amplitude(file_in=file_prm, file_out=file_ampl)
+            amplitude(file_in=file_slc, file_out=file_ampl)
 
     # by default, we use iw and pol which exist
     geocode_and_merge_iw(
@@ -555,8 +554,8 @@ def prepare_slc(
                     dem_force_download=dem_force_download,
                 )
                 os.rename(
-                    f"{out_dir}/primary.tif",
-                    f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif",
+                    f"{out_dir}/slc.tif",
+                    f"{out_dir}/slc_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
@@ -961,7 +960,7 @@ def preprocess_slc_iw(
             _stitch_bursts,
             (
                 tmp_slc,
-                f"{dir_out}/primary.tif",
+                f"{dir_out}/slc.tif",
                 slc.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
