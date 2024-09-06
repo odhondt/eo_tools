@@ -74,7 +74,6 @@ process_args = dict(
     shp=shp,
     pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
-    # subswaths="IW1",
     write_coherence=True,
     write_interferogram=True,
     write_primary_amplitude=False,
@@ -87,11 +86,8 @@ process_args = dict(
     filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
-    # cal_type="beta",
-    cal_type="gamma",
-    # clip_to_shape=True,
-    clip_to_shape=False,
-    # skip_preprocessing=True,
+    cal_type="beta",
+    clip_to_shape=True,
 )
 
 out_dir = process_insar(**process_args)
