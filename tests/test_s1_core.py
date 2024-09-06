@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch
 from eo_tools.S1.core import S1IWSwath
+from eo_tools.S1.core import read_chunk 
 from eo_tools.S1.core import range_doppler
 import numpy as np
 
@@ -25,36 +26,90 @@ def test_s1iwswath_init(create_swath):
     assert swath.burst_count == 9
     assert swath.beta_nought == 2.370000e02
 
+
+def test_read_burst_valid_burst(create_swath):
+    swath = create_swath
+
+    # Mock the attributes that would be set by real product metadata
+    with patch.object(swath, "burst_count", 3), patch.object(
+        swath, "lines_per_burst", 1500
+    ), patch.object(swath, "pth_tiff", "mocked_path.tiff"), patch(
+        "eo_tools.S1.core.read_chunk"
+    ) as mock_read_chunk:
+
+        # Arrange: Set up a fake array to return when read_chunk is called
+        fake_array = np.ones((1500, 2000), dtype=np.complex64)
+        mock_read_chunk.return_value = fake_array
+
+        # Act: Call the `read_burst` method with a valid burst index
+        result = swath.read_burst(burst_idx=1, remove_invalid=False)
+
+        # Assert: Check if read_chunk was called correctly and the result matches
+        mock_read_chunk.assert_called_once_with("mocked_path.tiff", 0, 1500)
+        assert np.array_equal(
+            result, fake_array
+        ), "The returned burst data does not match the expected output"
+
+
+# Test invalid burst index
+def test_read_burst_invalid_burst(create_swath):
+    swath = create_swath
+
+    # Mock the burst count to 3 for testing
+    with patch.object(swath, "burst_count", 3):
+
+        # Act & Assert: Test burst_idx out of range (e.g., 0 or larger than burst_count)
+        with pytest.raises(ValueError, match=r"Invalid burst index.*"):
+            swath.read_burst(burst_idx=0)  # Invalid index
+
+        with pytest.raises(ValueError, match=r"Invalid burst index.*"):
+            swath.read_burst(burst_idx=4)  # Invalid index (larger than burst_count)
+
+
 # Test case for beta calibration using create_swath fixture
 def test_calibration_factor_beta(create_swath):
     swath = create_swath
-    
+
     # Mock the necessary attributes
-    with patch.object(swath, 'beta_nought', 1.5):
+    with patch.object(swath, "beta_nought", 1.5):
         # Act: Call the calibration_factor method with cal_type "beta"
         result = swath.calibration_factor(cal_type="beta")
-        
+
         # Assert: The result should match the beta_nought constant
         assert result == 1.5, "Beta calibration factor should be a constant"
+
 
 # Test case for sigma calibration with interpolation using create_swath fixture
 def test_calibration_factor_sigma(create_swath):
     swath = create_swath
 
     # Mock the necessary attributes
-    with patch.object(swath, 'lines_per_burst', 2), \
-         patch.object(swath, 'samples_per_burst', 3), \
-         patch.object(swath, 'calvec', [
-             {"line": "0", "pixel": {"#text": "0 1 2"}, "sigmaNought": {"#text": "1.0 2.0 3.0"}},
-             {"line": "1", "pixel": {"#text": "0 1 2"}, "sigmaNought": {"#text": "4.0 5.0 6.0"}}
-         ]):
+    with patch.object(swath, "lines_per_burst", 2), patch.object(
+        swath, "samples_per_burst", 3
+    ), patch.object(
+        swath,
+        "calvec",
+        [
+            {
+                "line": "0",
+                "pixel": {"#text": "0 1 2"},
+                "sigmaNought": {"#text": "1.0 2.0 3.0"},
+            },
+            {
+                "line": "1",
+                "pixel": {"#text": "0 1 2"},
+                "sigmaNought": {"#text": "4.0 5.0 6.0"},
+            },
+        ],
+    ):
         # Act: Call the calibration_factor method with cal_type "sigma"
         result = swath.calibration_factor(cal_type="sigma")
-        
+
         # Assert: Compare the result to the expected interpolation result
         expected_result = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        assert np.allclose(result, expected_result), "Sigma nought calibration factor interpolation failed"
-
+        assert np.allclose(
+            result, expected_result
+        ), "Sigma nought calibration factor interpolation failed"
 
 
 def test_range_doppler():
@@ -73,3 +128,7 @@ def test_range_doppler():
 
     np.testing.assert_allclose(i_zd, expected_i_zd, rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(r_zd, expected_r_zd, rtol=1e-5, atol=1e-8)
+
+
+if __name__ == "__main__":
+    pytest.main()
