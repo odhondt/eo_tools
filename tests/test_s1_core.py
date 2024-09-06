@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 from eo_tools.S1.core import S1IWSwath
-from eo_tools.S1.core import read_chunk 
+from eo_tools.S1.core import read_chunk
 from eo_tools.S1.core import range_doppler
 import numpy as np
 
@@ -49,6 +49,68 @@ def test_read_burst_valid_burst(create_swath):
         assert np.array_equal(
             result, fake_array
         ), "The returned burst data does not match the expected output"
+
+
+def test_read_burst_remove_invalid(create_swath):
+    swath = create_swath
+
+    lines_per_burst = 1500
+
+    # Generate firstValidSample and lastValidSample arrays
+    first_valid_sample_array = (
+        "1 " * lines_per_burst
+    )  # First column valid for all lines
+    last_valid_sample_array = (
+        "1999 " * lines_per_burst
+    )  # Last valid sample at column 1999 for all lines
+
+    # Break down the metadata dictionary into manageable parts
+    burst_metadata = [
+        {
+            "firstValidSample": {"#text": first_valid_sample_array.strip()},
+            "lastValidSample": {"#text": last_valid_sample_array.strip()},
+        },
+        {  # Mock burst metadata for burst_idx=2
+            "firstValidSample": {"#text": "2 " * lines_per_burst},
+            "lastValidSample": {"#text": "1998 " * lines_per_burst},
+        },
+    ]
+
+    burst_list = {"burst": burst_metadata}
+
+    swath_timing = {"burstList": burst_list}
+
+    product_metadata = {"swathTiming": swath_timing}
+
+    mock_meta = {"product": product_metadata}
+
+    # Mock the attributes and methods that would normally be populated by metadata
+    with patch.object(swath, "burst_count", 3), patch.object(
+        swath, "lines_per_burst", lines_per_burst
+    ), patch.object(swath, "pth_tiff", "mocked_path.tiff"), patch.object(
+        swath, "meta", mock_meta
+    ), patch(
+        "eo_tools.S1.core.read_chunk"
+    ) as mock_read_chunk:
+
+        # Create a fake array where the first and last columns are invalid
+        fake_array = np.ones((lines_per_burst, 2000), dtype=np.complex64)
+        fake_array[:, 0] = np.nan + 1j * np.nan  # Invalid first column
+        fake_array[:, -1] = np.nan + 1j * np.nan  # Invalid last column
+
+        mock_read_chunk.return_value = fake_array
+
+        # Act: Call the `read_burst` method with `remove_invalid=True`
+        result = swath.read_burst(burst_idx=1, remove_invalid=True)
+
+        # Assert: Check if the invalid pixels in first and last columns are NaN
+        assert np.isnan(
+            result[:, 0]
+        ).all(), "Invalid first column pixels were not set to NaN"
+        assert np.isnan(
+            result[:, -1]
+        ).all(), "Invalid last column pixels were not set to NaN"
+        assert not np.isnan(result[:, 1:1999]).any(), "Valid pixels should not be NaN"
 
 
 # Test invalid burst index
