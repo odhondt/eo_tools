@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import range_doppler
 import numpy as np
@@ -23,6 +24,37 @@ def test_s1iwswath_init(create_swath):
     assert swath.samples_per_burst == 23055
     assert swath.burst_count == 9
     assert swath.beta_nought == 2.370000e02
+
+# Test case for beta calibration using create_swath fixture
+def test_calibration_factor_beta(create_swath):
+    swath = create_swath
+    
+    # Mock the necessary attributes
+    with patch.object(swath, 'beta_nought', 1.5):
+        # Act: Call the calibration_factor method with cal_type "beta"
+        result = swath.calibration_factor(cal_type="beta")
+        
+        # Assert: The result should match the beta_nought constant
+        assert result == 1.5, "Beta calibration factor should be a constant"
+
+# Test case for sigma calibration with interpolation using create_swath fixture
+def test_calibration_factor_sigma(create_swath):
+    swath = create_swath
+
+    # Mock the necessary attributes
+    with patch.object(swath, 'lines_per_burst', 2), \
+         patch.object(swath, 'samples_per_burst', 3), \
+         patch.object(swath, 'calvec', [
+             {"line": "0", "pixel": {"#text": "0 1 2"}, "sigmaNought": {"#text": "1.0 2.0 3.0"}},
+             {"line": "1", "pixel": {"#text": "0 1 2"}, "sigmaNought": {"#text": "4.0 5.0 6.0"}}
+         ]):
+        # Act: Call the calibration_factor method with cal_type "sigma"
+        result = swath.calibration_factor(cal_type="sigma")
+        
+        # Assert: Compare the result to the expected interpolation result
+        expected_result = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        assert np.allclose(result, expected_result), "Sigma nought calibration factor interpolation failed"
+
 
 
 def test_range_doppler():
