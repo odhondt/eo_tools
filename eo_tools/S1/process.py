@@ -594,15 +594,18 @@ def process_slc(
             amplitude(file_in=file_slc, file_out=file_ampl)
 
     # by default, we use iw and pol which exist
-    geocode_and_merge_iw(
-        input_dir=Path(out_dir).parent,
-        var_names=var_names,
-        shp=shp,
-        pol=["vv", "vh"],
-        subswaths=["IW1", "IW2", "IW3"],
-        multilook=multilook,
-        warp_kernel=warp_kernel,
-        clip_to_shape=clip_to_shape,
+    _child_process(
+        geocode_and_merge_iw,
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            multilook=multilook,
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
     )
     return Path(out_dir).parent
 

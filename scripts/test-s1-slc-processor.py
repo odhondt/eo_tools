@@ -45,7 +45,8 @@ outputs_prefix_2="/data/res/test-slc-processor-beta"
 
 # %%
 # load a geometry
-file_aoi = "../data/Morocco_AOI.geojson"
+# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
