@@ -462,6 +462,7 @@ class S1IWSwath:
         grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
         list_lines = []
 
+        log.info(f"Compute {cal_type} nought calibration factor.")
         # interpolate values on image grid
         if cal_type == "sigma":
             for i, it in enumerate(self.calvec):
@@ -481,7 +482,7 @@ class S1IWSwath:
             cal_fac = self.beta_nought
         else:
             raise ValueError(
-                "Calibration type not recognized (use betaNought or sigmaNought)"
+                "Calibration type not recognized (use 'beta' or 'sigma' nought)"
             )
         return cal_fac
 
