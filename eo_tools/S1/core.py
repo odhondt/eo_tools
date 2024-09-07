@@ -111,10 +111,10 @@ class S1IWSwath:
             raise RuntimeError("Invalid product: no burst geometry was found.")
 
         log.info(f"S1IWSwath Initialization:")
-        log.info(f"- Reading metadata file {pth_xml}")
-        log.info(f"- Reading calibration file {pth_cal}")
-        log.info(f"- Setting up raster path {self.pth_tiff}")
-        log.info(f"- Looking for available OSV (Orbit State Vectors)")
+        log.info(f"- Read metadata file {pth_xml}")
+        log.info(f"- Read  calibration file {pth_cal}")
+        log.info(f"- Set up raster path {self.pth_tiff}")
+        log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors
         product = identify(safe_dir)
@@ -278,7 +278,7 @@ class S1IWSwath:
         # state_vectors = orbit_list["orbit"]
 
         if dem_upsampling != 1:
-            log.info("DEM resampling and extract coordinates")
+            log.info("Resample DEM and extract coordinates")
         else:
             log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
@@ -306,7 +306,7 @@ class S1IWSwath:
         interp_pos, interp_vel = sv_interpolator(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Orbit interpolation")
+        log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
@@ -359,7 +359,7 @@ class S1IWSwath:
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
 
-        log.info("Computing TOPS deramping phase")
+        log.info("Compute TOPS deramping phase")
 
         c0 = 299792458.0
         # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -551,7 +551,7 @@ class S1IWSwath:
         product_info = meta["product"]["generalAnnotation"]["productInformation"]
         range_sampling_rate = product_info["rangeSamplingRate"]
 
-        log.info("Computing topographic phase")
+        log.info("Compute topographic phase")
 
         freq = float(product_info["radarFrequency"])
         c0 = 299792458.0
@@ -607,7 +607,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     Returns:
         (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
-    log.info("Projecting secondary coordinates to primary grid.")
+    log.info("Project secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
@@ -819,7 +819,7 @@ def stitch_bursts(bursts, overlap):
     else:
         raise ValueError("Empty burst list")
 
-    log.info("Stitching bursts to make a continuous image")
+    log.info("Stitch bursts to make a continuous image")
     arr = np.zeros((siz, nrg), dtype=bursts[0].dtype)
     off = 0
     for i in range(nburst):

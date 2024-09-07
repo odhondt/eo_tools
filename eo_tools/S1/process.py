@@ -904,7 +904,7 @@ def geocode_and_merge_iw(
             if matched_files:
                 no_file_found = False
             for file_var in matched_files:
-                log.info(f"Geocoding file {Path(file_var).name}.")
+                log.info(f"Geocode file {Path(file_var).name}.")
                 base_name = Path(file_var).stem
                 parts = base_name.split("_")
                 postfix = "_".join(parts[-2:])
@@ -921,7 +921,7 @@ def geocode_and_merge_iw(
                     darr = riox.open_rasterio(file_var)
                     if not np.iscomplexobj(darr[0]):
                         warnings.warn(
-                            "Geocoding real-valued phase? If so, the result might not be optimal if the phase is wrapped."
+                            "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                         )
                 if var == "ifg":
                     file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
@@ -952,7 +952,7 @@ def geocode_and_merge_iw(
                     file_out = f"{input_dir}/{var}_{p}.tif"
                 else:
                     file_out = f"{input_dir}/phi_{p}.tif"
-                log.info(f"Merging file {Path(file_out).name}")
+                log.info(f"Merge file {Path(file_out).name}")
                 da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
@@ -1082,7 +1082,7 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
         file_sec (str): GeoTiff file of the secondary SLC image
         file_out (str): output file
     """
-    log.info("Computing interferogram")
+    log.info("Compute interferogram")
     with rio.open(file_prm) as ds_prm:
         prm = ds_prm.read(1)
         prof = ds_prm.profile.copy()
@@ -1103,7 +1103,7 @@ def amplitude(file_in: str, file_out: str) -> None:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
     """
-    log.info("Computing amplitude")
+    log.info("Compute amplitude")
     with rio.open(file_in) as ds_prm:
         prm = ds_prm.read(1)
         prof = ds_prm.profile.copy()
@@ -1140,9 +1140,9 @@ def coherence(
     """
 
     if not file_complex_ifg:
-        log.info("Computing coherence")
+        log.info("Compute coherence")
     else:
-        log.info("Computing coherence & interferogram")
+        log.info("Compute coherence & interferogram")
 
     if isinstance(box_size, list):
         box_az = box_size[0]
@@ -1616,7 +1616,7 @@ def _stitch_bursts(
         )
         with rio.open(file_out, "w", **prof) as dst:
 
-            log.info("Stitching bursts to make a continuous image")
+            log.info("Stitch bursts to make a continuous image")
             off_dst = 0
             for i in range(burst_count):
                 if i == 0:
