@@ -173,16 +173,16 @@ def process_insar(
     # by default, we use iw and pol which exist
     _child_process(
         geocode_and_merge_iw,
-            dict(
-                input_dir=Path(out_dir).parent,
-                var_names=var_names,
-                shp=shp,
-                pol=["vv", "vh"],
-                subswaths=["IW1", "IW2", "IW3"],
-                multilook=multilook,
-                warp_kernel=warp_kernel,
-                clip_to_shape=clip_to_shape,
-            )
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            multilook=multilook,
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
     )
     return Path(out_dir).parent
 
@@ -1644,20 +1644,21 @@ def _stitch_bursts(
 
 def _child_process(func, args):
     # convenience function to make code prettier
-        if USE_CP:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-                if isinstance(args, (list, tuple)):
-                    res = e.submit(func, *args).result()
-                elif isinstance(args, dict):
-                    res = e.submit(func, **args).result()
-                else:
-                    raise ValueError("Child process arguments should be tuple, list or dict")
-            return res
-        else:
+    if USE_CP:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
             if isinstance(args, (list, tuple)):
-                return func(*args)
+                res = e.submit(func, *args).result()
             elif isinstance(args, dict):
-                return func(**args)
+                res = e.submit(func, **args).result()
             else:
-                raise ValueError("Function arguments should be tuple, list or dict")
-
+                raise ValueError(
+                    "Child process arguments should be tuple, list or dict"
+                )
+        return res
+    else:
+        if isinstance(args, (list, tuple)):
+            return func(*args)
+        elif isinstance(args, dict):
+            return func(**args)
+        else:
+            raise ValueError("Function arguments should be tuple, list or dict")

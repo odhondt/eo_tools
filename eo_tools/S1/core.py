@@ -21,9 +21,6 @@ from xmltodict import parse
 from zipfile import ZipFile
 
 
-from eo_tools.bench import timeit
-
-
 import logging
 
 log = logging.getLogger(__name__)
@@ -451,8 +448,8 @@ class S1IWSwath:
             cal_type (str, optional): Type of calibration. "beta" or "sigma" nought. Defaults to "beta".
 
         Returns:
-            cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought. 
-        """        
+            cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought.
+        """
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
         first_line = (burst_idx - 1) * self.lines_per_burst
@@ -476,7 +473,7 @@ class S1IWSwath:
             )
             interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
 
-            cal_fac = interp((grid_arr_az, grid_arr_rg)) 
+            cal_fac = interp((grid_arr_az, grid_arr_rg))
         # for beta, it is a just constant
         elif cal_type == "beta":
             cal_fac = self.beta_nought
@@ -509,10 +506,8 @@ class S1IWSwath:
         first_line = (burst_idx - 1) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
-        arr = (
-            read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
-                np.complex64
-            )
+        arr = read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
+            np.complex64
         )
 
         # not sure about that, should we consider these holes as NaN?
