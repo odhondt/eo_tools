@@ -23,6 +23,7 @@ from osgeo import gdal
 from rasterio.features import geometry_window
 
 # use child processes
+# USE_CP = False
 USE_CP = True
 
 log = logging.getLogger(__name__)
@@ -796,11 +797,11 @@ def preprocess_slc_iw(
         max_burst_ = max_burst
 
     if max_burst_ > min_burst:
-        tmp_slc = f"{dir_out}/tmp_primary.tif"
+        tmp_slc = f"{dir_out}/tmp_slc.tif"
     elif max_burst_ < min_burst:
         raise ValueError("max_burst must be >= min_burst")
     else:
-        tmp_slc = f"{dir_out}/primary.tif"
+        tmp_slc = f"{dir_out}/slc.tif"
 
     if (
         max_burst_ > slc.burst_count
@@ -887,6 +888,7 @@ def geocode_and_merge_iw(
         pol_ = [p.lower() for p in pol]
     else:
         raise RuntimeError("polarizations must be of type str or list")
+    log.info(subswaths)
     iw_idx = [iw[2] for iw in subswaths]
 
     for var in var_names:
@@ -1635,9 +1637,20 @@ def _stitch_bursts(
 
 def _child_process(func, args):
     # convenience function to make code prettier
-    if USE_CP:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-            res = e.submit(func, *args).result()
-        return res
-    else:
-        return func(*args)
+        if USE_CP:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+                if isinstance(args, (list, tuple)):
+                    res = e.submit(func, *args).result()
+                elif isinstance(args, dict):
+                    res = e.submit(func, **args).result()
+                else:
+                    raise ValueError("Child process arguments should be tuple, list or dict")
+            return res
+        else:
+            if isinstance(args, (list, tuple)):
+                return func(*args)
+            elif isinstance(args, dict):
+                return func(**args)
+            else:
+                raise ValueError("Function arguments should be tuple, list or dict")
+
