@@ -891,7 +891,6 @@ def geocode_and_merge_iw(
         pol_ = [p.lower() for p in pol]
     else:
         raise RuntimeError("polarizations must be of type str or list")
-    log.info(subswaths)
     iw_idx = [iw[2] for iw in subswaths]
 
     for var in var_names:
@@ -1345,6 +1344,7 @@ def _process_bursts_insar(
 
             # deramp secondary
             pdb_s = sec.deramp_burst(burst_idx)
+            log.info("Apply phase deramping")
             arr_s *= np.exp(1j * pdb_s)
 
             # project Secondary LUT into Primary grid
@@ -1355,12 +1355,14 @@ def _process_bursts_insar(
             pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
 
             # reramp secondary
+            log.info("Apply phase reramping")
             arr_s *= np.exp(-1j * pdb_s)
 
             # compute topographic phases
             rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
             pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
             pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+            log.info("Apply topographic phase removal")
             pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
             arr_s *= pha_topo
