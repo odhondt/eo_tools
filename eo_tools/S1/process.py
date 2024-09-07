@@ -1338,8 +1338,9 @@ def _process_bursts_insar(
 
             # radiometric calibration (beta or sigma nought)
             cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
-            arr_p /= cal_p
             cal_s = sec.calibration_factor(burst_idx, cal_type=cal_type)
+            log.info("Apply calibration factor")
+            arr_p /= cal_p
             arr_s /= cal_s
 
             # deramp secondary
@@ -1494,6 +1495,7 @@ def _process_bursts_slc(
 
             # radiometric calibration (beta or sigma nought)
             cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
+            log.info("Apply calibration factor")
             arr_p /= cal_p
 
             first_line = (burst_idx - min_burst) * slc.lines_per_burst
