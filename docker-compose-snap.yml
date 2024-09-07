@@ -4,10 +4,10 @@ version: "3.7"
 services:
 
   eo_tools:
-    container_name: eo_tools
+    container_name: eo_tools_snap
     build: 
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-snap
     environment:
       PYTHONPATH: /eo_tools
     volumes:
