@@ -3,7 +3,7 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
-from scipy.interpolate import CubicHermiteSpline
+from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
@@ -19,10 +19,6 @@ from joblib import Parallel, delayed
 from pyroSAR import identify
 from xmltodict import parse
 from zipfile import ZipFile
-
-
-from eo_tools.bench import timeit
-
 
 
 import logging
@@ -98,8 +94,10 @@ class S1IWSwath:
 
         # extract beta_nought to rescale data
         calinfo = read_metadata(pth_cal)
-        calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
-        BN_str = calvec[0]["betaNought"]["#text"]
+        self.calvec = calinfo["calibration"]["calibrationVectorList"][
+            "calibrationVector"
+        ]
+        BN_str = self.calvec[0]["betaNought"]["#text"]
         self.beta_nought = float(BN_str.split(" ")[0])
 
         # read burst geometries
@@ -110,10 +108,10 @@ class S1IWSwath:
             raise RuntimeError("Invalid product: no burst geometry was found.")
 
         log.info(f"S1IWSwath Initialization:")
-        log.info(f"- Reading metadata file {pth_xml}")
-        log.info(f"- Reading calibration file {pth_cal}")
-        log.info(f"- Setting up raster path {self.pth_tiff}")
-        log.info(f"- Looking for available OSV (Orbit State Vectors)")
+        log.info(f"- Read metadata file {pth_xml}")
+        log.info(f"- Read  calibration file {pth_cal}")
+        log.info(f"- Set up raster path {self.pth_tiff}")
+        log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors
         product = identify(safe_dir)
@@ -277,7 +275,7 @@ class S1IWSwath:
         # state_vectors = orbit_list["orbit"]
 
         if dem_upsampling != 1:
-            log.info("DEM resampling and extract coordinates")
+            log.info("Resample DEM and extract coordinates")
         else:
             log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
@@ -305,7 +303,7 @@ class S1IWSwath:
         interp_pos, interp_vel = sv_interpolator(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Orbit interpolation")
+        log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
@@ -358,7 +356,7 @@ class S1IWSwath:
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
 
-        log.info("Computing TOPS deramping phase")
+        log.info("Compute TOPS deramping phase")
 
         c0 = 299792458.0
         # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -442,6 +440,49 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
 
+    def calibration_factor(self, burst_idx=1, cal_type="beta"):
+        """Computes calibration factor from the metadata.
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+            cal_type (str, optional): Type of calibration. "beta" or "sigma" nought. Defaults to "beta".
+
+        Returns:
+            cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought.
+        """
+        naz = self.lines_per_burst
+        nrg = self.samples_per_burst
+        first_line = (burst_idx - 1) * self.lines_per_burst
+
+        str_cols = self.calvec[0]["pixel"]["#text"]
+        cols = np.array(list(map(int, str_cols.split(" "))), dtype=int)
+        grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
+        list_lines = []
+
+        log.info(f"Compute {cal_type} nought calibration factor.")
+        # interpolate values on image grid
+        if cal_type == "sigma":
+            for i, it in enumerate(self.calvec):
+                list_lines.append(int(it["line"]))
+                str_sigma = it["sigmaNought"]["#text"]
+                line_sigma = list(map(float, str_sigma.split(" ")))
+                grid_sigma[i] = line_sigma
+            rows = np.array(list_lines, dtype=int)
+            grid_arr_rg, grid_arr_az = np.meshgrid(
+                np.arange(nrg), np.arange(first_line, first_line + naz)
+            )
+            interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
+
+            cal_fac = interp((grid_arr_az, grid_arr_rg))
+        # for beta, it is a just constant
+        elif cal_type == "beta":
+            cal_fac = self.beta_nought
+        else:
+            raise ValueError(
+                "Calibration type not recognized (use 'beta' or 'sigma' nought)"
+            )
+        return cal_fac
+
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
@@ -461,16 +502,12 @@ class S1IWSwath:
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
 
         first_line = (burst_idx - 1) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
-        arr = (
-            read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
-                np.complex64
-            )
-            / self.beta_nought
+        arr = read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
+            np.complex64
         )
 
         # not sure about that, should we consider these holes as NaN?
@@ -509,7 +546,7 @@ class S1IWSwath:
         product_info = meta["product"]["generalAnnotation"]["productInformation"]
         range_sampling_rate = product_info["rangeSamplingRate"]
 
-        log.info("Computing topographic phase")
+        log.info("Compute topographic phase")
 
         freq = float(product_info["radarFrequency"])
         c0 = 299792458.0
@@ -565,7 +602,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     Returns:
         (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
-    log.info("Projecting secondary coordinates to primary grid.")
+    log.info("Project secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
@@ -777,7 +814,7 @@ def stitch_bursts(bursts, overlap):
     else:
         raise ValueError("Empty burst list")
 
-    log.info("Stitching bursts to make a continuous image")
+    log.info("Stitch bursts to make a continuous image")
     arr = np.zeros((siz, nrg), dtype=bursts[0].dtype)
     off = 0
     for i in range(nburst):

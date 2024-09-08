@@ -43,8 +43,9 @@ outputs_prefix = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+# file_aoi = "/eo_tools/data/Morocco_small.geojson"
+file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 # search_criteria = {
@@ -74,7 +75,6 @@ process_args = dict(
     shp=shp,
     pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
-    # subswaths="IW1",
     write_coherence=True,
     write_interferogram=True,
     write_primary_amplitude=False,
@@ -87,8 +87,8 @@ process_args = dict(
     filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
+    cal_type="beta",
     clip_to_shape=True,
-    # skip_preprocessing=True,
 )
 
 out_dir = process_insar(**process_args)

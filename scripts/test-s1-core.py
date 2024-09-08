@@ -74,6 +74,12 @@ for burst_idx in range(min_burst, max_burst + 1):
     arr_p = prm.read_burst(burst_idx, True)
     arr_s = sec.read_burst(burst_idx, True)
 
+    # radiometric calibration 
+    cal_p = prm.calibration_factor(burst_idx, cal_type="beta")
+    arr_p /= cal_p
+    cal_s = sec.calibration_factor(burst_idx, cal_type="beta")
+    arr_s /= cal_s
+
     # deramp secondary
     pdb_s = sec.deramp_burst(burst_idx)
     arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)

@@ -1,0 +1,32 @@
+{
+  "name": "eo_tools_snap",
+  "dockerComposeFile": "../../docker-compose-snap.yml",
+  "service": "eo_tools_snap",
+  "workspaceFolder": "/eo_tools",
+  "forwardPorts": [
+    "localhost:8085"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        // "ms-python.vscode-pylance",
+        // "ms-python.pylint",
+        // "ms-python.flake8",
+        "ms-python.isort",
+        // "ms-python.autopep8",
+        "ms-python.black-formatter",
+        "ms-toolsai.jupyter",
+        "njpwerner.autodocstring"
+      ],
+      "settings": {
+        "git.ignoreLimitWarning": true,
+        // "python.formatting.provider": "none",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  }
+}
