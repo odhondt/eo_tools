@@ -526,7 +526,7 @@ def process_slc(
     dem_buffer_arc_sec: float = 40,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
-    cal_type: str = "sigmaNought",
+    cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
 ) -> str:
