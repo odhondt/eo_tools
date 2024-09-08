@@ -1,4 +1,5 @@
 {
+  "name": "eo_tools",
   "dockerComposeFile": "../../docker-compose.yml",
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",

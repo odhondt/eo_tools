@@ -4,7 +4,6 @@ version: "3.7"
 services:
 
   eo_tools:
-    container_name: eo_tools
     build: 
       context: .
       dockerfile: Dockerfile

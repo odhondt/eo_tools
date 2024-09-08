@@ -3,7 +3,7 @@ version: "3.7"
 
 services:
 
-  eo_tools:
+  eo_tools_snap:
     container_name: eo_tools_snap
     build: 
       context: .
