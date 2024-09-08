@@ -6,8 +6,9 @@ nav:
   - Examples:
     - Example 1: s1-discover-insar-pairs.ipynb
     - Example 2: s1-easy-tops-insar.ipynb
-    - Example 3: discover-and-process-s2.ipynb
-    - Example 4: download-dem.ipynb
+    - Example 3: s1-easy-slc-geocoding.ipynb
+    - Example 4: discover-and-process-s2.ipynb
+    - Example 5: download-dem.ipynb
   - API reference: 
     - Sentinel-1 core: s1_core_api.md
     - Sentinel-1 processor: s1_process_api.md
