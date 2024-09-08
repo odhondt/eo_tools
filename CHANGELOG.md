@@ -1,7 +1,7 @@
 # 2024.9.0
 
 ## New features
-- New SLC processor that geocodes and computes amplitude from a single SLC product.
+- New SLC processor to compute and geocode amplitude from a single SLC product.
 - Calibration can now be either set to `sigma` or `beta` nought in both InSAR and SLC processors. For the InSAR processor it is useful when amplitude is computed. 
 - Both `beta` and `sigma` nought calibration factors are computed by the new `S1IWSwath.calibration_factor` function. Beta normalization is not applied anymore by `S1IWSwath.read_burst`.
 - Processing functions `process_*` now have a `cal_type` parameter to control the calibration type.
