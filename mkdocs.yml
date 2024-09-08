@@ -3,7 +3,7 @@ repo_url: https://github.com/odhondt/eo_tools
 repo_name: 'odhondt/eo_tools'
 nav:
   - Home: index.md
-  - Examples:
+  - Tutorials:
     - Example 1: s1-discover-insar-pairs.ipynb
     - Example 2: s1-easy-tops-insar.ipynb
     - Example 3: s1-easy-slc-geocoding.ipynb
