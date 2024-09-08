@@ -7,7 +7,7 @@ services:
     container_name: eo_tools_snap
     build: 
       context: .
-      dockerfile: Dockerfile-snap
+      dockerfile: Dockerfile.snap
     environment:
       PYTHONPATH: /eo_tools
     volumes:
