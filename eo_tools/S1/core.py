@@ -1058,3 +1058,90 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         r_zd[i] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return i_zd, r_zd
+
+
+# prototype RTC
+@njit(nogil=True, parallel=True, cache=True)
+def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
+
+    # barycentric coordinates in a triangle
+    def bary(p, a, b, c):
+        det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
+        l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+        l3 = 1 - l1 - l2
+        return l1, l2, l3
+
+    # test if point is in triangle
+    def is_in_tri(l1, l2):
+        return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
+
+    def triangle_area(xx, yy, zz):
+        # Compute the components of two vectors formed by the triangle's vertices
+        v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
+        v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
+
+        # Compute the cross product components
+        cross_x = v1y * v2z - v1z * v2y
+        cross_y = v1z * v2x - v1x * v2z
+        cross_z = v1x * v2y - v1y * v2x
+
+        # Compute the magnitude of the cross product
+        cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
+
+        # The area of the triangle is half the magnitude of the cross product
+        area = 0.5 * cross_magnitude
+
+        return area
+
+    naz, nrg = arr_slc.shape
+
+    sigma_t = np.full((naz, nrg), np.nan)
+    p = np.zeros(2)
+    nl, nc = azp.shape
+    # triangle indices
+    ix1 = [0, 1, 2]
+    ix2 = [3, 1, 2]
+    # - loop on DEM
+    for i in prange(0, nl - 1):
+        for j in range(0, nc - 1):
+            # - triangle in 2D (SAR geometry)
+            aa = azp[i : i + 2, j : j + 2].flatten()
+            rr = rgp[i : i + 2, j : j + 2].flatten()
+
+            # - triangle in 3D (DEM geometry)
+            xx = dem_x[i : i + 2, j : j + 2].flatten()
+            yy = dem_y[i : i + 2, j : j + 2].flatten()
+            zz = dem_z[i : i + 2, j : j + 2].flatten()
+
+
+            area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
+            area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
+
+            # - collect triangle vertices in azimuth-range
+            vv = np.vstack((aa, rr)).T
+            if np.isnan(vv).any():
+                continue
+            # - compute bounding box in the SAR grid
+            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            amin = np.maximum(amin, 0)
+            rmin = np.maximum(rmin, 0)
+            amax = np.minimum(amax, naz - 1)
+            rmax = np.minimum(rmax, nrg - 1)
+            # - loop on integer positions based on box
+            for a in range(int(amin), int(amax) + 1):
+                for r in range(int(rmin), int(rmax) + 1):
+                    # - separate into 2 triangles
+                    # - test if each point falls into triangle 1 or 2
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
+                    l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
+                    if is_in_tri(l1, l2):
+                        sigma_t[a, r] += area1
+                    l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
+                    if is_in_tri(l1, l2):
+                        sigma_t[a, r] += area2
+
+    return sigma_t
