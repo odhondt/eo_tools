@@ -530,7 +530,7 @@ def process_slc(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
 ) -> str:
-    """Geocode the amplitude of a Sentinel-1 SLC product and writes the results as a COG (Cloud Optimized GeoTiFF) file.
+    """Geocode the amplitude of a Sentinel-1 SLC product in the DEM geometry and writes the results as a COG (Cloud Optimized GeoTiFF) file.
     AOI crop is optional.
 
     Args:
@@ -629,7 +629,7 @@ def prepare_slc(
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
-    """Preprocess a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitches the selected bursts and computes a lookup tables for each subswath of interest that can be used to project the data in the DEM geometry.
+    """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
     Args:
         dir_slc (str): Input image (SLC Sentinel-1 product directory).
@@ -754,7 +754,7 @@ def preprocess_slc_iw(
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = True,
 ) -> None:
-    """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitches the selected bursts and computes a lookup table that can be used to project the data in the DEM geometry.
+    """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
     Args:
         dir_slc (str): directory containing the SLC input product.
