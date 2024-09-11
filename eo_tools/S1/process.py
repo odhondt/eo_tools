@@ -21,6 +21,7 @@ from pathlib import Path
 from shapely.geometry import shape
 from osgeo import gdal
 from rasterio.features import geometry_window
+from affine import Affine
 
 # use child processes
 # USE_CP = False
@@ -1010,10 +1011,14 @@ def sar2geo(
     with rio.open(sar_file) as ds_sar:
         arr = ds_sar.read()
         prof_src = ds_sar.profile.copy()
+        trans_src = ds_sar.transform
+
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
 
+    if not trans_src.is_rectilinear:
+        raise ValueError("The input dataset is not in the SAR geometry")
     if prof_src["count"] != 1:
         raise ValueError("Only single band rasters are supported.")
 
@@ -1026,12 +1031,16 @@ def sar2geo(
             "magnitude_only: Writing magnitude (absolute value) of a real-valued array."
         )
 
+    # check if input was rescaled (multilook, etc.)
+    sx = trans_src.a
+    sy = trans_src.e
+
     if (mlt_az == 1) & (mlt_rg == 1):
         arr_ = arr[0].copy()
     else:
         arr_ = presum(arr[0], mlt_az, mlt_rg)
 
-    arr_out = remap(arr_, lut[0] / mlt_az, lut[1] / mlt_rg, kernel)
+    arr_out = remap(arr_, lut[0] / mlt_az / sy, lut[1] / mlt_rg / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
@@ -1096,18 +1105,32 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
         dst.write(ifg, 1)
 
 
-def amplitude(file_in: str, file_out: str) -> None:
+def amplitude(file_in: str, file_out: str, mlt_az: int = 1, mlt_rg=1) -> None:
     """Compute the amplitude of a complex-valued image.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
+        mlt_az (int): multilook in azimuth. Defaults to 1.
+        mlt_rg (int): multilook in range. Defaults to 1.
     """
+
+    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
+        raise ValueError("Multilooking factors must be integers")
+    if mlt_az < 1 or mlt_rg < 1:
+        raise ValueError("Multilooking factors must be >= 1")
+
     log.info("Compute amplitude")
-    with rio.open(file_in) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile.copy()
-    amp = np.abs(prm)
+    with rio.open(file_in) as ds_slc:
+        slc = ds_slc.read(1)
+        prof = ds_slc.profile.copy()
+        trans = ds_slc.transform
+
+    amp = np.abs(slc)
+
+    if mlt_az > 1 or mlt_rg > 1:
+        amp = presum(amp, mlt_az, mlt_rg)
+        prof.update({"transform": trans * Affine.scale(mlt_rg, mlt_az)})
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # prof.update(
