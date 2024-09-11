@@ -1061,7 +1061,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
 
 # prototype RTC
-@njit(nogil=True, parallel=True, cache=True)
+@njit(nogil=True, parallel=True, cache=False)
 def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
 
     # barycentric coordinates in a triangle
@@ -1096,12 +1096,13 @@ def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
 
     naz, nrg = arr_slc.shape
 
-    sigma_t = np.full((naz, nrg), np.nan)
+    sigma_t = np.zeros((naz, nrg))
     p = np.zeros(2)
     nl, nc = azp.shape
     # triangle indices
-    ix1 = [0, 1, 2]
-    ix2 = [3, 1, 2]
+    ix1 = np.array([0, 1, 2], dtype="uint8")
+    ix2 = np.array([3, 1, 2], dtype="uint8")
+
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1113,7 +1114,6 @@ def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
             xx = dem_x[i : i + 2, j : j + 2].flatten()
             yy = dem_y[i : i + 2, j : j + 2].flatten()
             zz = dem_z[i : i + 2, j : j + 2].flatten()
-
 
             area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
             area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
