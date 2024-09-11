@@ -24,8 +24,9 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 ## Overview
 - Currently, the available features are:
     - Sentinel-1
-        - New standalone InSAR processor (see previous section)
-        - Legacy InSAR processor (running SNAP graphs through PyroSAR) computing the coherence, phase and intensities of an interferometric pair of SLC products
+        - Interferometric processing of Sentinel-1 pairs, including TOPS processing steps like azimuth deramping, DEM assisted coregistration and Range-Doppler terrain correction and Enhanced Spectral Diversity. Individual bursts as well as full products can be processed and cropped to any area of interest provided by the user.
+        - Amplitude geocoding of SLC Sentinel-1 images, with Beta or Sigma Nought calibration
+        - Ability to apply processing in the SAR geometry and further project the results in a geographic coordinate systems using lookup-tables
         - Write the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file
         - Display these rasters on top of a folium map in a jupyter notebook
     - Sentinel-2
