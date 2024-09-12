@@ -40,37 +40,46 @@ def boxcar(img, dimaz, dimrg):
 
 
 def presum(img, m, n):
-    """m by n presumming of an image
+    """
+    m by n presumming of an image.
 
     Parameters
     ----------
-    img: array, shape (naz, nrg,...)
-
-    m,n: integer
-        number of lines and columns to sum
+    img : array-like, shape (naz, nrg,...)
+        Input image array.
+    m, n : int
+        Number of lines and columns to sum. Must be integers >= 1.
 
     Returns
     -------
-    out: array, shape(M, N,...)
-        M and N are closest multiples of m and n
-        to naz and nrg
+    out : array, shape (M, N, ...)
+        M and N are the closest multiples of m and n to naz and nrg.
     """
-
+    # Check if m and n are integers >= 1
+    if not isinstance(m, int) or not isinstance(n, int):
+        raise TypeError("Parameters m and n must be integers.")
+    if m < 1 or n < 1:
+        raise ValueError("Parameters m and n must be integers greater than or equal to 1.")
+    
+    # Check if m and n are valid in relation to the image dimensions
     if m > img.shape[0] or n > img.shape[1]:
-        raise ValueError("Cannot presum with these parameters.")
+        raise ValueError("Cannot presum with these parameters; m or n is too large for the image dimensions.")
+    
+    M = (img.shape[0] // m) * m
+    N = (img.shape[1] // n) * n
+    
+    img_trimmed = img[:M, :N]
 
-    # TODO: write exception controlling size
-    # and validity of parameters m, n
-    M = int(np.floor(img.shape[0] / int(m)) * m)
-    N = int(np.floor(img.shape[1] / int(n)) * n)
-    img0 = img[:M, :N]  # .copy()  # keep for readability
-    s = img0[::m]  # .copy()
+    s = img_trimmed[::m].copy()  # Make a copy once for efficiency
     for i in range(1, m):
-        s += img0[i::m]
-    t = s[:, ::n]
+        s += img_trimmed[i::m]
+
+    t = s[:, ::n].copy()
     for j in range(1, n):
         t += s[:, j::n]
+
     return t / float(m * n)
+
 
 
 # @njit(parallel=True, nogil=True)
