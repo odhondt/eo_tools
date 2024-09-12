@@ -1083,7 +1083,9 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
+def interferogram(
+    file_prm: str, file_sec: str, file_out: str, mlt_az: int = 1, mlt_rg: int = 1
+) -> None:
     """Compute a complex interferogram from two SLC image files.
 
     Args:
@@ -1104,17 +1106,63 @@ def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
 
+def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
+    """Applies multilooking to raster.
 
-def amplitude(file_in: str, file_out: str, mlt_az: int = 1, mlt_rg=1) -> None:
+    Args:
+        file_in (str): GeoTiff file of the primary SLC image
+        file_out (str): output file
+        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
+        mlt_az (int): multilook in azimuth. Defaults to 1.
+        mlt_rg (int): multilook in range. Defaults to 1.
+    """
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
+        raise ValueError("Multilooking factors must be integers")
+    if mlt_az < 1 or mlt_rg < 1:
+        raise ValueError("Multilooking factors must be >= 1")
+
+    log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
+
+    with rio.open(file_in) as ds_src:
+        prof = ds_src.profile.copy()
+        trans = ds_src.transform
+        w_out = int(np.floor(ds_src.width / int(mlt_rg)) * mlt_rg)
+        h_out = int(np.floor(ds_src.height / int(mlt_az)) * mlt_az)
+        prof.update({
+            "width": w_out,
+            "height": h_out,
+            "transform": trans * Affine.scale(mlt_rg, mlt_az)
+            })
+        warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+        with rio.open(file_out, "w", **prof) as dst:
+            if mlt_az > 1 or mlt_rg > 1:
+                for i in range(prof["count"]):
+                    arr = ds_src.read(i+1)
+                    arr_out = presum(arr, mlt_az, mlt_rg)
+                dst.write(arr_out, i+1)
+
+
+
+def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """Compute the amplitude of a complex-valued image.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
+        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
         mlt_az (int): multilook in azimuth. Defaults to 1.
         mlt_rg (int): multilook in range. Defaults to 1.
     """
 
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
     if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
         raise ValueError("Multilooking factors must be integers")
     if mlt_az < 1 or mlt_rg < 1:
@@ -1130,7 +1178,11 @@ def amplitude(file_in: str, file_out: str, mlt_az: int = 1, mlt_rg=1) -> None:
 
     if mlt_az > 1 or mlt_rg > 1:
         amp = presum(amp, mlt_az, mlt_rg)
-        prof.update({"transform": trans * Affine.scale(mlt_rg, mlt_az)})
+        prof.update({
+            "width": amp.shape[1],
+            "height": amp.shape[0],
+            "transform": trans * Affine.scale(mlt_rg, mlt_az)
+            })
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # prof.update(
