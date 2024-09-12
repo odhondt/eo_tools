@@ -24,11 +24,11 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 ## Overview
 - Currently, the available features are:
     - Sentinel-1
-        - Interferometric processing of Sentinel-1 pairs, including TOPS processing steps like azimuth deramping, DEM assisted coregistration and Range-Doppler terrain correction and Enhanced Spectral Diversity. Individual bursts as well as full products can be processed and cropped to any area of interest provided by the user.
-        - Amplitude geocoding of SLC Sentinel-1 images, with Beta or Sigma Nought calibration
-        - Ability to apply processing in the SAR geometry and further project the results in a geographic coordinate systems using lookup-tables
-        - Write the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file
-        - Display these rasters on top of a folium map in a jupyter notebook
+        - Interferometric processing of Sentinel-1 pairs, including TOPS processing steps like azimuth deramping, DEM assisted coregistration, Range-Doppler terrain correction and Enhanced Spectral Diversity. Individual bursts can be processed as well as full products and cropped to any area of interest provided by the user.
+        - Amplitude geocoding of SLC Sentinel-1 images, with Beta or Sigma Nought calibration.
+        - Ability to apply processing in the SAR geometry and further project the results in a geographic coordinate systems using lookup-tables.
+        - Writing the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file.
+        - Displaying these rasters on top of a folium map in a jupyter notebook.
     - Sentinel-2
         - Tile merging and geocoding
         - Write any band to COG files
