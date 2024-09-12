@@ -41,19 +41,19 @@ def boxcar(img, dimaz, dimrg):
 
 def presum(img, m, n):
     """
-    m by n presumming of an image.
+    Computes the m by n presummed image.
 
-    Parameters
-    ----------
-    img : array-like, shape (naz, nrg,...)
-        Input image array.
-    m, n : int
-        Number of lines and columns to sum. Must be integers >= 1.
+    Args:
+        img (array-like): Input image array with shape (naz, nrg,...).
+        m (int): Number of lines to sum. Must be an integer >= 1.
+        n (int): Number of columns to sum. Must be an integer >= 1.
 
-    Returns
-    -------
-    out : array, shape (M, N, ...)
-        M and N are the closest multiples of m and n to naz and nrg.
+    Raises:
+        TypeError: If m or n are not integers.
+        ValueError: If m or n are less than 1, or if m > img.shape[0] or n > img.shape[1].
+
+    Returns:
+        array: Presummed image array with shape (M, N,...), where M and N are the largest multiples of m and n that are less than or equal to img.shape[0] and img.shape[1], respectively.
     """
     # Check if m and n are integers >= 1
     if not isinstance(m, int) or not isinstance(n, int):
