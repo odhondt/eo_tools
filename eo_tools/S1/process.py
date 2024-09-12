@@ -1106,6 +1106,7 @@ def interferogram(
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
 
+
 def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """Applies multilooking to raster.
 
@@ -1131,21 +1132,22 @@ def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     with rio.open(file_in) as ds_src:
         prof = ds_src.profile.copy()
         trans = ds_src.transform
-        w_out = int(np.floor(ds_src.width / int(mlt_rg)) * mlt_rg)
-        h_out = int(np.floor(ds_src.height / int(mlt_az)) * mlt_az)
-        prof.update({
-            "width": w_out,
-            "height": h_out,
-            "transform": trans * Affine.scale(mlt_rg, mlt_az)
-            })
+        w_out = ds_src.width // mlt_rg
+        h_out = ds_src.height // mlt_az
+        prof.update(
+            {
+                "width": w_out,
+                "height": h_out,
+                "transform": trans * Affine.scale(mlt_rg, mlt_az),
+            }
+        )
         warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
         with rio.open(file_out, "w", **prof) as dst:
             if mlt_az > 1 or mlt_rg > 1:
                 for i in range(prof["count"]):
-                    arr = ds_src.read(i+1)
+                    arr = ds_src.read(i + 1)
                     arr_out = presum(arr, mlt_az, mlt_rg)
-                dst.write(arr_out, i+1)
-
+                    dst.write(arr_out, i + 1)
 
 
 def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
@@ -1178,11 +1180,13 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
 
     if mlt_az > 1 or mlt_rg > 1:
         amp = presum(amp, mlt_az, mlt_rg)
-        prof.update({
-            "width": amp.shape[1],
-            "height": amp.shape[0],
-            "transform": trans * Affine.scale(mlt_rg, mlt_az)
-            })
+        prof.update(
+            {
+                "width": amp.shape[1],
+                "height": amp.shape[0],
+                "transform": trans * Affine.scale(mlt_rg, mlt_az),
+            }
+        )
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # prof.update(
