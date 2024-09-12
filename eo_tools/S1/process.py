@@ -1119,11 +1119,11 @@ def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """
 
     if not isinstance(multilook, list):
-        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+        raise TypeError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
         mlt_az, mlt_rg = multilook
     if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
-        raise ValueError("Multilooking factors must be integers")
+        raise TypeError("Multilooking factors must be integers")
     if mlt_az < 1 or mlt_rg < 1:
         raise ValueError("Multilooking factors must be >= 1")
 
