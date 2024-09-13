@@ -1083,30 +1083,6 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def interferogram(
-    file_prm: str, file_sec: str, file_out: str, mlt_az: int = 1, mlt_rg: int = 1
-) -> None:
-    """Compute a complex interferogram from two SLC image files.
-
-    Args:
-        file_prm (str): GeoTiff file of the primary SLC image
-        file_sec (str): GeoTiff file of the secondary SLC image
-        file_out (str): output file
-    """
-    log.info("Compute interferogram")
-    with rio.open(file_prm) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile.copy()
-    with rio.open(file_sec) as ds_sec:
-        sec = ds_sec.read(1)
-    ifg = prm * sec.conj()
-
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
-    with rio.open(file_out, "w", **prof) as dst:
-        dst.write(ifg, 1)
-
-
 def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """Applies multilooking to raster.
 
@@ -1154,8 +1130,6 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
         multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
-        mlt_az (int): multilook in azimuth. Defaults to 1.
-        mlt_rg (int): multilook in range. Defaults to 1.
     """
 
     if not isinstance(multilook, list):
@@ -1188,6 +1162,46 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     prof.update({"dtype": amp.dtype.name})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(amp, 1)
+
+
+def interferogram(
+    file_prm: str, file_sec: str, file_out: str, multilook: List = [1, 1]
+) -> None:
+    """Compute a complex interferogram from two SLC image files.
+
+    Args:
+        file_prm (str): GeoTiff file of the primary SLC image
+        file_sec (str): GeoTiff file of the secondary SLC image
+        file_out (str): output file
+    """
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    log.info("Compute interferogram")
+    with rio.open(file_prm) as ds_prm:
+        prm = ds_prm.read(1)
+        prof = ds_prm.profile.copy()
+        trans = ds_prm.transform
+    with rio.open(file_sec) as ds_sec:
+        sec = ds_sec.read(1)
+    ifg = prm * sec.conj()
+    ifg = presum(ifg, mlt_az, mlt_rg)
+    prof.update(
+        {
+            "width": ifg.shape[1],
+            "height": ifg.shape[0],
+            "transform": trans * Affine.scale(mlt_rg, mlt_az),
+        }
+    )
+
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
+    with rio.open(file_out, "w", **prof) as dst:
+        dst.write(ifg, 1)
+
 
 
 def coherence(
