@@ -1202,6 +1202,7 @@ def coherence(
     file_sec: str,
     file_out: str,
     box_size: Union[int, List[int]] = 5,
+    multilook: List = [1, 1],
     magnitude: bool = True,
     file_complex_ifg: str = None,
     filter_ifg: bool = True,
@@ -1229,6 +1230,16 @@ def coherence(
     else:
         box_az = box_size
         box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
+        raise ValueError("Multilooking factors must be integers")
+    if mlt_az < 1 or mlt_rg < 1:
+        raise ValueError("Multilooking factors must be >= 1")
 
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
 
@@ -1269,11 +1280,17 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
+    if mlt_az > 1 or mlt_rg > 1:
+        coh = presum(coh, mlt_az, mlt_rg)
+
     nodataval = np.nan
 
     da_coh = xr.DataArray(
         data=coh[None],
         dims=("band", "y", "x"),
+    )
+    da_coh.rio.write_transform(
+        ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_coh.rio.write_nodata(nodataval, inplace=True)
 
@@ -1284,15 +1301,22 @@ def coherence(
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         if filter_ifg:
+            if mlt_az > 1 or mlt_rg > 1:
+                ifg_box = presum(ifg_box, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg_box[None],
                 dims=("band", "y", "x"),
             )
         else:
+            if mlt_az > 1 or mlt_rg > 1:
+                ifg= presum(ifg, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg[None],
                 dims=("band", "y", "x"),
             )
+        da_ifg.rio.write_transform(
+            ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+        )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
         da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
         # da_ifg.rio.to_raster(
