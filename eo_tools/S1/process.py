@@ -146,6 +146,7 @@ def process_insar(
                     file_sec=file_sec,
                     file_out=file_coh,
                     box_size=boxcar_coherence,
+                    multilook=multilook,
                     magnitude=True,
                     file_complex_ifg=file_ifg,
                     filter_ifg=filter_ifg,
@@ -157,19 +158,25 @@ def process_insar(
                     file_sec=file_sec,
                     file_out=file_coh,
                     box_size=boxcar_coherence,
+                    multilook=multilook,
                     magnitude=True,
                 )
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
+                interferogram(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_ifg,
+                    multilook=multilook,
+                )
 
             if write_primary_amplitude:
                 file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(file_in=file_prm, file_out=file_ampl)
+                amplitude(file_in=file_prm, file_out=file_ampl, multilook=multilook)
 
             if write_secondary_amplitude:
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(file_in=file_sec, file_out=file_ampl)
+                amplitude(file_in=file_sec, file_out=file_ampl, multilook=multilook)
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -180,7 +187,6 @@ def process_insar(
             shp=shp,
             pol=["vv", "vh"],
             subswaths=["IW1", "IW2", "IW3"],
-            multilook=multilook,
             warp_kernel=warp_kernel,
             clip_to_shape=clip_to_shape,
         ),
@@ -596,7 +602,7 @@ def process_slc(
             )
 
             file_ampl = f"{out_dir}/amp_{pattern}.tif"
-            amplitude(file_in=file_slc, file_out=file_ampl)
+            amplitude(file_in=file_slc, file_out=file_ampl, multilook=multilook)
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -607,7 +613,6 @@ def process_slc(
             shp=shp,
             pol=["vv", "vh"],
             subswaths=["IW1", "IW2", "IW3"],
-            multilook=multilook,
             warp_kernel=warp_kernel,
             clip_to_shape=clip_to_shape,
         ),
@@ -623,7 +628,6 @@ def prepare_slc(
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
-    # warp_kernel: str = "bicubic",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = True,
@@ -866,7 +870,6 @@ def geocode_and_merge_iw(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     clip_to_shape: bool = True,
 ) -> None:
@@ -930,8 +933,6 @@ def geocode_and_merge_iw(
                         file_var,
                         file_lut,
                         file_out,
-                        multilook[0],
-                        multilook[1],
                         warp_kernel,
                         write_phase=True,
                         magnitude_only=False,
@@ -941,8 +942,6 @@ def geocode_and_merge_iw(
                         file_var,
                         file_lut,
                         file_out,
-                        multilook[0],
-                        multilook[1],
                         warp_kernel,
                         write_phase=False,
                         magnitude_only=False,
@@ -986,8 +985,6 @@ def sar2geo(
     sar_file: str,
     lut_file: str,
     out_file: str,
-    mlt_az: int = 1,
-    mlt_rg: int = 1,
     kernel: str = "bicubic",
     write_phase: bool = False,
     magnitude_only: bool = False,
@@ -998,8 +995,6 @@ def sar2geo(
         sar_file (str): file in the SAR geometry
         lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (str): output file
-        mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
-        mlt_rg (int): number of looks in the range direction. Defaults to 1.
         kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         write_phase (bool): writes the array's phase . Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
@@ -1035,12 +1030,7 @@ def sar2geo(
     sx = trans_src.a
     sy = trans_src.e
 
-    if (mlt_az == 1) & (mlt_rg == 1):
-        arr_ = arr[0].copy()
-    else:
-        arr_ = presum(arr[0], mlt_az, mlt_rg)
-
-    arr_out = remap(arr_, lut[0] / mlt_az / sy, lut[1] / mlt_rg / sx, kernel)
+    arr_out = remap(arr, lut[0] / sy, lut[1] / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
@@ -1099,7 +1089,6 @@ def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> No
     else:
         mlt_az, mlt_rg = multilook
 
-
     log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
 
     with rio.open(file_in) as ds_src:
@@ -1136,7 +1125,6 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
         raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
         mlt_az, mlt_rg = multilook
-
 
     log.info("Compute amplitude")
     with rio.open(file_in) as ds_slc:
@@ -1201,7 +1189,6 @@ def interferogram(
     # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
     with rio.open(file_out, "w", **prof) as dst:
         dst.write(ifg, 1)
-
 
 
 def coherence(
