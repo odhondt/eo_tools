@@ -91,11 +91,14 @@ def test_coherence(create_test_data):
 #         for name in ("slc_prm", "slc_sec", "coh", "amp_prm", "lut"):
 #             assert glob(f"{out_dir}/sar/{name}_vv_{iw}.tif")
 
+
 # Helper function to create a dummy GeoTIFF file
 def create_dummy_geotiff(width, height, count=1, dtype="uint16", transform=None):
     """Creates a dummy GeoTIFF file with specified dimensions and transform."""
     if transform is None:
-        transform = Affine.translation(0, 0) * Affine.scale(1, 1)  # Identity transform (rectilinear)
+        transform = Affine.translation(0, 0) * Affine.scale(
+            1, 1
+        )  # Identity transform (rectilinear)
     profile = {
         "driver": "GTiff",
         "width": width,
@@ -103,7 +106,7 @@ def create_dummy_geotiff(width, height, count=1, dtype="uint16", transform=None)
         "count": count,
         "dtype": dtype,
         "transform": transform,
-        "crs": None  # Ensure no CRS is used
+        "crs": None,  # Ensure no CRS is used
     }
     data = np.ones((count, height, width), dtype=dtype)  # Dummy data (all ones)
 
@@ -112,6 +115,7 @@ def create_dummy_geotiff(width, height, count=1, dtype="uint16", transform=None)
             dst.write(data)
 
         return temp_file.name
+
 
 def test_multilook_transform_and_dimensions():
     width, height = 100, 100
@@ -138,4 +142,3 @@ def test_multilook_transform_and_dimensions():
         assert src.transform.e == expected_transform.e  # y scale
 
         assert src.crs is None
-
