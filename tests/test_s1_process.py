@@ -9,7 +9,7 @@ import multiprocessing
 import rasterio as rio
 from affine import Affine
 from tempfile import NamedTemporaryFile
-from eo_tools.S1.process import multilook  # Assume this is th
+from eo_tools.S1.process import apply_multilook  # Assume this is th
 
 multiprocessing.set_start_method("forkserver", force=True)
 import warnings
@@ -125,7 +125,7 @@ def test_multilook_transform_and_dimensions():
 
     multilook_factors = [2, 2]
 
-    multilook(input_file, output_file, multilook=multilook_factors)
+    apply_multilook(input_file, output_file, multilook=multilook_factors)
 
     with rio.open(input_file) as src:
         assert src.transform.is_rectilinear  # Check that the transform is rectilinear
