@@ -1231,6 +1231,7 @@ def coherence(
 
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
 
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
     ds_sec = riox.open_rasterio(file_sec, **open_args)
 
@@ -1280,8 +1281,6 @@ def coherence(
         ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_coh.rio.write_nodata(nodataval, inplace=True)
-
-    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
     # da_coh.rio.to_raster(file_out, compress="zstd", num_threads="all_cpus")
 
