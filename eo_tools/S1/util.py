@@ -64,21 +64,25 @@ def presum(img, m, n):
     # Check if m and n are valid in relation to the image dimensions
     if m > img.shape[0] or n > img.shape[1]:
         raise ValueError("Cannot presum with these parameters; m or n is too large for the image dimensions.")
-    
-    M = (img.shape[0] // m) * m
-    N = (img.shape[1] // n) * n
-    
-    img_trimmed = img[:M, :N]
 
-    s = img_trimmed[::m].copy()  # Make a copy once for efficiency
-    for i in range(1, m):
-        s += img_trimmed[i::m]
+    # skip of m = n = 1, avoids conditionals in calls
+    if m > 1 or n > 1: 
+        M = (img.shape[0] // m) * m
+        N = (img.shape[1] // n) * n
+        
+        img_trimmed = img[:M, :N]
 
-    t = s[:, ::n].copy()
-    for j in range(1, n):
-        t += s[:, j::n]
+        s = img_trimmed[::m].copy()  # Make a copy once for efficiency
+        for i in range(1, m):
+            s += img_trimmed[i::m]
 
-    return t / float(m * n)
+        t = s[:, ::n].copy()
+        for j in range(1, n):
+            t += s[:, j::n]
+
+        return t / float(m * n)
+    else:
+        return img
 
 
 
