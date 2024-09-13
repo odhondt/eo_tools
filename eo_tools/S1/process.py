@@ -1236,11 +1236,6 @@ def coherence(
     else:
         mlt_az, mlt_rg = multilook
 
-    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
-        raise ValueError("Multilooking factors must be integers")
-    if mlt_az < 1 or mlt_rg < 1:
-        raise ValueError("Multilooking factors must be >= 1")
-
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
 
     ds_prm = riox.open_rasterio(file_prm, **open_args)
@@ -1280,8 +1275,7 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
-    if mlt_az > 1 or mlt_rg > 1:
-        coh = presum(coh, mlt_az, mlt_rg)
+    coh = presum(coh, mlt_az, mlt_rg)
 
     nodataval = np.nan
 
@@ -1301,15 +1295,13 @@ def coherence(
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         if filter_ifg:
-            if mlt_az > 1 or mlt_rg > 1:
-                ifg_box = presum(ifg_box, mlt_az, mlt_rg)
+            ifg_box = presum(ifg_box, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg_box[None],
                 dims=("band", "y", "x"),
             )
         else:
-            if mlt_az > 1 or mlt_rg > 1:
-                ifg= presum(ifg, mlt_az, mlt_rg)
+            ifg = presum(ifg, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg[None],
                 dims=("band", "y", "x"),
