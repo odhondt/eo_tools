@@ -54,22 +54,28 @@ def presum(img, m, n):
 
     Returns:
         array: Presummed image array with shape (M, N,...), where M and N are the largest multiples of m and n that are less than or equal to img.shape[0] and img.shape[1], respectively.
+    Note:
+        Returns the input array if m==1 and n==1.
     """
     # Check if m and n are integers >= 1
     if not isinstance(m, int) or not isinstance(n, int):
         raise TypeError("Parameters m and n must be integers.")
     if m < 1 or n < 1:
-        raise ValueError("Parameters m and n must be integers greater than or equal to 1.")
-    
+        raise ValueError(
+            "Parameters m and n must be integers greater than or equal to 1."
+        )
+
     # Check if m and n are valid in relation to the image dimensions
     if m > img.shape[0] or n > img.shape[1]:
-        raise ValueError("Cannot presum with these parameters; m or n is too large for the image dimensions.")
+        raise ValueError(
+            "Cannot presum with these parameters; m or n is too large for the image dimensions."
+        )
 
-    # skip of m = n = 1, avoids conditionals in calls
-    if m > 1 or n > 1: 
+    # skip if m = n = 1, avoids conditionals in calls
+    if (m > 1) or (n > 1):
         M = (img.shape[0] // m) * m
         N = (img.shape[1] // n) * n
-        
+
         img_trimmed = img[:M, :N]
 
         s = img_trimmed[::m].copy()  # Make a copy once for efficiency
@@ -83,7 +89,6 @@ def presum(img, m, n):
         return t / float(m * n)
     else:
         return img
-
 
 
 # @njit(parallel=True, nogil=True)
