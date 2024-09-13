@@ -1122,10 +1122,7 @@ def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
         raise TypeError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
         mlt_az, mlt_rg = multilook
-    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
-        raise TypeError("Multilooking factors must be integers")
-    if mlt_az < 1 or mlt_rg < 1:
-        raise ValueError("Multilooking factors must be >= 1")
+
 
     log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
 
@@ -1165,10 +1162,7 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
         raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
         mlt_az, mlt_rg = multilook
-    if not isinstance(mlt_az, int) or not isinstance(mlt_rg, int):
-        raise ValueError("Multilooking factors must be integers")
-    if mlt_az < 1 or mlt_rg < 1:
-        raise ValueError("Multilooking factors must be >= 1")
+
 
     log.info("Compute amplitude")
     with rio.open(file_in) as ds_slc:
@@ -1178,15 +1172,14 @@ def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
 
     amp = np.abs(slc)
 
-    if mlt_az > 1 or mlt_rg > 1:
-        amp = presum(amp, mlt_az, mlt_rg)
-        prof.update(
-            {
-                "width": amp.shape[1],
-                "height": amp.shape[0],
-                "transform": trans * Affine.scale(mlt_rg, mlt_az),
-            }
-        )
+    amp = presum(amp, mlt_az, mlt_rg)
+    prof.update(
+        {
+            "width": amp.shape[1],
+            "height": amp.shape[0],
+            "transform": trans * Affine.scale(mlt_rg, mlt_az),
+        }
+    )
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # prof.update(
