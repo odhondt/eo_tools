@@ -1083,7 +1083,7 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
+def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """Applies multilooking to raster.
 
     Args:
