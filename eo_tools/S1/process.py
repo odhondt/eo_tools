@@ -1004,7 +1004,7 @@ def sar2geo(
     log.info("Project image with the lookup table.")
 
     with rio.open(sar_file) as ds_sar:
-        arr = ds_sar.read()
+        arr = ds_sar.read(1)
         prof_src = ds_sar.profile.copy()
         trans_src = ds_sar.transform
 
@@ -1029,7 +1029,6 @@ def sar2geo(
     # check if input was rescaled (multilook, etc.)
     sx = trans_src.a
     sy = trans_src.e
-
     arr_out = remap(arr, lut[0] / sy, lut[1] / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
