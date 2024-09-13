@@ -15,7 +15,7 @@ import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
-from typing import Union, List
+from typing import Union, List, Callable
 from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
@@ -1306,6 +1306,99 @@ def coherence(
         # da_ifg.rio.to_raster(
         #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
         # )
+
+
+import os
+from typing import Callable, List, Union
+
+
+def apply_to_patterns_for_pair(
+    func: Callable,
+    out_dir: str,
+    file_prm_prefix: str,
+    file_sec_prefix: str,
+    file_out_prefix: str,
+    *args,
+    **kwargs,
+) -> None:
+    """Apply the given function to all file patterns for pairs of input files, skipping patterns with missing files.
+
+    This function generates file paths based on predefined polarization (`vh`, `vv`)
+    and interferometric wide-swath (IW) indices (`iw1`, `iw2`, `iw3`), then calls the
+    provided function for each pattern with two input files and one output file, only
+    if the input files exist.
+
+    Args:
+        func (Callable): The function to apply to each set of file paths. It should
+            accept at least three string arguments for input and output file names.
+        out_dir (str): The directory where the input and output files are located.
+        file_prm_prefix (str): The prefix for the primary input file.
+        file_sec_prefix (str): The prefix for the secondary input file.
+        file_out_prefix (str): The prefix for the output file.
+        *args: Additional positional arguments to pass to the `func`.
+        **kwargs: Additional keyword arguments to pass to the `func`.
+
+    Returns:
+        None: The function is executed for each pattern where the input files exist, but no return value is expected.
+    """
+    pol = ["vh", "vv"]
+    iw_idx = [1, 2, 3]
+    patterns = [f"{p}_iw{iw}" for p in pol for iw in iw_idx]
+
+    for pattern in patterns:
+        file_prm = f"{out_dir}/{file_prm_prefix}_{pattern}.tif"
+        file_sec = f"{out_dir}/{file_sec_prefix}_{pattern}.tif"
+        file_out = f"{out_dir}/{file_out_prefix}_{pattern}.tif"
+
+        # Check if both input files exist
+        if os.path.exists(file_prm) and os.path.exists(file_sec):
+            # Call the original function with updated file names
+            func(file_prm, file_sec, file_out, *args, **kwargs)
+        else:
+            print(f"Skipping: {file_prm} or {file_sec} not found.")
+
+
+def apply_to_patterns_for_single(
+    func: Callable,
+    out_dir: str,
+    file_in_prefix: str,
+    file_out_prefix: str,
+    *args,
+    **kwargs,
+) -> None:
+    """Apply the given function to all file patterns for a single input file, skipping patterns with missing files.
+
+    This function generates file paths based on predefined polarization (`vh`, `vv`)
+    and interferometric wide-swath (IW) indices (`iw1`, `iw2`, `iw3`), then calls the
+    provided function for each pattern with one input file and one output file, only
+    if the input file exists.
+
+    Args:
+        func (Callable): The function to apply to each set of file paths. It should
+            accept at least two string arguments for input and output file names.
+        out_dir (str): The directory where the input and output files are located.
+        file_in_prefix (str): The prefix for the input file.
+        file_out_prefix (str): The prefix for the output file.
+        *args: Additional positional arguments to pass to the `func`.
+        **kwargs: Additional keyword arguments to pass to the `func`.
+
+    Returns:
+        None: The function is executed for each pattern where the input file exists, but no return value is expected.
+    """
+    pol = ["vh", "vv"]
+    iw_idx = [1, 2, 3]
+    patterns = [f"{p}_iw{iw}" for p in pol for iw in iw_idx]
+
+    for pattern in patterns:
+        file_in = f"{out_dir}/{file_in_prefix}_{pattern}.tif"
+        file_out = f"{out_dir}/{file_out_prefix}_{pattern}.tif"
+
+        # Check if the input file exists
+        if os.path.exists(file_in):
+            # Call the original function with updated file names
+            func(file_in, file_out, *args, **kwargs)
+        else:
+            print(f"Skipping: {file_in} not found.")
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
