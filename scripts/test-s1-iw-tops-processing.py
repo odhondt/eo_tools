@@ -41,7 +41,7 @@ secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
 iw = 1 # subswath
 pol = "vv" # polarization ("vv"or "vh")
 min_burst = 3
-max_burst = 3 # Set to None to process all (warning: memory hungry)
+max_burst = 6 # Set to None to process all (warning: memory hungry)
 
 
 # %%
@@ -132,9 +132,9 @@ ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Moro
 
 m = folium.Map()
 _ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
-_ = show_cog(f"{out_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+_ = show_cog(f"{out_dir}/phi_geo.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
 _ = show_cog(f"{ref_dir}/coh.tif", m, rescale=f"0,1")
-_ = show_cog(f"{out_dir}/coh.tif", m, rescale=f"0,1")
+_ = show_cog(f"{out_dir}/coh_geo.tif", m, rescale=f"0,1")
 # _ = show_cog(f"{ref_dir}/amp_prm.tif", m, rescale=f"0,1")
 # _ = show_cog(f"{out_dir}/amp_prm.tif", m, rescale=f"0,1")
 LayerControl().add_to(m)
