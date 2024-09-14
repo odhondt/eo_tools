@@ -1353,9 +1353,8 @@ def apply_to_patterns_for_pair(
         # Check if both input files exist
         if os.path.exists(file_prm) and os.path.exists(file_sec):
             # Call the original function with updated file names
+            log.info(f"Apply '{func.__name__}' to {Path(file_prm).stem} and {Path(file_sec).stem}.")
             func(file_prm, file_sec, file_out, *args, **kwargs)
-        else:
-            print(f"Skipping: {file_prm} or {file_sec} not found.")
 
 
 def apply_to_patterns_for_single(
@@ -1396,9 +1395,8 @@ def apply_to_patterns_for_single(
         # Check if the input file exists
         if os.path.exists(file_in):
             # Call the original function with updated file names
+            log.info(f"Apply '{func.__name__}' to {Path(file_in).stem}")
             func(file_in, file_out, *args, **kwargs)
-        else:
-            print(f"Skipping: {file_in} not found.")
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
