@@ -45,8 +45,8 @@ outputs_prefix_2="/data/res/test-slc-processor-beta"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
@@ -73,7 +73,7 @@ out_dir_sigma = process_slc(
     # pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -92,7 +92,7 @@ out_dir_beta = process_slc(
     # pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",

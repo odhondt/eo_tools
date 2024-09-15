@@ -75,7 +75,7 @@ preprocess_insar_iw(
     max_burst=max_burst,
     dem_upsampling=1.8,
     apply_fast_esd=True,
-    dem_force_download=True
+    dem_force_download=False
 )
 
 # %%
