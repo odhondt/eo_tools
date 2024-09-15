@@ -45,7 +45,7 @@ def process_insar(
     apply_fast_esd: bool = False,
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     filter_ifg: bool = True,
@@ -207,7 +207,7 @@ def prepare_insar(
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -362,7 +362,7 @@ def preprocess_insar_iw(
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -395,11 +395,6 @@ def preprocess_insar_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
-
-    if not dem_force_download:
-        log.warning(
-            "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
-        )
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -517,8 +512,6 @@ def preprocess_insar_iw(
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
 
-    log.info("Done")
-
 
 def process_slc(
     dir_slc: str,
@@ -529,7 +522,7 @@ def process_slc(
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
@@ -630,7 +623,7 @@ def prepare_slc(
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -757,7 +750,7 @@ def preprocess_slc_iw(
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
 ) -> None:
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
@@ -787,11 +780,6 @@ def preprocess_slc_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
-
-    if not dem_force_download:
-        log.warning(
-            "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
-        )
 
     slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
@@ -860,8 +848,6 @@ def preprocess_slc_iw(
     if max_burst_ > min_burst:
         if os.path.isfile(tmp_slc):
             os.remove(tmp_slc)
-
-    log.info("Done")
 
 
 def geocode_and_merge_iw(
@@ -1353,7 +1339,9 @@ def apply_to_patterns_for_pair(
         # Check if both input files exist
         if os.path.exists(file_prm) and os.path.exists(file_sec):
             # Call the original function with updated file names
-            log.info(f"Apply '{func.__name__}' to {Path(file_prm).name} and {Path(file_sec).name}")
+            log.info(
+                f"Apply '{func.__name__}' to {Path(file_prm).name} and {Path(file_sec).name}"
+            )
             func(file_prm, file_sec, file_out, *args, **kwargs)
             log.info(f"File {Path(file_out).name} written")
 
