@@ -189,13 +189,6 @@ class S1IWSwath:
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
 
-        # will change this for a hash based name
-        # if min_burst < max_burst_:
-        #     name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
-        # else:
-        #     name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
-        # file_dem = f"{dir_dem}/{name_dem}"
-
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
         geom_sub = (
@@ -207,7 +200,7 @@ class S1IWSwath:
         )
         shp = box(*geom_sub.bounds)
 
-        # here we define a unique string
+        # here we define a unique string for DEM filename
         dem_name = "nasadem" # will be a parameter in the future
         hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode('utf-8')
         hash_str = hashlib.md5(hash_input).hexdigest() 
