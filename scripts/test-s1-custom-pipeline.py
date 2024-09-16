@@ -42,8 +42,9 @@ secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
 outputs_prefix = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
-file_aoi = "./data/Morocco_tiny.geojson"
-# file_aoi = "./data/Morocco_AOI.geojson"
+file_aoi = "/eo_tools/data/Morocco_small.geojson"
+# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
@@ -137,7 +138,7 @@ apply_to_patterns_for_pair(
 from eo_tools.S1.process import geocode_and_merge_iw
 
 geo_dir = Path(out_dir).parent
-geocode_and_merge_iw(geo_dir, shp=shp, var_names=["coh", "change"])
+geocode_and_merge_iw(geo_dir, shp=shp, var_names=["coh", "change"], clip_to_shape=False)
 
 # %%
 m = folium.Map()
