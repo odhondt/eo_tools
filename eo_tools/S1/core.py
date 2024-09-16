@@ -3,6 +3,7 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
+import hashlib
 from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
@@ -156,7 +157,7 @@ class S1IWSwath:
         max_burst=None,
         dir_dem="/tmp",
         buffer_arc_sec=40,
-        force_download=True,
+        force_download=False,
         upscale_factor=1,
     ):
         """Downloads the DEM for a given burst range
@@ -188,12 +189,6 @@ class S1IWSwath:
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
 
-        if min_burst < max_burst_:
-            name_dem = f"dem-b{min_burst}-b{max_burst_}-{self.pth_tiff.stem}.tiff"
-        else:
-            name_dem = f"dem-b{min_burst}-{self.pth_tiff.stem}.tiff"
-        file_dem = f"{dir_dem}/{name_dem}"
-
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
         geom_sub = (
@@ -204,6 +199,13 @@ class S1IWSwath:
             .buffer(buffer_arc_sec / 3600)
         )
         shp = box(*geom_sub.bounds)
+
+        # here we define a unique string for DEM filename
+        dem_name = "nasadem" # will be a parameter in the future
+        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode('utf-8')
+        hash_str = hashlib.md5(hash_input).hexdigest() 
+        dem_prefix = f"dem-{hash_str}.tif"
+        file_dem = f"{dir_dem}/{dem_prefix}"
 
         if not os.path.exists(file_dem) or force_download:
             retrieve_dem(
@@ -216,7 +218,7 @@ class S1IWSwath:
 
     # kept for backwards compatibility
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=True
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
     ):
         """Downloads the DEM for a given burst
 

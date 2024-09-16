@@ -15,12 +15,13 @@ import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
-from typing import Union, List
+from typing import Union, List, Callable
 from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
 from osgeo import gdal
 from rasterio.features import geometry_window
+from affine import Affine
 
 # use child processes
 # USE_CP = False
@@ -44,7 +45,7 @@ def process_insar(
     apply_fast_esd: bool = False,
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     boxcar_coherence: Union[int, List[int]] = [3, 10],
     filter_ifg: bool = True,
@@ -145,6 +146,7 @@ def process_insar(
                     file_sec=file_sec,
                     file_out=file_coh,
                     box_size=boxcar_coherence,
+                    multilook=multilook,
                     magnitude=True,
                     file_complex_ifg=file_ifg,
                     filter_ifg=filter_ifg,
@@ -156,19 +158,25 @@ def process_insar(
                     file_sec=file_sec,
                     file_out=file_coh,
                     box_size=boxcar_coherence,
+                    multilook=multilook,
                     magnitude=True,
                 )
             elif not write_coherence and write_interferogram:
                 file_ifg = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(file_prm=file_prm, file_sec=file_sec, file_out=file_ifg)
+                interferogram(
+                    file_prm=file_prm,
+                    file_sec=file_sec,
+                    file_out=file_ifg,
+                    multilook=multilook,
+                )
 
             if write_primary_amplitude:
                 file_ampl = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(file_in=file_prm, file_out=file_ampl)
+                amplitude(file_in=file_prm, file_out=file_ampl, multilook=multilook)
 
             if write_secondary_amplitude:
                 file_ampl = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(file_in=file_sec, file_out=file_ampl)
+                amplitude(file_in=file_sec, file_out=file_ampl, multilook=multilook)
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -179,7 +187,6 @@ def process_insar(
             shp=shp,
             pol=["vv", "vh"],
             subswaths=["IW1", "IW2", "IW3"],
-            multilook=multilook,
             warp_kernel=warp_kernel,
             clip_to_shape=clip_to_shape,
         ),
@@ -200,7 +207,7 @@ def prepare_insar(
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -355,7 +362,7 @@ def preprocess_insar_iw(
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -388,11 +395,6 @@ def preprocess_insar_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
-
-    if not dem_force_download:
-        log.warning(
-            "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
-        )
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -510,8 +512,6 @@ def preprocess_insar_iw(
         if os.path.isfile(tmp_sec):
             os.remove(tmp_sec)
 
-    log.info("Done")
-
 
 def process_slc(
     dir_slc: str,
@@ -522,7 +522,7 @@ def process_slc(
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
@@ -595,7 +595,7 @@ def process_slc(
             )
 
             file_ampl = f"{out_dir}/amp_{pattern}.tif"
-            amplitude(file_in=file_slc, file_out=file_ampl)
+            amplitude(file_in=file_slc, file_out=file_ampl, multilook=multilook)
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -606,7 +606,6 @@ def process_slc(
             shp=shp,
             pol=["vv", "vh"],
             subswaths=["IW1", "IW2", "IW3"],
-            multilook=multilook,
             warp_kernel=warp_kernel,
             clip_to_shape=clip_to_shape,
         ),
@@ -622,10 +621,9 @@ def prepare_slc(
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
-    # warp_kernel: str = "bicubic",
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
 ) -> str:
@@ -752,7 +750,7 @@ def preprocess_slc_iw(
     dir_dem: str = "/tmp",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
-    dem_force_download: bool = True,
+    dem_force_download: bool = False,
 ) -> None:
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
@@ -782,11 +780,6 @@ def preprocess_slc_iw(
 
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
-
-    if not dem_force_download:
-        log.warning(
-            "dem_force_download is disabled. This could result in wrong outputs if the file on disk does not match dem_upsampling and dem_buffer_arc_sec."
-        )
 
     slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
@@ -856,8 +849,6 @@ def preprocess_slc_iw(
         if os.path.isfile(tmp_slc):
             os.remove(tmp_slc)
 
-    log.info("Done")
-
 
 def geocode_and_merge_iw(
     input_dir: str,
@@ -865,7 +856,6 @@ def geocode_and_merge_iw(
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
-    multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     clip_to_shape: bool = True,
 ) -> None:
@@ -929,8 +919,6 @@ def geocode_and_merge_iw(
                         file_var,
                         file_lut,
                         file_out,
-                        multilook[0],
-                        multilook[1],
                         warp_kernel,
                         write_phase=True,
                         magnitude_only=False,
@@ -940,8 +928,6 @@ def geocode_and_merge_iw(
                         file_var,
                         file_lut,
                         file_out,
-                        multilook[0],
-                        multilook[1],
                         warp_kernel,
                         write_phase=False,
                         magnitude_only=False,
@@ -985,8 +971,6 @@ def sar2geo(
     sar_file: str,
     lut_file: str,
     out_file: str,
-    mlt_az: int = 1,
-    mlt_rg: int = 1,
     kernel: str = "bicubic",
     write_phase: bool = False,
     magnitude_only: bool = False,
@@ -997,8 +981,6 @@ def sar2geo(
         sar_file (str): file in the SAR geometry
         lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (str): output file
-        mlt_az (int): number of looks in the azimuth direction. Defaults to 1.
-        mlt_rg (int): number of looks in the range direction. Defaults to 1.
         kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         write_phase (bool): writes the array's phase . Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
@@ -1008,12 +990,16 @@ def sar2geo(
     log.info("Project image with the lookup table.")
 
     with rio.open(sar_file) as ds_sar:
-        arr = ds_sar.read()
+        arr = ds_sar.read(1)
         prof_src = ds_sar.profile.copy()
+        trans_src = ds_sar.transform
+
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
 
+    if not trans_src.is_rectilinear:
+        raise ValueError("The input dataset is not in the SAR geometry")
     if prof_src["count"] != 1:
         raise ValueError("Only single band rasters are supported.")
 
@@ -1026,12 +1012,10 @@ def sar2geo(
             "magnitude_only: Writing magnitude (absolute value) of a real-valued array."
         )
 
-    if (mlt_az == 1) & (mlt_rg == 1):
-        arr_ = arr[0].copy()
-    else:
-        arr_ = presum(arr[0], mlt_az, mlt_rg)
-
-    arr_out = remap(arr_, lut[0] / mlt_az, lut[1] / mlt_rg, kernel)
+    # check if input was rescaled (multilook, etc.)
+    sx = trans_src.a
+    sy = trans_src.e
+    arr_out = remap(arr, lut[0] / sy, lut[1] / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
@@ -1074,40 +1058,75 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def interferogram(file_prm: str, file_sec: str, file_out: str) -> None:
-    """Compute a complex interferogram from two SLC image files.
+def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
+    """Applies multilooking to raster.
 
     Args:
-        file_prm (str): GeoTiff file of the primary SLC image
-        file_sec (str): GeoTiff file of the secondary SLC image
+        file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
+        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
+        mlt_az (int): multilook in azimuth. Defaults to 1.
+        mlt_rg (int): multilook in range. Defaults to 1.
     """
-    log.info("Compute interferogram")
-    with rio.open(file_prm) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile.copy()
-    with rio.open(file_sec) as ds_sec:
-        sec = ds_sec.read(1)
-    ifg = prm * sec.conj()
 
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
-    with rio.open(file_out, "w", **prof) as dst:
-        dst.write(ifg, 1)
+    if not isinstance(multilook, list):
+        raise TypeError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
+
+    with rio.open(file_in) as ds_src:
+        prof = ds_src.profile.copy()
+        trans = ds_src.transform
+        w_out = ds_src.width // mlt_rg
+        h_out = ds_src.height // mlt_az
+        prof.update(
+            {
+                "width": w_out,
+                "height": h_out,
+                "transform": trans * Affine.scale(mlt_rg, mlt_az),
+            }
+        )
+        warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+        with rio.open(file_out, "w", **prof) as dst:
+            if mlt_az > 1 or mlt_rg > 1:
+                for i in range(prof["count"]):
+                    arr = ds_src.read(i + 1)
+                    arr_out = presum(arr, mlt_az, mlt_rg)
+                    dst.write(arr_out, i + 1)
 
 
-def amplitude(file_in: str, file_out: str) -> None:
+def amplitude(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
     """Compute the amplitude of a complex-valued image.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
+        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
     """
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
     log.info("Compute amplitude")
-    with rio.open(file_in) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile.copy()
-    amp = np.abs(prm)
+    with rio.open(file_in) as ds_slc:
+        slc = ds_slc.read(1)
+        prof = ds_slc.profile.copy()
+        trans = ds_slc.transform
+
+    amp = np.abs(slc)
+
+    amp = presum(amp, mlt_az, mlt_rg)
+    prof.update(
+        {
+            "width": amp.shape[1],
+            "height": amp.shape[0],
+            "transform": trans * Affine.scale(mlt_rg, mlt_az),
+        }
+    )
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
     # prof.update(
@@ -1118,11 +1137,51 @@ def amplitude(file_in: str, file_out: str) -> None:
         dst.write(amp, 1)
 
 
+def interferogram(
+    file_prm: str, file_sec: str, file_out: str, multilook: List = [1, 1]
+) -> None:
+    """Compute a complex interferogram from two SLC image files.
+
+    Args:
+        file_prm (str): GeoTiff file of the primary SLC image
+        file_sec (str): GeoTiff file of the secondary SLC image
+        file_out (str): output file
+    """
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    log.info("Compute interferogram")
+    with rio.open(file_prm) as ds_prm:
+        prm = ds_prm.read(1)
+        prof = ds_prm.profile.copy()
+        trans = ds_prm.transform
+    with rio.open(file_sec) as ds_sec:
+        sec = ds_sec.read(1)
+    ifg = prm * sec.conj()
+    ifg = presum(ifg, mlt_az, mlt_rg)
+    prof.update(
+        {
+            "width": ifg.shape[1],
+            "height": ifg.shape[0],
+            "transform": trans * Affine.scale(mlt_rg, mlt_az),
+        }
+    )
+
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
+    with rio.open(file_out, "w", **prof) as dst:
+        dst.write(ifg, 1)
+
+
 def coherence(
     file_prm: str,
     file_sec: str,
     file_out: str,
     box_size: Union[int, List[int]] = 5,
+    multilook: List = [1, 1],
     magnitude: bool = True,
     file_complex_ifg: str = None,
     filter_ifg: bool = True,
@@ -1151,8 +1210,14 @@ def coherence(
         box_az = box_size
         box_rg = box_size
 
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
 
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
     ds_sec = riox.open_rasterio(file_sec, **open_args)
 
@@ -1190,35 +1255,138 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
+    coh = presum(coh, mlt_az, mlt_rg)
+
     nodataval = np.nan
 
     da_coh = xr.DataArray(
         data=coh[None],
         dims=("band", "y", "x"),
     )
+    da_coh.rio.write_transform(
+        ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
     da_coh.rio.write_nodata(nodataval, inplace=True)
-
-    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     da_coh.rio.to_raster(file_out)
     # da_coh.rio.to_raster(file_out, compress="zstd", num_threads="all_cpus")
 
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         if filter_ifg:
+            ifg_box = presum(ifg_box, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg_box[None],
                 dims=("band", "y", "x"),
             )
         else:
+            ifg = presum(ifg, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg[None],
                 dims=("band", "y", "x"),
             )
+        da_ifg.rio.write_transform(
+            ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+        )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
         da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
         # da_ifg.rio.to_raster(
         #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
         # )
+
+
+import os
+from typing import Callable, List, Union
+
+
+def apply_to_patterns_for_pair(
+    func: Callable,
+    out_dir: str,
+    file_prm_prefix: str,
+    file_sec_prefix: str,
+    file_out_prefix: str,
+    *args,
+    **kwargs,
+) -> None:
+    """Apply the given function to all file patterns for pairs of input files, skipping patterns with missing files.
+
+    This function generates file paths based on predefined polarization (`vh`, `vv`)
+    and interferometric wide-swath (IW) indices (`iw1`, `iw2`, `iw3`), then calls the
+    provided function for each pattern with two input files and one output file, only
+    if the input files exist.
+
+    Args:
+        func (Callable): The function to apply to each set of file paths. It should
+            accept at least three string arguments for input and output file names.
+        out_dir (str): The directory where the input and output files are located.
+        file_prm_prefix (str): The prefix for the primary input file.
+        file_sec_prefix (str): The prefix for the secondary input file.
+        file_out_prefix (str): The prefix for the output file.
+        *args: Additional positional arguments to pass to the `func`.
+        **kwargs: Additional keyword arguments to pass to the `func`.
+
+    Returns:
+        None: The function is executed for each pattern where the input files exist, but no return value is expected.
+    """
+    pol = ["vh", "vv"]
+    iw_idx = [1, 2, 3]
+    patterns = [f"{p}_iw{iw}" for p in pol for iw in iw_idx]
+
+    for pattern in patterns:
+        file_prm = f"{out_dir}/{file_prm_prefix}_{pattern}.tif"
+        file_sec = f"{out_dir}/{file_sec_prefix}_{pattern}.tif"
+        file_out = f"{out_dir}/{file_out_prefix}_{pattern}.tif"
+
+        # Check if both input files exist
+        if os.path.exists(file_prm) and os.path.exists(file_sec):
+            # Call the original function with updated file names
+            log.info(
+                f"Apply '{func.__name__}' to {Path(file_prm).name} and {Path(file_sec).name}"
+            )
+            func(file_prm, file_sec, file_out, *args, **kwargs)
+            log.info(f"File {Path(file_out).name} written")
+
+
+def apply_to_patterns_for_single(
+    func: Callable,
+    out_dir: str,
+    file_in_prefix: str,
+    file_out_prefix: str,
+    *args,
+    **kwargs,
+) -> None:
+    """Apply the given function to all file patterns for a single input file, skipping patterns with missing files.
+
+    This function generates file paths based on predefined polarization (`vh`, `vv`)
+    and interferometric wide-swath (IW) indices (`iw1`, `iw2`, `iw3`), then calls the
+    provided function for each pattern with one input file and one output file, only
+    if the input file exists.
+
+    Args:
+        func (Callable): The function to apply to each set of file paths. It should
+            accept at least two string arguments for input and output file names.
+        out_dir (str): The directory where the input and output files are located.
+        file_in_prefix (str): The prefix for the input file.
+        file_out_prefix (str): The prefix for the output file.
+        *args: Additional positional arguments to pass to the `func`.
+        **kwargs: Additional keyword arguments to pass to the `func`.
+
+    Returns:
+        None: The function is executed for each pattern where the input file exists, but no return value is expected.
+    """
+    pol = ["vh", "vv"]
+    iw_idx = [1, 2, 3]
+    patterns = [f"{p}_iw{iw}" for p in pol for iw in iw_idx]
+
+    for pattern in patterns:
+        file_in = f"{out_dir}/{file_in_prefix}_{pattern}.tif"
+        file_out = f"{out_dir}/{file_out_prefix}_{pattern}.tif"
+
+        # Check if the input file exists
+        if os.path.exists(file_in):
+            # Call the original function with updated file names
+            log.info(f"Apply '{func.__name__}' to {Path(file_in).name}")
+            func(file_in, file_out, *args, **kwargs)
+            log.info(f"File {Path(file_out).name} written")
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
