@@ -6,7 +6,7 @@
 - These functions change the transform in the GeoTIFF files. `S1.process.sar2geo` is now aware of this and applies automatic rescaling. This allows the user to call `S1.process.sar2geo` after multilooking an image and define custom processing chains.
 - In this spirit, two new helper functions allow to apply any user defined function to all subswaths and polarizations present in the output product directory.
 - Therefore, custom processing chains of type `S1.process.prepare_insar` -> _custom processing_  -> `S1.process.geocode_and_merge_iw` can be easily defined by the user. 
-- The same is can be applied to `S1.process.prepare_slc` for single images.
+- The same can be applied to `S1.process.prepare_slc` for single images.
 - Notebooks showing an example of such custom pipeline implementing both coherent and incoherent change detection have been added to the docs and the example folders.
 
 ## Bugfixes
