@@ -1,3 +1,28 @@
+# 2024.9.1
+
+## New feature -- Sentinel-1 custom pipelines
+- New `S1.process.apply_multilook` function to apply multilook on a tiff in the SAR geometry.
+- Multilooking may now also be applied in `S1.process.coherence`, `S1.process.amplitude` and `S1.process.interferogram` rather than in `S1.process.geocode_and_merge_iw`. 
+- These functions change the transform in the GeoTIFF files. `S1.process.sar2geo` is now aware of this and applies automatic rescaling. This allows the user to call `S1.process.sar2geo` after multilooking an image and define custom processing chains.
+- In this spirit, two new helper functions allow to apply any user defined function to all subswaths and polarizations present in the output product directory.
+- Therefore, custom processing chains of type `S1.process.prepare_insar` -> _custom processing_  -> `S1.process.geocode_and_merge_iw` can be easily defined by the user. 
+- The same is can be applied to `S1.process.prepare_slc` for single images.
+- Notebooks showing an example of such custom pipeline implementing both coherent and incoherent change detection have been added to the docs and the example folders.
+
+## Bugfixes
+- Corrected the `S1.util.presum` function to avoid overwriting the input array, reformatted docstrings
+
+## Other
+- Added test script for `S1.process.preprocess_insar_iw`
+- Automatically downloaded DEM (for S1 processing) file names are now based on unique hashes instead of being based on product/subswath/polarization. 
+- This has several advantages:
+    - It makes filenames shorter
+    - A new file is created every time a DEM related parameter changes (e.g. `dem_upsampling`) instead of overwriting the old one
+    - It enables re-using DEM files across functions
+    - When processing both polarizations, the DEM is not downloaded twice under a different name anymore
+    - The parameter `force_dem_download` is now set to `False` by default
+
+
 # 2024.9.0
 
 ## New features
