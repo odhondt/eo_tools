@@ -116,7 +116,7 @@ class S1IWSwath:
 
         # read state vectors
         product = identify(safe_dir)
-        zip_orb = product.getOSV(dir_orb, returnMatch=True)
+        zip_orb = product.getOSV(dir_orb, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
             raise RuntimeError("No orbit file available for this product")
 
