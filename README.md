@@ -7,20 +7,7 @@
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools)  
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
-## New since version 2024.6.3
-- New InSAR processor for full products
-	- Processing, geocoding and merging subswaths in one function call
-	- Computation of coherence and / or interferogram
-	- Optional computation of amplitudes
-	- Selection of subswath and polarization subsets
-	- Optional crop of an area of interest (to save computation, only intersecting bursts are processed)
-	- Access to intermediate files in the SAR geometry. These can be further processed prior to geocoding (for instance, speckle filtering or incoherent change detection of amplitudes may be applied) 
-	- Standalone functions to geocode and merge any raster in the SAR geometry
-	- Cloud Optimized GeoTIFF (COG) geocoded output file which can be displayed in GIS software or uploaded to tile servers
-- Improved internals
-	- Some memory intensive functions are now using child processes to ensure memory from large objects will be released after processing. This ensures an overall lower memory footprint.
-
-Here are examples of amplitude, phase and coherence computed using this framework:
+These images show examples of amplitude, interferometric phase and coherence computed using this framework and visualized interactively on a map:
 <p float="left">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
