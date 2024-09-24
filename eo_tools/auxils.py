@@ -11,6 +11,7 @@ import re
 import xml.etree.ElementTree as ET
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 
 import logging
 
@@ -294,3 +295,55 @@ def get_burst_geometry(path, target_subswaths, polarization):
                 )
         df_all = gpd.GeoDataFrame(pd.concat([df_all, df]), crs='EPSG:4326')
     return(df_all)
+
+    import numpy as np
+
+def process_overlapping_windows(input_array, block_size, overlap, process_fn, *args, **kwargs):
+    """Apply a processing function to overlapping blocks of an input array with additional arguments.
+    
+    Args:
+        input_array (numpy.ndarray): The input array of arbitrary dimensions.
+        block_size (tuple): Size of the block along each dimension (must match the dimensions of input_array).
+        overlap (tuple): Size of the overlap along each dimension (same shape as block_size).
+        process_fn (callable): Function to apply on each block. Must return a block of the same shape as input.
+        *args: Positional arguments to pass to the processing function.
+        **kwargs: Keyword arguments to pass to the processing function.
+    
+    Returns:
+        numpy.ndarray: An array of the same shape as input_array, with the processed blocks.
+    """
+    output_array = np.zeros_like(input_array)
+    input_shape = input_array.shape
+    
+    steps = [
+        max(1, b - o)  # Calculate the step size for each dimension (block size minus overlap)
+        for b, o in zip(block_size, overlap)
+    ]
+
+    # Iterate over the starting indices of each block
+    idxs = [
+        np.arange(0, input_shape[dim] - block_size[dim] + steps[dim], steps[dim])
+        for dim in range(len(input_shape))
+    ]
+    
+    # Use np.ndindex to iterate over each block's starting indices in a multidimensional loop
+    for index in np.ndindex(*[len(i) for i in idxs]):
+        slices = tuple(
+            slice(idxs[dim][i], idxs[dim][i] + block_size[dim])
+            for dim, i in enumerate(index)
+        )
+        block = input_array[slices]
+        
+        # Apply the processing function with *args and **kwargs
+        processed_block = process_fn(block, *args, **kwargs)
+        
+        # Overlap removal: calculate the slices to place processed block
+        slice_with_overlap = tuple(
+            slice(overlap[dim] // 2, block_size[dim] - (overlap[dim] // 2 + overlap[dim] % 2))
+            for dim in range(len(block_size))
+        )
+        
+        # Write processed block to the output array
+        output_array[slices] = processed_block[slice_with_overlap]
+
+    return output_array
