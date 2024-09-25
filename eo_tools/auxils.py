@@ -296,8 +296,6 @@ def get_burst_geometry(path, target_subswaths, polarization):
         df_all = gpd.GeoDataFrame(pd.concat([df_all, df]), crs='EPSG:4326')
     return(df_all)
 
-    import numpy as np
-
 def process_overlapping_windows(input_array, block_size, overlap, process_fn, *args, **kwargs):
     """Apply a processing function to overlapping blocks of an input array with additional arguments.
     
@@ -311,7 +309,27 @@ def process_overlapping_windows(input_array, block_size, overlap, process_fn, *a
     
     Returns:
         numpy.ndarray: An array of the same shape as input_array, with the processed blocks.
+    
+    Raises:
+        ValueError: If block_size or overlap have invalid values.
+        TypeError: If block_size or overlap are not tuples of integers.
     """
+    # Validate block_size and overlap
+    if not isinstance(block_size, tuple) or not all(isinstance(b, int) and b >= 1 for b in block_size):
+        raise TypeError("block_size must be a tuple of integers, each greater than or equal to 1.")
+    
+    if not isinstance(overlap, tuple) or not all(isinstance(o, int) and o >= 0 for o in overlap):
+        raise TypeError("overlap must be a tuple of non-negative integers.")
+
+    if len(block_size) != input_array.ndim:
+        raise ValueError("block_size must have the same number of dimensions as input_array.")
+    
+    if len(overlap) != input_array.ndim:
+        raise ValueError("overlap must have the same number of dimensions as input_array.")
+    
+    if any(o >= b for o, b in zip(overlap, block_size)):
+        raise ValueError("Each element of overlap must be less than the corresponding block_size.")
+    
     output_array = np.zeros_like(input_array)
     input_shape = input_array.shape
     
@@ -343,7 +361,15 @@ def process_overlapping_windows(input_array, block_size, overlap, process_fn, *a
             for dim in range(len(block_size))
         )
         
+        # Calculate where to place the processed block into output_array
+        # Adjust the output slices by accounting for overlap
+        output_slices = tuple(
+            slice(idxs[dim][i] + overlap[dim] // 2, idxs[dim][i] + block_size[dim] - (overlap[dim] // 2 + overlap[dim] % 2))
+            for dim, i in enumerate(index)
+        )
+        
         # Write processed block to the output array
-        output_array[slices] = processed_block[slice_with_overlap]
+        output_array[output_slices] = processed_block[slice_with_overlap]
 
     return output_array
+
