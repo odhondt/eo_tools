@@ -22,6 +22,9 @@ from shapely.geometry import shape
 from osgeo import gdal
 from rasterio.features import geometry_window
 from affine import Affine
+from numpy.fft import fft2, fftshift, ifft2, ifftshift
+from scipy.ndimage import uniform_filter as uflt
+from eo_tools.auxils import process_overlapping_windows
 
 # use child processes
 # USE_CP = False
@@ -1293,9 +1296,38 @@ def coherence(
         #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
         # )
 
+def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
-import os
-from typing import Callable, List, Union
+    # base filter to be applied on a patch
+    def filter_base(arr, alpha=1):
+        smooth = lambda x: uflt(x, 3)
+        Z = fftshift(fft2(arr))
+        H = smooth(abs(Z)) ** (alpha)
+        arrout = ifft2(ifftshift(H * Z))
+        return arrout
+
+    # base filter to be sequentially applied on a chunk
+    def filter_chunk(chunk, alpha=0.5, overlap=14):
+        return process_overlapping_windows(chunk, (64, 64), (overlap, overlap), filter_base, alpha=alpha)
+
+    # overlap value found in modified Goldstein paper
+    open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_ifg = riox.open_rasterio(file_ifg, **open_args)
+    ifg = ds_ifg[0].data
+
+    # process multiple chunks in parallel
+    process_args = dict(alpha=alpha, depth=(overlap, overlap), dtype="complex64")
+    ifg_out = da.map_overlap(filter_chunk, ifg, **process_args)
+    da_out = xr.DataArray(
+        data=ifg_out[None],
+        dims=("band", "y", "x"),
+    )
+    da_out.rio.write_transform(ds_ifg.rio.transform(), inplace=True)
+
+    nodataval = np.nan
+    da_out.rio.write_nodata(nodataval, inplace=True)
+    da_out.rio.to_raster(file_out)
 
 
 def apply_to_patterns_for_pair(
