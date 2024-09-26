@@ -1,20 +1,13 @@
-# EO-Tools 
+<p float="left">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/eo-tools.svg" width="300">
+</p>
 
+# A python Earth Observation toolbox
+
+[![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools)  
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
-## New feature: standalone TOPS InSAR processor
-- Bursts from Sentinel-1 TOPS InSAR pairs can now be processed and combined without using SNAP.
-- A new processor for IW subswath can be used -- see `s1-easy-tops-insar.ipynb` in the `notebook` folder.
-- Bursts can also be processed individually using the `S1.core` module for more flexibility. Results can be further processed as in-memory arrays or written as GeoTiff files. An example of such processing is found in `s1-tops-core-demo.ipynb`
-- More features/improvements will be added in the near future such as:
-    - Better memory and multi-core handling (probably using `dask`)
-    - Full product (all subswaths and polarization) processing with optional AOI selection
-    - Multi-temporal stacks
-    - Radiometric terrain correction
-- In a more distant future:
-    - Tools for change detection, polarimetry, speckle filtering, DEM generation
-
-Here are examples of amplitude, phase and coherence computed using this framework:
+These images show examples of amplitude, interferometric phase and coherence computed using this framework and visualized interactively on a map:
 <p float="left">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
@@ -22,13 +15,13 @@ Here are examples of amplitude, phase and coherence computed using this framewor
 </p>
 
 ## Overview
-- Because this project is in active development the API is likely to change. 
 - Currently, the available features are:
     - Sentinel-1
-        - New standalone InSAR processor (see previous section)
-        - Legacy InSAR processor (running SNAP graphs through PyroSAR) computing the coherence, phase and intensities of an interferometric pair of SLC products
-        - Write the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file
-        - Display these rasters on top of a folium map in a jupyter notebook
+        - Interferometric processing of Sentinel-1 pairs, including TOPS processing steps like azimuth deramping, DEM assisted coregistration, Range-Doppler terrain correction and Enhanced Spectral Diversity. Individual bursts can be processed as well as full products and cropped to any area of interest provided by the user.
+        - Amplitude geocoding of SLC Sentinel-1 images, with Beta or Sigma Nought calibration.
+        - Ability to apply processing in the SAR geometry and further project the results in a geographic coordinate systems using lookup-tables.
+        - Writing the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file.
+        - Displaying these rasters on top of a folium map in a jupyter notebook.
     - Sentinel-2
         - Tile merging and geocoding
         - Write any band to COG files
@@ -48,7 +41,7 @@ Here are examples of amplitude, phase and coherence computed using this framewor
     - A docker version (for more advanced users) that additonally works with a TiTiler server for interactive visualization in the notebooks
     - The legacy SNAP based processor is only available in the docker version.
 
-### Conda install
+### Conda install (recommended)
 
 - It is recommended to first create a conda environment to avoid package conflicts
 - You need to have `conda` installed (or `mamba` / `micromamba`)

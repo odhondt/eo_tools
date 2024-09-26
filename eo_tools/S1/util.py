@@ -38,38 +38,57 @@ def boxcar(img, dimaz, dimrg):
         imgout[msk] = np.nan
     return imgout
 
+
 def presum(img, m, n):
-    """m by n presumming of an image
-
-    Parameters
-    ----------
-    img: array, shape (naz, nrg,...)
-
-    m,n: integer
-        number of lines and columns to sum
-
-    Returns
-    -------
-    out: array, shape(M, N,...)
-        M and N are closest multiples of m and n
-        to naz and nrg
     """
+    Computes the m by n presummed image.
 
+    Args:
+        img (array-like): Input image array with shape (naz, nrg,...).
+        m (int): Number of lines to sum. Must be an integer >= 1.
+        n (int): Number of columns to sum. Must be an integer >= 1.
+
+    Raises:
+        TypeError: If m or n are not integers.
+        ValueError: If m or n are less than 1, or if m > img.shape[0] or n > img.shape[1].
+
+    Returns:
+        array: Presummed image array with shape (M, N,...), where M and N are the largest multiples of m and n that are less than or equal to img.shape[0] and img.shape[1], respectively.
+    Note:
+        Returns the input array if m==1 and n==1.
+    """
+    # Check if m and n are integers >= 1
+    if not isinstance(m, int) or not isinstance(n, int):
+        raise TypeError("Parameters m and n must be integers.")
+    if m < 1 or n < 1:
+        raise ValueError(
+            "Parameters m and n must be integers greater than or equal to 1."
+        )
+
+    # Check if m and n are valid in relation to the image dimensions
     if m > img.shape[0] or n > img.shape[1]:
-        raise ValueError("Cannot presum with these parameters.")
+        raise ValueError(
+            "Cannot presum with these parameters; m or n is too large for the image dimensions."
+        )
 
-    # TODO: write exception controlling size
-    # and validity of parameters m, n
-    M = int(np.floor(img.shape[0] / int(m)) * m)
-    N = int(np.floor(img.shape[1] / int(n)) * n)
-    img0 = img[:M, :N]#.copy()  # keep for readability
-    s = img0[::m]#.copy()
-    for i in range(1, m):
-        s += img0[i::m]
-    t = s[:, ::n]
-    for j in range(1, n):
-        t += s[:, j::n]
-    return t / float(m * n)
+    # skip if m = n = 1, avoids conditionals in calls
+    if (m > 1) or (n > 1):
+        M = (img.shape[0] // m) * m
+        N = (img.shape[1] // n) * n
+
+        img_trimmed = img[:M, :N]
+
+        s = img_trimmed[::m].copy()  # Make a copy once for efficiency
+        for i in range(1, m):
+            s += img_trimmed[i::m]
+
+        t = s[:, ::n].copy()
+        for j in range(1, n):
+            t += s[:, j::n]
+
+        return t / float(m * n)
+    else:
+        return img
 
 
 # @njit(parallel=True, nogil=True)
@@ -166,7 +185,7 @@ def remap(img, rr, cc, kernel="bicubic"):
 
     Returns:
         array: Resampled image with same dimensions as rr and cc.
-    """    
+    """
     if np.iscomplexobj(img):
         return _remap(img.real, rr, cc, kernel) + 1j * _remap(img.imag, rr, cc, kernel)
     else:

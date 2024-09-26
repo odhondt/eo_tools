@@ -3,10 +3,13 @@ repo_url: https://github.com/odhondt/eo_tools
 repo_name: 'odhondt/eo_tools'
 nav:
   - Home: index.md
-  - Examples:
-    - Example 1: s1-easy-tops-insar.ipynb
-    - Example 2: discover-and-process-s2.ipynb
-    - Example 3: download-dem.ipynb
+  - Tutorials:
+    - Example 1: s1-discover-insar-pairs.ipynb
+    - Example 2: s1-easy-tops-insar.ipynb
+    - Example 3: s1-easy-slc-geocoding.ipynb
+    - Example 4: s1-custom-pipeline.ipynb
+    - Example 5: discover-and-process-s2.ipynb
+    - Example 6: download-dem.ipynb
   - API reference: 
     - Sentinel-1 core: s1_core_api.md
     - Sentinel-1 processor: s1_process_api.md
@@ -14,6 +17,7 @@ nav:
     - Sentinel-2: s2_api.md
     - DEM: dem_api.md
     - General utilities: util_api.md
+  - Version notes: https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md
 
 theme:
   name: material

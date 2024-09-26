@@ -3,26 +3,23 @@ from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
-from math import floor, ceil
-from scipy.interpolate import CubicHermiteSpline
+import hashlib
+from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
+from eo_tools.auxils import get_burst_geometry
 from shapely.geometry import box
 from rasterio.enums import Resampling
 from numba import njit, prange
-from scipy.ndimage import map_coordinates
 from rasterio.windows import Window
+from pyproj import Transformer
+from joblib import Parallel, delayed
 
 from pyroSAR import identify
 from xmltodict import parse
 from zipfile import ZipFile
-
-# from cv2 import remap, INTER_LANCZOS4, INTER_LINEAR, INTER_CUBIC
-# WARP_RELATIVE_MAP only in dev version for now
-
-# benchmark & debug
 
 
 import logging
@@ -30,7 +27,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# TODO: Goldstein, coherence, LOS displacement
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
@@ -41,50 +37,96 @@ class S1IWSwath:
     - Computing the topographic phase from slant range values
     """
 
-    def __init__(self, safe_dir, iw=1, pol="vv"):
+    def __init__(self, safe_dir, iw=1, pol="vv", dir_orb="/tmp"):
         """Object intialization
 
         Args:
             safe_dir (str): Directory containing the (unzipped) product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
+            dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
         if not os.path.isdir(safe_dir):
             raise ValueError("Directory not found.")
-        dir_tiff = Path(f"{safe_dir}/measurement/")
-        dir_xml = Path(f"{safe_dir}/annotation/")
-        pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+
+        if not isinstance(iw, int) or iw < 1 or iw > 3:
+            raise ValueError("Parameter 'iw' must an int be between 1 and 3")
+
+        if pol not in ["vv", "vh"]:
+            raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
+
+        # check product type using dir name
+        parts = Path(safe_dir).stem.split("_")
+        if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
+            raise RuntimeError(
+                "Unexpected product name. Should start with S1{A,B}_IW_SLC."
+            )
+
+        # read raster file
+        dir_tiff = Path(safe_dir) / "measurement"
         pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
-        pth_xml = list(pth_xml)[0]
-        dir_cal = Path(f"{safe_dir}/annotation/calibration")
+        try:
+            self.pth_tiff = list(pth_tiff)[0]
+        except IndexError:
+            raise FileNotFoundError("Tiff file is missing.")
+
+        # read metadata file
+        dir_xml = Path(safe_dir) / "annotation"
+        pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+        try:
+            pth_xml = list(pth_xml)[0]
+        except IndexError:
+            raise FileNotFoundError("Metadata file is missing.")
+
+        # read calibration file
+        dir_cal = Path(safe_dir) / "annotation" / "calibration"
         pth_cal = dir_cal.glob(f"calibration*iw{iw}*{pol}*.xml")
-        pth_cal = list(pth_cal)[0]
-        self.pth_tiff = list(pth_tiff)[0]
+        try:
+            pth_cal = list(pth_cal)[0]
+        except IndexError:
+            raise FileNotFoundError("Calibration file is missing.")
+
         self.meta = read_metadata(pth_xml)
-
         self.start_time = self.meta["product"]["adsHeader"]["startTime"]
-
         burst_info = self.meta["product"]["swathTiming"]
         self.lines_per_burst = int(burst_info["linesPerBurst"])
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
         self.burst_count = int(burst_info["burstList"]["@count"])
 
         # extract beta_nought to rescale data
-        # TODO: more advanced calibration (sigma nought)
         calinfo = read_metadata(pth_cal)
-        calvec = calinfo["calibration"]["calibrationVectorList"]["calibrationVector"]
-        BN_str = calvec[0]["betaNought"]["#text"]
+        self.calvec = calinfo["calibration"]["calibrationVectorList"][
+            "calibrationVector"
+        ]
+        BN_str = self.calvec[0]["betaNought"]["#text"]
         self.beta_nought = float(BN_str.split(" ")[0])
 
+        # read burst geometries
+        self.gdf_burst_geom = get_burst_geometry(
+            path=safe_dir, target_subswaths=f"IW{iw}", polarization=pol.upper()
+        )
+        if self.gdf_burst_geom.empty:
+            raise RuntimeError("Invalid product: no burst geometry was found.")
+
         log.info(f"S1IWSwath Initialization:")
-        log.info(f"- Reading metadata file {pth_xml}")
-        log.info(f"- Reading calibration file {pth_cal}")
-        log.info(f"- Setting up raster path {self.pth_tiff}")
+        log.info(f"- Read metadata file {pth_xml}")
+        log.info(f"- Read  calibration file {pth_cal}")
+        log.info(f"- Set up raster path {self.pth_tiff}")
+        log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors
-        # TODO add log message about available orbit
         product = identify(safe_dir)
-        zip_orb = product.getOSV("/tmp", returnMatch=True)
+        zip_orb = product.getOSV(dir_orb, osvType=["POE", "RES"], returnMatch=True)
+        if not zip_orb:
+            raise RuntimeError("No orbit file available for this product")
+
+        if "POEORB" in zip_orb:
+            log.info("-- Precise orbit found")
+        elif "RESORB" in zip_orb:
+            log.info("-- Restituted orbit found")
+        else:
+            raise RuntimeError("Unknown orbit file")
+
         with ZipFile(zip_orb) as zf:
             file_orb = zf.namelist()[0]
             with zf.open(file_orb) as f:
@@ -109,6 +151,72 @@ class S1IWSwath:
             [float(it["VZ"]["#text"]) for it in orbdata]
         )
 
+    def fetch_dem(
+        self,
+        min_burst=1,
+        max_burst=None,
+        dir_dem="/tmp",
+        buffer_arc_sec=40,
+        force_download=False,
+        upscale_factor=1,
+    ):
+        """Downloads the DEM for a given burst range
+
+        Args:
+            min_burst (int, optional): Minimum burst index. Defaults to 1.
+            max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
+            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
+            force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
+
+        Returns:
+            str: path to the downloaded file
+        """
+
+        if not max_burst:
+            max_burst_ = self.burst_count
+        else:
+            max_burst_ = max_burst
+
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid min burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < 1 or max_burst_ > self.burst_count:
+            raise ValueError(
+                f"Invalid max burst index (must be between 1 and {self.burst_count})"
+            )
+        if max_burst_ < min_burst:
+            raise ValueError("max_burst must be >= min_burst")
+
+        # use buffer bounds around union of burst geometries
+        geom_all = self.gdf_burst_geom
+        geom_sub = (
+            geom_all[
+                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst)
+            ]
+            .union_all()
+            .buffer(buffer_arc_sec / 3600)
+        )
+        shp = box(*geom_sub.bounds)
+
+        # here we define a unique string for DEM filename
+        dem_name = "nasadem" # will be a parameter in the future
+        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode('utf-8')
+        hash_str = hashlib.md5(hash_input).hexdigest() 
+        dem_prefix = f"dem-{hash_str}.tif"
+        file_dem = f"{dir_dem}/{dem_prefix}"
+
+        if not os.path.exists(file_dem) or force_download:
+            retrieve_dem(
+                shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+            )
+        else:
+            log.info("--DEM already on disk")
+
+        return file_dem
+
+    # kept for backwards compatibility
     def fetch_dem_burst(
         self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
     ):
@@ -124,23 +232,11 @@ class S1IWSwath:
             str: path to the downloaded file
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
-
-        first_line = (burst_idx - 1) * self.lines_per_burst
-
-        name_dem = f"dem-b{burst_idx}-{self.pth_tiff.stem}.tiff"
-        file_dem = f"{dir_dem}/{name_dem}"
-        gcps, _ = read_gcps(
-            self.pth_tiff, first_line=first_line, number_of_lines=self.lines_per_burst
+        return self.fetch_dem(
+            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
         )
-        auto_dem(file_dem, gcps, buffer_arc_sec, force_download)
-        return file_dem
 
-    # TODO check parameter validity
-    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=2):
+    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
@@ -156,6 +252,9 @@ class S1IWSwath:
             raise ValueError(
                 f"Invalid burst index (must be between 1 and {self.burst_count})"
             )
+
+        if dem_upsampling < 0:
+            raise ValueError("dem_upsampling must be > 0")
 
         meta = self.meta
 
@@ -177,7 +276,10 @@ class S1IWSwath:
         # orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
         # state_vectors = orbit_list["orbit"]
 
-        log.info("DEM upsampling and extract coordinates")
+        if dem_upsampling != 1:
+            log.info("Resample DEM and extract coordinates")
+        else:
+            log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
@@ -189,10 +291,13 @@ class S1IWSwath:
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
 
-        # keeping a few points before and after burst
         t_end_burst = t0_az + dt_az * naz
         t_sv_burst = self.state_vectors["t"]
-        cnd = (t_sv_burst > t0_az - 360) & (t_sv_burst < t_end_burst + 360)
+
+        # crop a few minutes before and after burst
+        t_spacing = 10
+        t_pad = t_spacing * 36
+        cnd = (t_sv_burst > t0_az - t_pad) & (t_sv_burst < t_end_burst + t_pad)
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
@@ -200,20 +305,21 @@ class S1IWSwath:
         interp_pos, interp_vel = sv_interpolator(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Interpolate orbits")
+        log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Terrain correction (LUT computation)")
+        log.info("Range-Doppler terrain correction (LUT computation)")
         az_geo, dist_geo = range_doppler(
-            # removing first pos to get smaller numbers, is this useful?
+            # Removing first pos to get more precision. Is this useful?
             dem_x.ravel() - pos[0, 0],
             dem_y.ravel() - pos[0, 1],
             dem_z.ravel() - pos[0, 2],
             pos - pos[0],
             vel,
             tol=1e-8,
+            maxiter=10000,
             # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
         )
 
@@ -252,7 +358,7 @@ class S1IWSwath:
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
 
-        log.info("Computing TOPS deramping phase")
+        log.info("Compute TOPS deramping phase")
 
         c0 = 299792458.0
         # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -336,6 +442,49 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
 
+    def calibration_factor(self, burst_idx=1, cal_type="beta"):
+        """Computes calibration factor from the metadata.
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+            cal_type (str, optional): Type of calibration. "beta" or "sigma" nought. Defaults to "beta".
+
+        Returns:
+            cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought.
+        """
+        naz = self.lines_per_burst
+        nrg = self.samples_per_burst
+        first_line = (burst_idx - 1) * self.lines_per_burst
+
+        str_cols = self.calvec[0]["pixel"]["#text"]
+        cols = np.array(list(map(int, str_cols.split(" "))), dtype=int)
+        grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
+        list_lines = []
+
+        log.info(f"Compute {cal_type} nought calibration factor.")
+        # interpolate values on image grid
+        if cal_type == "sigma":
+            for i, it in enumerate(self.calvec):
+                list_lines.append(int(it["line"]))
+                str_sigma = it["sigmaNought"]["#text"]
+                line_sigma = list(map(float, str_sigma.split(" ")))
+                grid_sigma[i] = line_sigma
+            rows = np.array(list_lines, dtype=int)
+            grid_arr_rg, grid_arr_az = np.meshgrid(
+                np.arange(nrg), np.arange(first_line, first_line + naz)
+            )
+            interp = RegularGridInterpolator((rows, cols), grid_sigma, method="linear")
+
+            cal_fac = interp((grid_arr_az, grid_arr_rg))
+        # for beta, it is a just constant
+        elif cal_type == "beta":
+            cal_fac = self.beta_nought
+        else:
+            raise ValueError(
+                "Calibration type not recognized (use 'beta' or 'sigma' nought)"
+            )
+        return cal_fac
+
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
@@ -355,16 +504,12 @@ class S1IWSwath:
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
 
         first_line = (burst_idx - 1) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
-        arr = (
-            read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
-                np.complex64
-            )
-            / self.beta_nought
+        arr = read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
+            np.complex64
         )
 
         # not sure about that, should we consider these holes as NaN?
@@ -384,7 +529,6 @@ class S1IWSwath:
                     arr[i] = nodataval
         return arr
 
-    # use metadata and range coordinate to compute topographic phase
     def phi_topo(self, rg):
         """Computes the topographic phase using slant range indices.
 
@@ -404,7 +548,7 @@ class S1IWSwath:
         product_info = meta["product"]["generalAnnotation"]["productInformation"]
         range_sampling_rate = product_info["rangeSamplingRate"]
 
-        log.info("Computing topographic phase")
+        log.info("Compute topographic phase")
 
         freq = float(product_info["radarFrequency"])
         c0 = 299792458.0
@@ -428,7 +572,6 @@ class S1IWSwath:
         Returns:
             int: number of overlapping lines.
         """
-        # TODO fix with correct burst count
         if burst_idx < 2 or burst_idx > self.burst_count:
             raise ValueError(
                 f"Invalid burst index (must be between 2 and {self.burst_count})"
@@ -437,7 +580,6 @@ class S1IWSwath:
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        # lines_per_burst = int(burst_info["linesPerBurst"])
         burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_1 = isoparse(burst_1["azimuthTime"])
         burst_2 = burst_info["burstList"]["burst"][burst_idx]
@@ -462,11 +604,11 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     Returns:
         (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
-    log.info("Projecting secondary coordinates to primary grid.")
+    log.info("Project secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
-@njit(nogil=True, parallel=True)
+@njit(nogil=True, parallel=True, cache=True)
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
@@ -489,6 +631,7 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     az_s2p = np.full((naz, nrg), np.nan)
     rg_s2p = np.full((naz, nrg), np.nan)
+    p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -516,7 +659,9 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
                     # - separate into 2 triangles
                     # - test if each point falls into triangle 1 or 2
                     # - interpolate the secondary range and azimuth using triangle vertices
-                    p = np.array([a, r])
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
@@ -540,58 +685,56 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
 
     Returns:
         array: projected image
-    """    
+    """
     log.info("Warp secondary to primary geometry.")
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
-def resample(arr, file_dem, file_out, az_p2g, rg_p2g, order=3, write_phase=False):
+def resample(
+    arr, file_dem, file_out, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
+):
+    """Reproject array to using a lookup table.
 
-    # replace nan to work with map_coordinates
-    # TODO: use finite NaN values, i.e -9999
-    if np.iscomplexobj(arr):
-        nodataval = 0.0 + 1j * 0.0
-    else:
-        nodataval = 0
-    msk = arr == nodataval
-
+    Args:
+        arr (array): image in the SAR geometry
+        file_dem (str): file of the original DEM used to compute the lookup table
+        file_out (str): output file
+        az_p2g (array): azimuth coordinates of the lookup table
+        rg_p2g (array): range coordinates of the lookup table
+        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        write_phase (bool): writes the array's phase . Defaults to False.
+    """
     # retrieve dem profile
+
+    dst_height, dst_width = az_p2g.shape
+
     with rasterio.open(file_dem) as ds_dem:
         out_prof = ds_dem.profile.copy()
 
-    # TODO: avoid mask warping
+        # account for DEM resampling
+        dst_trans = ds_dem.transform * ds_dem.transform.scale(
+            (ds_dem.width / dst_width), (ds_dem.height / dst_height)
+        )
+
+    out_prof.update({"width": dst_width, "height": dst_height, "transform": dst_trans})
+
     log.info("Warp to match DEM geometry")
-
-    width = az_p2g.shape[1]
-    height = az_p2g.shape[0]
-    wped = np.zeros_like(rg_p2g, dtype=arr.dtype)
-    msk_re = np.zeros_like(rg_p2g, dtype=msk.dtype)
-    # valid = (az_p2g != np.nan) & (rg_p2g != np.nan)
-    valid = ~np.isnan(az_p2g) & ~np.isnan(rg_p2g)
-    wped[valid] = map_coordinates(
-        arr, (az_p2g[valid], rg_p2g[valid]), cval=nodataval, order=order
-    )
-    msk_re[valid] = map_coordinates(msk, (az_p2g[valid], rg_p2g[valid]), order=0)
-
-    wped[~valid] = nodataval
-    wped[msk_re] = nodataval
-    wped = wped.reshape(height, width)
+    wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
     # TODO: enforce COG
     log.info("Write output GeoTIFF")
     if write_phase:
         phi = np.angle(wped)
-        # TODO: change nodata
-        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": 0})
+        nodata = -9999
+        phi[np.isnan(wped)] = nodata
+        out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": nodata})
         with rasterio.open(file_out, "w", **out_prof) as dst:
             dst.write(phi, 1)
     else:
-        # TODO: change nodata
         if np.iscomplexobj(arr):
-            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": 0})
+            out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": np.nan})
             with rasterio.open(file_out, "w", **out_prof) as dst:
-                # here we write real and imaginary separately because of rioxarray's limitations
-                # TODO: try writing complex anyway and change rioxarray computations in `core` notebook
+                # real outputs to avoid complex cast warnings in rasterio
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
@@ -673,7 +816,7 @@ def stitch_bursts(bursts, overlap):
     else:
         raise ValueError("Empty burst list")
 
-    log.info("Stitching bursts to make a continuous image")
+    log.info("Stitch bursts to make a continuous image")
     arr = np.zeros((siz, nrg), dtype=bursts[0].dtype)
     off = 0
     for i in range(nburst):
@@ -695,17 +838,6 @@ def read_metadata(pth_xml):
     with open(pth_xml) as f:
         meta = xmltodict.parse(f.read())
     return meta
-
-
-def read_gcps(pth_tiff, first_line=0, number_of_lines=1500):
-    with rasterio.open(pth_tiff) as src:
-        gcps, gcps_crs = src.gcps
-        gcps_burst = [
-            it
-            for it in gcps
-            if it.row >= first_line and it.row <= first_line + number_of_lines
-        ]
-    return gcps_burst, gcps_crs
 
 
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
@@ -758,48 +890,33 @@ def sv_interpolator_poly(state_vectors):
     return interp_pos, interp_vel
 
 
-# TODO: allow cop-dem-glo30 and return composite (horiz.+vertical CRS)
-def auto_dem(file_dem, gcps, buffer_arc_sec=40, force_download=False):
-    minmax = lambda x: (x.min(), x.max())
-    xmin, xmax = minmax(np.array([p.x for p in gcps]))
-    ymin, ymax = minmax(np.array([p.y for p in gcps]))
-
-    # DEM dependent
-    step = 1 / 3600
-
-    xmin = floor(xmin / step) * step
-    xmax = ceil(xmax / step) * step
-    ymin = floor(ymin / step) * step
-    ymax = ceil(ymax / step) * step
-
-    off = buffer_arc_sec / 3600
-    shp = box(xmin - off, ymin - off, xmax + off, ymax + off)
-
-    if not os.path.exists(file_dem) or force_download:
-        retrieve_dem(shp, file_dem, dem_name="nasadem")
-    else:
-        log.info("--DEM already on disk")
-
-
-# TODO add resampling options
-def load_dem_coords(file_dem, upscale_factor=2):
+# TODO add resampling type option
+def load_dem_coords(file_dem, upscale_factor=1):
 
     with rasterio.open(file_dem) as ds:
-        # on-the-fly resampling
-        alt = ds.read(
-            out_shape=(
-                ds.count,
-                int(ds.height * upscale_factor),
-                int(ds.width * upscale_factor),
-            ),
-            resampling=Resampling.bilinear,
-            # resampling=Resampling.cubic,
-        )[0]
-        # scale image transform
-        dem_prof = ds.profile.copy()
-        dem_trans = ds.transform * ds.transform.scale(
-            (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
-        )
+        if upscale_factor != 1:
+            # on-read resampling
+            alt = ds.read(
+                out_shape=(
+                    ds.count,
+                    int(ds.height * upscale_factor),
+                    int(ds.width * upscale_factor),
+                ),
+                resampling=Resampling.bilinear,
+                # resampling=Resampling.cubic,
+            )[0]
+            # scale image transform
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform * ds.transform.scale(
+                (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
+            )
+            nodata = ds.nodata
+        else:
+            alt = ds.read(1)
+            dem_prof = ds.profile.copy()
+            dem_trans = ds.transform
+            nodata = ds.nodata
+
     # output lat-lon coordinates
     width, height = alt.shape[1], alt.shape[0]
     if dem_trans[1] > 1.0e-8 or dem_trans[3] > 1.0e-8:
@@ -815,14 +932,19 @@ def load_dem_coords(file_dem, upscale_factor=2):
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
 
+    # make sure nodata is nan in output
+    if not np.isnan(nodata):
+        msk = alt == nodata
+    alt = alt.astype("float64")
+    if not np.isnan(nodata):
+        alt[msk] = np.nan
+
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt.astype("float64"), dem_prof
+    return lat, lon, alt, dem_prof
 
 
 # TODO produce right composite crs for each DEM
 def lla_to_ecef(lat, lon, alt, dem_crs):
-    from pyproj import Transformer
-    from joblib import Parallel, delayed
 
     # TODO: use parameter instead
     WGS84_crs = "EPSG:4326+5773"
@@ -858,7 +980,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     return dem_x, dem_y, dem_z
 
 
-@njit(parallel=True)
+@njit(nogil=True, cache=True, parallel=True)
 def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
         factors = t - np.floor(t)
@@ -886,6 +1008,8 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         x_val = xx[i]
         y_val = yy[i]
         z_val = zz[i]
+        if np.isnan(x_val):
+            continue
         a = 0
         b = num_orbits - 1
         fa, _, _, _ = doppler_freq(
@@ -901,11 +1025,11 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             r_zd[i] = np.nan
             continue
 
-        if abs(fa) < tol:
+        if np.abs(fa) < tol:
             i_zd[i] = a
             r_zd[i] = 0
             continue
-        elif abs(fb) < tol:
+        elif np.abs(fb) < tol:
             i_zd[i] = b
             r_zd[i] = 0
             continue
@@ -916,7 +1040,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         )
 
         its = 0
-        while abs(fc) > tol and its < maxiter:
+        while np.abs(fc) > tol and its < maxiter:
             its += 1
             if fa * fc < 0:
                 b = c
