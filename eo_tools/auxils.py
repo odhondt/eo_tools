@@ -296,6 +296,120 @@ def get_burst_geometry(path, target_subswaths, polarization):
         df_all = gpd.GeoDataFrame(pd.concat([df_all, df]), crs='EPSG:4326')
     return(df_all)
 
+def blockprocess(img, fun, block_size, overlap_size=0, *fun_args, **kwargs):
+    """
+    Block processing of a multi-channel image with an arbitrary function.
+    
+    Args:
+        img (array or tuple): Input image or tuple of arrays with shape (nl, nc, ...),
+            (nl, 1,...) or (1, nc, ...).
+        fun (callable): Function to apply. The first argument must be the img.
+        block_size (int or tuple of ints): Size of blocks. If an int is provided, it is used for
+            both height and width. If a tuple is provided, it should be (block_height, block_width).
+        overlap_size (int or tuple of ints, optional): Size of overlaps. If an int is provided, it is used for
+            both height and width. If a tuple is provided, it should be (overlap_height, overlap_width).
+        *fun_args: Additional positional arguments for the function.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        array: Processed output image with the same shape as the input image.
+    
+    Raises:
+        ValueError: If overlap is larger than half of the block size or if the output
+            shape is incompatible with the input shape.
+    
+    Notes:
+        The function to be applied has to have arguments of the form (in1, in2, ..., par1, par2, ...)
+        with inputs grouped at the beginning. If not, write a wrapper that follows this order.
+    """
+
+    # Parse block and overlap sizes
+    if isinstance(block_size, int):
+        block_height = block_width = block_size
+    else:
+        block_height, block_width = block_size
+
+    if isinstance(overlap_size, int):
+        olap_height = olap_width = overlap_size
+    else:
+        olap_height, olap_width = overlap_size
+
+    # Extract dimensions of the input image
+    if isinstance(img, tuple):
+        ih, iw = img[0].shape[:2]
+    else:
+        ih, iw = img.shape[:2]
+
+    # Check overlap constraints
+    if olap_width > iw / 2 or olap_height > ih / 2:
+        raise ValueError("Overlap must be at most half of block size.")
+
+    # Preallocate output image with the same shape as the input image
+    imgout = np.zeros_like(img) if not isinstance(img, tuple) else tuple(np.zeros_like(x) for x in img)
+
+    # Compute number of blocks in rows and columns
+    nrow = int(np.ceil(float(ih) / block_height))
+    ncol = int(np.ceil(float(iw) / block_width))
+
+    cnt = 0
+    for i in range(0, ih, block_height):
+        if i == 0:
+            i_top, i_bottom = 0, block_height + olap_height
+            o_top, o_bottom = 0, block_height
+            b_top, b_bottom = 0, block_height
+        elif i + block_height < ih and i + block_height + olap_height > ih:
+            i_top, i_bottom = i - olap_height, ih
+            o_top, o_bottom = i, i + block_height
+            b_top, b_bottom = olap_height, block_height + olap_height
+        elif i + block_height > ih:
+            i_top, i_bottom = i - olap_height, ih
+            o_top, o_bottom = i, ih
+            b_top, b_bottom = olap_height, olap_height + ih - i
+        else:
+            i_top, i_bottom = i - olap_height, i + block_height + olap_height
+            o_top, o_bottom = i, i + block_height
+            b_top, b_bottom = olap_height, block_height + olap_height
+
+        for j in range(0, iw, block_width):
+            if j == 0:
+                i_left, i_right = 0, block_width + olap_width
+                o_left, o_right = 0, block_width
+                b_left, b_right = 0, block_width
+            elif j + block_width < iw and j + block_width + olap_width > iw:
+                i_left, i_right = j - olap_width, iw
+                o_left, o_right = j, j + block_width
+                b_left, b_right = olap_width, block_width + olap_width
+            elif j + block_width > iw:
+                i_left, i_right = j - olap_width, iw
+                o_left, o_right = j, iw
+                b_left, b_right = olap_width, olap_width + iw - j
+            else:
+                i_left, i_right = j - olap_width, j + block_width + olap_width
+                o_left, o_right = j, j + block_width
+                b_left, b_right = olap_width, block_width + olap_width
+
+            cnt += 1
+            print(f"Processing block # {cnt} of {nrow * ncol}")
+
+            sl = np.s_[i_top:i_bottom, i_left:i_right]
+
+            # Process block with the function
+            if isinstance(img, tuple):
+                blk = tuple(x[sl] for x in img)
+            else:
+                blk = (img[sl],)
+
+            processed_block = fun(*blk, *fun_args, **kwargs)[b_top:b_bottom, b_left:b_right]
+
+            if isinstance(imgout, tuple):
+                for k, output in enumerate(imgout):
+                    imgout[k][o_top:o_bottom, o_left:o_right] = processed_block[k]
+            else:
+                imgout[o_top:o_bottom, o_left:o_right] = processed_block
+
+    return imgout
+
+
 def process_overlapping_windows(input_array, block_size, overlap, process_fn, *args, **kwargs):
     """Apply a processing function to overlapping blocks of an input array with additional arguments.
     
