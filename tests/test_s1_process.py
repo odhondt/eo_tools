@@ -12,7 +12,6 @@ from affine import Affine
 from tempfile import NamedTemporaryFile
 from eo_tools.S1.process import apply_multilook 
 from eo_tools.S1.process import goldstein
-from eo_tools.auxils import process_overlapping_windows
 import tempfile
 from unittest.mock import patch
 
@@ -184,7 +183,7 @@ def create_dummy_output():
         yield output_file
 
 # Dummy function for process_overlapping_windows to be mocked in the test
-def dummy_process_overlapping_windows(chunk, window_size, overlap, func, alpha):
+def dummy_block_process(chunk, window_size, overlap, func, alpha):
     return chunk  # returns the chunk as-is for testing purposes
 
 def test_goldstein(create_dummy_ifg, create_dummy_output):
@@ -195,7 +194,7 @@ def test_goldstein(create_dummy_ifg, create_dummy_output):
     output_file = create_dummy_output
 
     # Mock the process_overlapping_windows to avoid actual processing during the test
-    with patch("eo_tools.auxils.process_overlapping_windows", side_effect=dummy_process_overlapping_windows):
+    with patch("eo_tools.auxils.block_process", side_effect=dummy_block_process):
         goldstein(input_file, output_file, alpha=0.5, overlap=14)
 
         # Check if the output file was created
