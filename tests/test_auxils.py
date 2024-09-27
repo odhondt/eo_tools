@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from eo_tools.auxils import process_overlapping_windows
+from eo_tools.auxils import block_process
 
 # Example processing function
 def simple_process_fn(block, multiplier=1):
@@ -40,20 +40,11 @@ def simple_process_fn(block, multiplier=1):
                       [39, 42, 45, 48]]),
             None
         ),
-        # Invalid block size (larger than input array)
+        # Invalid overlap size (overlap larger than half block size)
         (
             np.random.rand(4, 4),
-            (5, 2),
-            (1, 1),
-            2,
-            None,
-            ValueError
-        ),
-        # Invalid overlap size (overlap larger than block size)
-        (
-            np.random.rand(4, 4),
-            (2, 2),
             (3, 3),
+            (2, 2),
             2,
             None,
             ValueError
@@ -84,12 +75,12 @@ def simple_process_fn(block, multiplier=1):
         ),
     ]
 )
-def test_process_overlapping_windows(input_array, block_size, overlap, multiplier, expected_output, expected_exception):
+def test_block_process(input_array, block_size, overlap, multiplier, expected_output, expected_exception):
     if expected_exception:
         with pytest.raises(expected_exception):
-            process_overlapping_windows(input_array, block_size, overlap, simple_process_fn, multiplier=multiplier)
+            block_process(input_array, block_size, overlap, simple_process_fn, multiplier=multiplier)
     else:
-        output_array = process_overlapping_windows(input_array, block_size, overlap, simple_process_fn, multiplier=multiplier)
+        output_array = block_process(input_array, block_size, overlap, simple_process_fn, multiplier=multiplier)
         print("Output array:")
         print(output_array)
         print("Expected array:")
