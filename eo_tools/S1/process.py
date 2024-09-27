@@ -24,7 +24,7 @@ from rasterio.features import geometry_window
 from affine import Affine
 from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
-from eo_tools.auxils import process_overlapping_windows
+from eo_tools.auxils import block_process
 
 # use child processes
 # USE_CP = False
@@ -1296,6 +1296,7 @@ def coherence(
         #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
         # )
 
+
 def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
     # base filter to be applied on a patch
@@ -1308,7 +1309,9 @@ def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
     # base filter to be sequentially applied on a chunk
     def filter_chunk(chunk, alpha=0.5, overlap=14):
-        return process_overlapping_windows(chunk, (64, 64), (overlap, overlap), filter_base, alpha=alpha)
+        return block_process(
+            chunk, (64, 64), (overlap, overlap), filter_base, alpha=alpha
+        )
 
     # overlap value found in modified Goldstein paper
     open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
