@@ -873,7 +873,10 @@ def geocode_and_merge_iw(
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
-
+    Note:
+        variables starting with the substring 'ifg' are interpreted as
+        interferograms. Their phase will extracted after geocoding. The
+        output file will start with 'phi'. 
     """
     if isinstance(pol, str):
         if pol == "full":
@@ -916,8 +919,9 @@ def geocode_and_merge_iw(
                         warnings.warn(
                             "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                         )
-                if var == "ifg":
-                    file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
+                # if var == "ifg":
+                if var.startswith("ifg"):
+                    file_out = f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
                     sar2geo(
                         file_var,
                         file_lut,
@@ -937,10 +941,11 @@ def geocode_and_merge_iw(
                     )
                 tmp_files.append(file_out)
             if tmp_files:
-                if var != "ifg":
+                # if var != "ifg":
+                if not var.startswith("ifg"):
                     file_out = f"{input_dir}/{var}_{p}.tif"
                 else:
-                    file_out = f"{input_dir}/phi_{p}.tif"
+                    file_out = f"{input_dir}/{var.replace("ifg", "phi")}_{p}.tif"
                 log.info(f"Merge file {Path(file_out).name}")
                 da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
