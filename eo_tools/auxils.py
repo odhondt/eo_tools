@@ -296,17 +296,17 @@ def get_burst_geometry(path, target_subswaths, polarization):
         df_all = gpd.GeoDataFrame(pd.concat([df_all, df]), crs='EPSG:4326')
     return(df_all)
 
-def blockprocess(img, fun, block_size, overlap_size=0, *fun_args, **kwargs):
+def block_process(img, block_size, overlap_size, fun, *fun_args, **kwargs):
     """
-    Block processing of a multi-channel image with an arbitrary function.
+    Block processing of a multi-channel 2-D image with an arbitrary function.
     
     Args:
         img (array or tuple): Input image or tuple of arrays with shape (nl, nc, ...),
             (nl, 1,...) or (1, nc, ...).
         fun (callable): Function to apply. The first argument must be the img.
-        block_size (int or tuple of ints): Size of blocks. If an int is provided, it is used for
+        block_size (tuple of ints): Size of blocks. If an int is provided, it is used for
             both height and width. If a tuple is provided, it should be (block_height, block_width).
-        overlap_size (int or tuple of ints, optional): Size of overlaps. If an int is provided, it is used for
+        overlap_size (tuple of ints, optional): Size of overlaps. If an int is provided, it is used for
             both height and width. If a tuple is provided, it should be (overlap_height, overlap_width).
         *fun_args: Additional positional arguments for the function.
         **kwargs: Additional keyword arguments.
@@ -322,17 +322,22 @@ def blockprocess(img, fun, block_size, overlap_size=0, *fun_args, **kwargs):
         The function to be applied has to have arguments of the form (in1, in2, ..., par1, par2, ...)
         with inputs grouped at the beginning. If not, write a wrapper that follows this order.
     """
+    # Validate block_size and overlap
+    if not isinstance(block_size, tuple) or not all(isinstance(b, int) and b >= 1 for b in block_size):
+        raise TypeError("block_size must be a tuple of integers, each greater than or equal to 1.")
+    
+    if not isinstance(overlap_size, tuple) or not all(isinstance(o, int) and o >= 0 for o in overlap_size):
+        raise TypeError("overlap must be a tuple of non-negative integers.")
 
+    if len(block_size) != 2:
+        raise ValueError("block_size must be of length 2.")
+    
+    if len(overlap_size) != 2:
+        raise ValueError("overlap must be of length 2.")
+    
     # Parse block and overlap sizes
-    if isinstance(block_size, int):
-        block_height = block_width = block_size
-    else:
-        block_height, block_width = block_size
-
-    if isinstance(overlap_size, int):
-        olap_height = olap_width = overlap_size
-    else:
-        olap_height, olap_width = overlap_size
+    block_height, block_width = block_size
+    olap_height, olap_width = overlap_size
 
     # Extract dimensions of the input image
     if isinstance(img, tuple):
@@ -341,15 +346,14 @@ def blockprocess(img, fun, block_size, overlap_size=0, *fun_args, **kwargs):
         ih, iw = img.shape[:2]
 
     # Check overlap constraints
-    if olap_width > iw / 2 or olap_height > ih / 2:
+    if olap_width > block_width // 2 or olap_height > block_height // 2:
         raise ValueError("Overlap must be at most half of block size.")
 
     # Preallocate output image with the same shape as the input image
     imgout = np.zeros_like(img) if not isinstance(img, tuple) else tuple(np.zeros_like(x) for x in img)
 
-    # Compute number of blocks in rows and columns
-    nrow = int(np.ceil(float(ih) / block_height))
-    ncol = int(np.ceil(float(iw) / block_width))
+    # nrow = int(np.ceil(float(ih) / block_height))
+    # ncol = int(np.ceil(float(iw) / block_width))
 
     cnt = 0
     for i in range(0, ih, block_height):
@@ -389,7 +393,7 @@ def blockprocess(img, fun, block_size, overlap_size=0, *fun_args, **kwargs):
                 b_left, b_right = olap_width, block_width + olap_width
 
             cnt += 1
-            print(f"Processing block # {cnt} of {nrow * ncol}")
+            # print(f"Processing block # {cnt} of {nrow * ncol}")
 
             sl = np.s_[i_top:i_bottom, i_left:i_right]
 
