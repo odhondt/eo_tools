@@ -1314,8 +1314,9 @@ def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
     # base filter to be sequentially applied on a chunk
     def filter_chunk(chunk, alpha=0.5, overlap=14):
+        chunk_ = np.exp(1j*np.angle(chunk))
         return block_process(
-            chunk, (64, 64), (overlap, overlap), filter_base, alpha=alpha
+            chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
     # overlap value found in modified Goldstein paper
