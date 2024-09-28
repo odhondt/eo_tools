@@ -1225,8 +1225,8 @@ def coherence(
     else:
         mlt_az, mlt_rg = multilook
 
-    open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    # open_args = dict(lock=False, chunks=(1, 2048, 2048), cache=True, masked=True)
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
