@@ -876,7 +876,7 @@ def geocode_and_merge_iw(
     Note:
         variables starting with the substring 'ifg' are interpreted as
         interferograms. Their phase will extracted after geocoding. The
-        output file will start with 'phi'. 
+        output file will start with 'phi'.
     """
     if isinstance(pol, str):
         if pol == "full":
@@ -921,7 +921,9 @@ def geocode_and_merge_iw(
                         )
                 # if var == "ifg":
                 if var.startswith("ifg"):
-                    file_out = f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
+                    file_out = (
+                        f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
+                    )
                     sar2geo(
                         file_var,
                         file_lut,
@@ -1067,7 +1069,7 @@ def sar2geo(
 
 
 def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
-    """Applies multilooking to raster.
+    """Apply multilooking to raster.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
@@ -1224,6 +1226,7 @@ def coherence(
         mlt_az, mlt_rg = multilook
 
     open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    # open_args = dict(lock=False, chunks=(1, 2048, 2048), cache=True, masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
@@ -1268,6 +1271,7 @@ def coherence(
     nodataval = np.nan
 
     da_coh = xr.DataArray(
+        name="coh",
         data=coh[None],
         dims=("band", "y", "x"),
     )
@@ -1302,7 +1306,7 @@ def coherence(
         # )
 
 
-def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
+def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14):
 
     # base filter to be applied on a patch
     def filter_base(arr, alpha=1):
@@ -1314,12 +1318,13 @@ def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
     # base filter to be sequentially applied on a chunk
     def filter_chunk(chunk, alpha=0.5, overlap=14):
-        chunk_ = np.exp(1j*np.angle(chunk))
+        # complex phase
+        chunk_ = np.exp(1j * np.angle(chunk))
+        # overlap value found in modified Goldstein paper
         return block_process(
             chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
-    # overlap value found in modified Goldstein paper
     open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_ifg = riox.open_rasterio(file_ifg, **open_args)
@@ -1329,6 +1334,7 @@ def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
     process_args = dict(alpha=alpha, depth=(overlap, overlap), dtype="complex64")
     ifg_out = da.map_overlap(filter_chunk, ifg, **process_args)
     da_out = xr.DataArray(
+        name="ifg",
         data=ifg_out[None],
         dims=("band", "y", "x"),
     )
@@ -1336,7 +1342,8 @@ def goldstein(file_ifg, file_out, alpha=0.5, overlap=14):
 
     nodataval = np.nan
     da_out.rio.write_nodata(nodataval, inplace=True)
-    da_out.rio.to_raster(file_out)
+    # block size manually set until better solution
+    da_out.rio.to_raster(file_out, tiled=True, blockxsize=512, blockysize=512)
 
 
 def apply_to_patterns_for_pair(
