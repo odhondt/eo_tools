@@ -28,8 +28,7 @@ theme:
     - python
   features:
     - navigation.instant
-  logo:
-    - assets/logo.svg
+  logo: assets/logo.svg
   font:
     text: 'Nunito Sans'
     code: 'Fira Code'
