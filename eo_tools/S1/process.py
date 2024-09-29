@@ -1335,6 +1335,7 @@ def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 1
             chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
+    # TODO: find a way to automatically tune chunk size
     open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_ifg = riox.open_rasterio(file_ifg, **open_args)
