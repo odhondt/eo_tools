@@ -1,3 +1,18 @@
+# 2024.9.2
+
+## New features
+- New function `S1.process.goldstein`: the Goldstein interferometric filter is an adaptive method that allows to reduce noise on phase.
+- Tutorial notebooks on how to use the function
+- All file names like `"ifg*"` are now treated as interferograms by `S1.process.geocode_and_merge_iw`. This way users can compare several phase filtering methods easily. 
+
+## Bugfixes
+- Correct options for orbit retrieval `['POE', 'RES']` using `pyrosar`
+- In `S2.process_tiles`, `baseline > 4` replaced by `baseline >= 4`
+- In `S1.process.coherence` output is tiled like input
+
+## Misc
+- `S1.process.coherence` with manually fixed chunk size is faster.
+
 # 2024.9.1
 
 ## New feature -- Sentinel-1 custom pipelines
