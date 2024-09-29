@@ -23,6 +23,8 @@ nav:
 
 theme:
   name: material
+  logo: logo.svg
+  favicon: logo.svg
   highlightjs: true
   hljslanguages:
     - python
