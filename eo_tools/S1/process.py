@@ -22,6 +22,9 @@ from shapely.geometry import shape
 from osgeo import gdal
 from rasterio.features import geometry_window
 from affine import Affine
+from numpy.fft import fft2, fftshift, ifft2, ifftshift
+from scipy.ndimage import uniform_filter as uflt
+from eo_tools.auxils import block_process
 
 # use child processes
 # USE_CP = False
@@ -870,7 +873,10 @@ def geocode_and_merge_iw(
         multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
-
+    Note:
+        variables starting with the substring 'ifg' are interpreted as
+        interferograms. Their phase will extracted after geocoding. The
+        output file will start with 'phi'.
     """
     if isinstance(pol, str):
         if pol == "full":
@@ -913,8 +919,11 @@ def geocode_and_merge_iw(
                         warnings.warn(
                             "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                         )
-                if var == "ifg":
-                    file_out = f"{input_dir}/sar/phi_{postfix}_geo.tif"
+                # if var == "ifg":
+                if var.startswith("ifg"):
+                    file_out = (
+                        f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
+                    )
                     sar2geo(
                         file_var,
                         file_lut,
@@ -934,10 +943,11 @@ def geocode_and_merge_iw(
                     )
                 tmp_files.append(file_out)
             if tmp_files:
-                if var != "ifg":
+                # if var != "ifg":
+                if not var.startswith("ifg"):
                     file_out = f"{input_dir}/{var}_{p}.tif"
                 else:
-                    file_out = f"{input_dir}/phi_{p}.tif"
+                    file_out = f"{input_dir}/{var.replace("ifg", "phi")}_{p}.tif"
                 log.info(f"Merge file {Path(file_out).name}")
                 da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
@@ -1059,7 +1069,7 @@ def sar2geo(
 
 
 def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
-    """Applies multilooking to raster.
+    """Apply multilooking to raster.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
@@ -1215,7 +1225,8 @@ def coherence(
     else:
         mlt_az, mlt_rg = multilook
 
-    open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(file_prm, **open_args)
@@ -1260,6 +1271,7 @@ def coherence(
     nodataval = np.nan
 
     da_coh = xr.DataArray(
+        name="coh",
         data=coh[None],
         dims=("band", "y", "x"),
     )
@@ -1288,14 +1300,61 @@ def coherence(
             ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
         )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
-        da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
-        # da_ifg.rio.to_raster(
-        #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
-        # )
+        da_ifg.rio.to_raster(
+            file_complex_ifg, driver="GTiff", tiled=True, blockxsize=512, blockysize=512
+        )
 
 
-import os
-from typing import Callable, List, Union
+def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14) -> None:
+    """Apply the Goldstein filter to a complex interferogam to reduce phase noise.
+
+    Args:
+        file_ifg (str): Input file.
+        file_out (str): Output file.
+        alpha (float, optional): Filter parameter. Should be between 0 (no filtering) and 1 (strongest). Defaults to 0.5.
+        overlap (int, optional): Overlap between 64x64 patches. Defaults to 14.
+    Note:
+        The method is described in: 
+        R.M. Goldstein and C.L. Werner, "Radar Interferogram Phase Filtering for Geophysical Applications," Geophysical Research Letters, 25, 4035-4038, 1998
+    """    
+
+    # base filter to be applied on a patch
+    def filter_base(arr, alpha=1):
+        smooth = lambda x: uflt(x, 3)
+        Z = fftshift(fft2(arr))
+        H = smooth(abs(Z)) ** (alpha)
+        arrout = ifft2(ifftshift(H * Z))
+        return arrout
+
+    # base filter to be sequentially applied on a chunk
+    def filter_chunk(chunk, alpha=0.5, overlap=14):
+        # complex phase
+        chunk_ = np.exp(1j * np.angle(chunk))
+        # overlap value found in modified Goldstein paper
+        return block_process(
+            chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
+        )
+
+    # TODO: find a way to automatically tune chunk size
+    open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_ifg = riox.open_rasterio(file_ifg, **open_args)
+    ifg = ds_ifg[0].data
+
+    # process multiple chunks in parallel
+    process_args = dict(alpha=alpha, depth=(overlap, overlap), dtype="complex64")
+    ifg_out = da.map_overlap(filter_chunk, ifg, **process_args)
+    da_out = xr.DataArray(
+        name="ifg",
+        data=ifg_out[None],
+        dims=("band", "y", "x"),
+    )
+    da_out.rio.write_transform(ds_ifg.rio.transform(), inplace=True)
+
+    nodataval = np.nan
+    da_out.rio.write_nodata(nodataval, inplace=True)
+    # block size manually set until better solution
+    da_out.rio.to_raster(file_out, tiled=True, blockxsize=512, blockysize=512)
 
 
 def apply_to_patterns_for_pair(
