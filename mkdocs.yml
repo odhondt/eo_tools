@@ -34,8 +34,8 @@ theme:
     text: 'Nunito Sans'
     code: 'Fira Code'
   palette:
-    primary: teal
-    accent: teal
+    primary: blue grey
+    accent: blue grey
 
   # # Palette toggle for automatic mode
   # - media: "(prefers-color-scheme)"
