@@ -29,7 +29,7 @@ theme:
   features:
     - navigation.instant
   logo:
-    - data/eo-tools-icon.svg
+    - assets/eo-tools-icon.svg
   font:
     text: 'Nunito Sans'
     code: 'Fira Code'
