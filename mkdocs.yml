@@ -29,11 +29,13 @@ theme:
   features:
     - navigation.instant
   logo:
-    - docs/eo-tools-icon.svg
+    - data/eo-tools-icon.svg
   font:
     text: 'Nunito Sans'
     code: 'Fira Code'
   palette:
+    primary: teal
+    accent: teal
 
   # # Palette toggle for automatic mode
   # - media: "(prefers-color-scheme)"
