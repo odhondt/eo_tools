@@ -1305,7 +1305,18 @@ def coherence(
         )
 
 
-def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14):
+def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14) -> None:
+    """Apply the Goldstein filter to a complex interferogam to reduce phase noise.
+
+    Args:
+        file_ifg (str): Input file.
+        file_out (str): Output file.
+        alpha (float, optional): Filter parameter. Should be between 0 (no filtering) and 1 (strongest). Defaults to 0.5.
+        overlap (int, optional): Overlap between 64x64 patches. Defaults to 14.
+    Note:
+        The method is described in: 
+        R.M. Goldstein and C.L. Werner, "Radar Interferogram Phase Filtering for Geophysical Applications," Geophysical Research Letters, 25, 4035-4038, 1998
+    """    
 
     # base filter to be applied on a patch
     def filter_base(arr, alpha=1):
