@@ -22,7 +22,6 @@ nav:
   # - Version notes: https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md
 
 theme:
-  logo: assets/logo.svg
   name: material
   highlightjs: true
   hljslanguages:
