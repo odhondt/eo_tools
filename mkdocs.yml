@@ -28,6 +28,8 @@ theme:
     - python
   features:
     - navigation.instant
+  logo:
+    - eo-tools-icon.svg
   font:
     text: 'Nunito Sans'
     code: 'Fira Code'
