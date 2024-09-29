@@ -1300,10 +1300,9 @@ def coherence(
             ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
         )
         da_ifg.rio.write_nodata(np.nan, inplace=True)
-        da_ifg.rio.to_raster(file_complex_ifg, driver="GTiff")
-        # da_ifg.rio.to_raster(
-        #     file_complex_ifg, driver="GTiff", compress="zstd", num_threads="all_cpus"
-        # )
+        da_ifg.rio.to_raster(
+            file_complex_ifg, driver="GTiff", tiled=True, blockxsize=512, blockysize=512
+        )
 
 
 def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14):
