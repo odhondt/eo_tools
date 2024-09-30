@@ -25,6 +25,7 @@ from affine import Affine
 from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
+from eo_tools.util import _has_overlap
 
 # use child processes
 # USE_CP = False
@@ -402,17 +403,33 @@ def preprocess_insar_iw(
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    # TODO: replace this by burst-by-burst overlap, compute offset for secondary 
+    # TODO: replace this by burst-by-burst overlap, compute offset for secondary
     # take min-max burst into account
 
     # retrieve burst geometries
+    sub_str = f"IW{iw}"
     gdf_burst_prm = get_burst_geometry(
-        dir_primary, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+        dir_primary, target_subswaths=[sub_str], polarization="VV"
     )
     gdf_burst_sec = get_burst_geometry(
-        dir_secondary, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+        dir_secondary, target_subswaths=[sub_str], polarization="VV"
     )
-    
+
+    offsets = []
+    for _, it in gdf_burst_prm.iterrows():
+        for _, it2 in gdf_burst_sec.iterrows():
+            pair = (it["burst"], it2["burst"])
+            if _has_overlap(it["geometry"], it2["geometry"]):
+                offsets.append(pair[1] - pair[0])
+
+    if not offsets:
+        raise RuntimeError(
+            "No overlapping bursts. Cannot further process this product pair."
+        )
+    if not np.all(np.array(offsets) == offsets[0]):
+        raise RuntimeError("Overlapping bursts must be consecutive.")
+
+    burst_offset = offsets[0]
     # gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
 
     # prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
@@ -432,7 +449,6 @@ def preprocess_insar_iw(
     #     )
     # TODO: exception when no bursts overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
-
 
     if not max_burst:
         max_burst_ = prm.burst_count
@@ -475,6 +491,7 @@ def preprocess_insar_iw(
             nrg,
             min_burst,
             max_burst_,
+            burst_offset,
             dem_upsampling,
             dem_buffer_arc_sec,
             dem_force_download,
@@ -1318,7 +1335,9 @@ def coherence(
         )
 
 
-def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14) -> None:
+def goldstein(
+    file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 14
+) -> None:
     """Apply the Goldstein filter to a complex interferogam to reduce phase noise.
 
     Args:
@@ -1327,9 +1346,9 @@ def goldstein(file_ifg: str, file_out: str, alpha: float = 0.5, overlap: int = 1
         alpha (float, optional): Filter parameter. Should be between 0 (no filtering) and 1 (strongest). Defaults to 0.5.
         overlap (int, optional): Overlap between 64x64 patches. Defaults to 14.
     Note:
-        The method is described in: 
+        The method is described in:
         R.M. Goldstein and C.L. Werner, "Radar Interferogram Phase Filtering for Geophysical Applications," Geophysical Research Letters, 25, 4035-4038, 1998
-    """    
+    """
 
     # base filter to be applied on a patch
     def filter_base(arr, alpha=1):
@@ -1466,6 +1485,7 @@ def apply_to_patterns_for_single(
 # TODO: adjust with a burst offset parameter that will be applied to bursts of the secondary
 # and will skip invalid (out of range)
 
+
 def _process_bursts_insar(
     prm,
     sec,
@@ -1477,6 +1497,7 @@ def _process_bursts_insar(
     nrg,
     min_burst,
     max_burst,
+    burst_offset,
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
@@ -1569,23 +1590,23 @@ def _process_bursts_insar(
             )
             az_s2g, rg_s2g, _ = sec.geocode_burst(
                 file_dem_burst,
-                burst_idx=burst_idx,
+                burst_idx=burst_idx + burst_offset,
                 dem_upsampling=1,
             )
 
             # read primary and secondary burst rasters
             arr_p = prm.read_burst(burst_idx, True)
-            arr_s = sec.read_burst(burst_idx, True)
+            arr_s = sec.read_burst(burst_idx + burst_offset, True)
 
             # radiometric calibration (beta or sigma nought)
             cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
-            cal_s = sec.calibration_factor(burst_idx, cal_type=cal_type)
+            cal_s = sec.calibration_factor(burst_idx + burst_offset, cal_type=cal_type)
             log.info("Apply calibration factor")
             arr_p /= cal_p
             arr_s /= cal_s
 
             # deramp secondary
-            pdb_s = sec.deramp_burst(burst_idx)
+            pdb_s = sec.deramp_burst(burst_idx + burst_offset)
             log.info("Apply phase deramping")
             arr_s *= np.exp(1j * pdb_s)
 
