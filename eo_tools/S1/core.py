@@ -34,6 +34,7 @@ class S1IWSwath:
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
+    - Apply Beta or Sigma Naught calibration
     - Computing the topographic phase from slant range values
     """
 
