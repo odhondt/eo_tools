@@ -402,24 +402,37 @@ def preprocess_insar_iw(
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
-    sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
+    # TODO: replace this by burst-by-burst overlap, compute offset for secondary 
+    # take min-max burst into account
 
-    is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in sec_burst_info[0]
+    # retrieve burst geometries
+    gdf_burst_prm = get_burst_geometry(
+        dir_primary, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+    gdf_burst_sec = get_burst_geometry(
+        dir_secondary, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+    )
+    
+    # gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
 
-    if is_burst_id:
-        prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
-        sec_burst_ids = [bid["burstId"]["#text"] for bid in sec_burst_info]
-        if prm_burst_ids != sec_burst_ids:
-            raise NotImplementedError(
-                "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
-            )
-    else:
-        log.warning(
-            "Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results."
-        )
+    # prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
+    # sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
+    # is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in sec_burst_info[0]
 
+    # if is_burst_id:
+    #     prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
+    #     sec_burst_ids = [bid["burstId"]["#text"] for bid in sec_burst_info]
+    #     if prm_burst_ids != sec_burst_ids:
+    #         raise NotImplementedError(
+    #             "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
+    #         )
+    # else:
+    #     log.warning(
+    #         "Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results."
+    #     )
+    # TODO: exception when no bursts overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
+
 
     if not max_burst:
         max_burst_ = prm.burst_count
@@ -1450,6 +1463,8 @@ def apply_to_patterns_for_single(
 
 # Auxiliary functions which are not supposed to be used outside of the processor
 
+# TODO: adjust with a burst offset parameter that will be applied to bursts of the secondary
+# and will skip invalid (out of range)
 
 def _process_bursts_insar(
     prm,
