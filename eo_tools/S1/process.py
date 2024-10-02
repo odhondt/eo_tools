@@ -403,9 +403,6 @@ def preprocess_insar_iw(
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
-    # TODO: replace this by burst-by-burst overlap, compute offset for secondary
-    # take min-max burst into account
-
     # retrieve burst geometries
     sub_str = f"IW{iw}"
     gdf_burst_prm = get_burst_geometry(
@@ -415,6 +412,7 @@ def preprocess_insar_iw(
         dir_secondary, target_subswaths=[sub_str], polarization="VV"
     )
 
+    # here we deal with partial overlap
     offsets = []
     for _, it in gdf_burst_prm.iterrows():
         for _, it2 in gdf_burst_sec.iterrows():
@@ -429,25 +427,10 @@ def preprocess_insar_iw(
     if not np.all(np.array(offsets) == offsets[0]):
         raise RuntimeError("Overlapping bursts must be consecutive.")
 
+    # == 0 if full overlap
     burst_offset = offsets[0]
-    # gdf_burst_prm = gdf_burst_prm[gdf_burst_prm.intersects(shp)]
 
-    # prm_burst_info = prm.meta["product"]["swathTiming"]["burstList"]["burst"]
-    # sec_burst_info = sec.meta["product"]["swathTiming"]["burstList"]["burst"]
-    # is_burst_id = "burstId" in prm_burst_info[0] and "burstId" in sec_burst_info[0]
-
-    # if is_burst_id:
-    #     prm_burst_ids = [bid["burstId"]["#text"] for bid in prm_burst_info]
-    #     sec_burst_ids = [bid["burstId"]["#text"] for bid in sec_burst_info]
-    #     if prm_burst_ids != sec_burst_ids:
-    #         raise NotImplementedError(
-    #             "Products must have identical lists of burst IDs. Please select products with (nearly) identical footprints."
-    #         )
-    # else:
-    #     log.warning(
-    #         "Missing burst IDs in metadata. Make sure all primary and secondary bursts match to avoid unexpected results."
-    #     )
-    # TODO: exception when no bursts overlap
+    # intra-product overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
     if not max_burst:
@@ -1364,7 +1347,8 @@ def goldstein(
         chunk_ = np.exp(1j * np.angle(chunk))
         # overlap value found in modified Goldstein paper
         return block_process(
-            chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
+            chunk_, (32, 32), (overlap, overlap), filter_base, alpha=alpha
+            # chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
     # TODO: find a way to automatically tune chunk size
@@ -1374,7 +1358,7 @@ def goldstein(
     ifg = ds_ifg[0].data
 
     # process multiple chunks in parallel
-    process_args = dict(alpha=alpha, depth=(overlap, overlap), dtype="complex64")
+    process_args = dict(alpha=alpha, depth=(32, 32), dtype="complex64")
     ifg_out = da.map_overlap(filter_chunk, ifg, **process_args)
     da_out = xr.DataArray(
         name="ifg",
