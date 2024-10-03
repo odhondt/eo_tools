@@ -1337,7 +1337,10 @@ def goldstein(
     def filter_base(arr, alpha=1):
         smooth = lambda x: uflt(x, 3)
         Z = fftshift(fft2(arr))
-        H = smooth(abs(Z)) ** (alpha)
+        H = smooth(abs(Z))
+        # H /= H.max()
+        H = H ** (alpha)
+        # H = smooth(abs(Z)) ** (alpha)
         arrout = ifft2(ifftshift(H * Z))
         return arrout
 
@@ -1347,7 +1350,7 @@ def goldstein(
         chunk_ = np.exp(1j * np.angle(chunk))
         # overlap value found in modified Goldstein paper
         return block_process(
-            chunk_, (32, 32), (overlap, overlap), filter_base, alpha=alpha
+            chunk_, (32-overlap//2, 32-overlap//2), (overlap//2, overlap//2), filter_base, alpha=alpha
             # chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
