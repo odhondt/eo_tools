@@ -47,7 +47,8 @@ class S1IWSwath:
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
             dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
-        if not os.path.isdir(safe_dir):
+        # if not os.path.isdir(safe_dir):
+        if not os.path.exists(safe_dir):
             raise ValueError("Directory not found.")
 
         if not isinstance(iw, int) or iw < 1 or iw > 3:
@@ -56,16 +57,25 @@ class S1IWSwath:
         if pol not in ["vv", "vh"]:
             raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
+        self.input_product = Path(safe_dir)
+        self.is_zip = self.input_product.suffix == "zip"
+
         # check product type using dir name
-        parts = Path(safe_dir).stem.split("_")
+        # parts = Path(safe_dir).stem.split("_")
+        parts = self.input_product.stem.split("_")
         if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
             raise RuntimeError(
                 "Unexpected product name. Should start with S1{A,B}_IW_SLC."
             )
 
         # read raster file
-        dir_tiff = Path(safe_dir) / "measurement"
-        pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+        # dir_tiff = Path(safe_dir) / "measurement"
+        if self.is_zip:
+            dir_tiff = Path(safe_dir)
+            pth_tiff = list(dir_tiff.glob(f"**/measurement/*iw1*vv*.tiff"))
+        else:
+            dir_tiff = self.input_product / "measurement"
+            pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
         try:
             self.pth_tiff = list(pth_tiff)[0]
         except IndexError:
