@@ -49,7 +49,7 @@ class S1IWSwath:
         """
         # if not os.path.isdir(safe_dir):
         if not os.path.exists(safe_dir):
-            raise ValueError("Directory not found.")
+            raise ValueError("Product not found.")
 
         if not isinstance(iw, int) or iw < 1 or iw > 3:
             raise ValueError("Parameter 'iw' must an int be between 1 and 3")
