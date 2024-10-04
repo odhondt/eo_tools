@@ -42,7 +42,7 @@ class S1IWSwath:
         """Object intialization
 
         Args:
-            safe_dir (str): Directory containing the (unzipped) product.
+            safe_dir (str): Directory or zip file containing the product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
             dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
