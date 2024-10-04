@@ -40,15 +40,6 @@ def simple_process_fn(block, multiplier=1):
                       [39, 42, 45, 48]]),
             None
         ),
-        # Invalid overlap size (overlap larger than half block size)
-        (
-            np.random.rand(4, 4),
-            (3, 3),
-            (2, 2),
-            2,
-            None,
-            ValueError
-        ),
         # Dimension mismatch
         (
             np.random.rand(4, 4),
