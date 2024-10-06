@@ -8,7 +8,7 @@
 - Refactored block processing utility to handle larger overlap.
 - Goldstein filter now uses different block size (32) and overlap results in smaller final block size.
 - Added Etna notebook to illustrate partial overlap in InSAR (docker version only)
-- Simple script to show S1 products in a folder on a map (not part of the conda package)
+- Simple script that shows all S1 products located in a directory on a map (not part of the conda package)
 
 # 2024.9.2
 
