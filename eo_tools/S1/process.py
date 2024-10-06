@@ -1327,7 +1327,7 @@ def goldstein(
         file_ifg (str): Input file.
         file_out (str): Output file.
         alpha (float, optional): Filter parameter. Should be between 0 (no filtering) and 1 (strongest). Defaults to 0.5.
-        overlap (int, optional): Overlap between 64x64 patches. Defaults to 14.
+        overlap (int, optional): Total overlap between 64x64 patches. Defaults to 14.
     Note:
         The method is described in:
         R.M. Goldstein and C.L. Werner, "Radar Interferogram Phase Filtering for Geophysical Applications," Geophysical Research Letters, 25, 4035-4038, 1998
@@ -1338,9 +1338,7 @@ def goldstein(
         smooth = lambda x: uflt(x, 3)
         Z = fftshift(fft2(arr))
         H = smooth(abs(Z))
-        # H /= H.max()
         H = H ** (alpha)
-        # H = smooth(abs(Z)) ** (alpha)
         arrout = ifft2(ifftshift(H * Z))
         return arrout
 
@@ -1348,10 +1346,8 @@ def goldstein(
     def filter_chunk(chunk, alpha=0.5, overlap=14):
         # complex phase
         chunk_ = np.exp(1j * np.angle(chunk))
-        # overlap value found in modified Goldstein paper
         return block_process(
             chunk_, (32-overlap//2, 32-overlap//2), (overlap//2, overlap//2), filter_base, alpha=alpha
-            # chunk_, (64, 64), (overlap, overlap), filter_base, alpha=alpha
         )
 
     # TODO: find a way to automatically tune chunk size
