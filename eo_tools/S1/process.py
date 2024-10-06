@@ -63,8 +63,8 @@ def process_insar(
     AOI crop is optional.
 
     Args:
-        dir_prm (str): primary image (SLC Sentinel-1 product directory).
-        dir_sec (str): secondary image (SLC Sentinel-1 productdirectory).
+        dir_prm (str): primary image (SLC Sentinel-1 product directory or zip file).
+        dir_sec (str): secondary image (SLC Sentinel-1 product directory or zip file).
         outputs_prefix (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -218,8 +218,8 @@ def prepare_insar(
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
     Args:
-        dir_prm (str): Primary image (SLC Sentinel-1 product directory).
-        dir_sec (str): Secondary image (SLC Sentinel-1 productdirectory).
+        dir_prm (str): Primary image (SLC Sentinel-1 product directory or zip file).
+        dir_sec (str): Secondary image (SLC Sentinel-1 product directory or zip file).
         outputs_prefix (str): location in which the product subdirectory will be created.
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -371,8 +371,8 @@ def preprocess_insar_iw(
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
     Args:
-        dir_primary (str): directory containing the primary SLC product of the pair.
-        dir_secondary (str): directory containing the secondary SLC product of the pair.
+        dir_primary (str): directory or zip file containing the primary SLC product of the pair.
+        dir_secondary (str): directory or zip file containing the secondary SLC product of the pair.
         dir_out (str): output directory (creating it if does not exist).
         dir_dem (str, optional): directory where DEMs used for geocoding are stored. Defaults to "/tmp".
         iw (int, optional): subswath index. Defaults to 1.
@@ -550,7 +550,7 @@ def process_slc(
     AOI crop is optional.
 
     Args:
-        dir_slc (str): input image (SLC Sentinel-1 product directory).
+        dir_slc (str): input image (SLC Sentinel-1 product directory or zip file).
         outputs_prefix (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -646,7 +646,7 @@ def prepare_slc(
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
     Args:
-        dir_slc (str): Input image (SLC Sentinel-1 product directory).
+        dir_slc (str): Input image (SLC Sentinel-1 product directory or zip file).
         outputs_prefix (str): location in which the product subdirectory will be created.
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
@@ -771,7 +771,7 @@ def preprocess_slc_iw(
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
     Args:
-        dir_slc (str): directory containing the SLC input product.
+        dir_slc (str): directory or zip file containing the SLC input product.
         dir_out (str): output directory (creating it if does not exist).
         dir_dem (str, optional): directory where DEMs used for geocoding are stored. Defaults to "/tmp".
         iw (int, optional): subswath index. Defaults to 1.
@@ -1468,10 +1468,6 @@ def apply_to_patterns_for_single(
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
-
-# TODO: adjust with a burst offset parameter that will be applied to bursts of the secondary
-# and will skip invalid (out of range)
-
 
 def _process_bursts_insar(
     prm,
