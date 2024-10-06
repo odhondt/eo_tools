@@ -2,7 +2,7 @@
 
 ## New features
 - Sentinel-1 zipped products are now handled (updated all notebooks accordingly).
-- InSAR processing of partially overlapping products, like for instance S1A and S1B, as long as share the same orbit.
+- InSAR processing of partially overlapping products, for instance between S1A and S1B, as long as share the same orbit.
 
 ## Other
 - Refactored block processing utility to handle larger overlap.
