@@ -36,8 +36,8 @@ if not os.path.isdir(out_dir):
     os.mkdir(out_dir)
 
 # replace with already downloaded and unzipped products (see the other notebooks to download such products)
-primary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
-secondary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.SAFE"
+primary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.zip"
+secondary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.zip"
 
 # subswath to process
 iw = 1

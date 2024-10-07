@@ -37,8 +37,8 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.SAFE"
-secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
+primary_dir = f"{data_dir}/{ids[0]}.zip"
+secondary_dir = f"{data_dir}/{ids[1]}.zip"
 outputs_prefix = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
