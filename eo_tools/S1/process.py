@@ -1252,17 +1252,24 @@ def coherence(
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
-        depth=(box_az, box_rg),
+        depth=(mlt_az*box_az, mlt_rg*box_rg),
     )
 
     # we need these for interferogram
     ifg = prm * sec.conj()
+
+    ifg = presum(ifg, mlt_az, mlt_rg)
+    prm2 = presum(np.nan_to_num((prm * prm.conj()).real), mlt_az, mlt_rg)
+    sec2 = presum(np.nan_to_num((sec * sec.conj()).real), mlt_az, mlt_rg)
+
+
     ifg_box = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
     coh = ifg_box / np.sqrt(
         da.map_overlap(
             boxcar,
-            np.nan_to_num((prm * prm.conj()).real),
+            prm2,
+            # np.nan_to_num((prm * prm.conj()).real),
             **process_args,
             dtype="float32",
         )
@@ -1270,7 +1277,8 @@ def coherence(
     coh /= np.sqrt(
         da.map_overlap(
             boxcar,
-            np.nan_to_num((sec * sec.conj()).real),
+            sec2,
+            # np.nan_to_num((sec * sec.conj()).real),
             **process_args,
             dtype="float32",
         )
@@ -1279,7 +1287,7 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
-    coh = presum(coh, mlt_az, mlt_rg)
+    # coh = presum(coh, mlt_az, mlt_rg)
 
     nodataval = np.nan
 
@@ -1298,13 +1306,13 @@ def coherence(
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         if filter_ifg:
-            ifg_box = presum(ifg_box, mlt_az, mlt_rg)
+            # ifg_box = presum(ifg_box, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg_box[None],
                 dims=("band", "y", "x"),
             )
         else:
-            ifg = presum(ifg, mlt_az, mlt_rg)
+            # ifg = presum(ifg, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg[None],
                 dims=("band", "y", "x"),
