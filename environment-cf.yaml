@@ -35,3 +35,4 @@ dependencies:
   - python-dotenv 
   - httptools
   - numexpr
+  - planetary-computer

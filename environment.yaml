@@ -37,6 +37,7 @@ dependencies:
   - python-dotenv 
   - httptools
   - numexpr
+  - planetary-computer
   # - pip:
     # - titiler.application
     # - eodag
