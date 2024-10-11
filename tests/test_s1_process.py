@@ -10,7 +10,7 @@ import rasterio as rio
 import rioxarray
 from affine import Affine
 from tempfile import NamedTemporaryFile
-from eo_tools.S1.process import apply_multilook 
+from eo_tools.S1.process import multilook 
 from eo_tools.S1.process import goldstein
 import tempfile
 from unittest.mock import patch
@@ -129,7 +129,7 @@ def test_multilook_transform_and_dimensions():
 
     multilook_factors = [2, 2]
 
-    apply_multilook(input_file, output_file, multilook=multilook_factors)
+    multilook(input_file, output_file, multilook=multilook_factors)
 
     with rio.open(input_file) as src:
         assert src.transform.is_rectilinear  # Check that the transform is rectilinear
