@@ -34,5 +34,5 @@ dependencies:
   - uvloop 
   - python-dotenv 
   - httptools
-  - numexpr
   - planetary-computer
+  # - numexpr
