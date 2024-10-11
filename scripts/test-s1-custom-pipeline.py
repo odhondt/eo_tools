@@ -27,7 +27,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 # %%
 # change to your custom locations
