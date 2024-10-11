@@ -16,6 +16,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 import os
 import geopandas as gpd
+
 # from eodag import EODataAccessGateway
 from eo_tools.S1.process import process_insar
 from eo_tools.auxils import remove
@@ -44,8 +45,8 @@ outputs_prefix = "/data/res/test-full-processor"
 # %%
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_small.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 # search_criteria = {
@@ -83,7 +84,7 @@ process_args = dict(
     dem_upsampling=1.8,
     dem_force_download=False,
     dem_buffer_arc_sec=40,
-    boxcar_coherence=[3, 10],
+    boxcar_coherence=[3, 3],
     filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -108,3 +109,4 @@ LayerControl().add_to(m)
 
 # open in a browser
 serve_map(m)
+# %%
