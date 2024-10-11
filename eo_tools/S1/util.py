@@ -19,25 +19,31 @@ def boxcar(img, dimaz, dimrg):
     Note:
         The filter is always applied along 2 dimensions (azimuth, range). Please ensure to provide a valid image.
     """
+
+    # old implementation with uniform filter
     # uflt = uniform_filter
-    ndim = len(img.shape)
+    # ndim = len(img.shape)
     # ws = np.ones(ndim)
     # ws[0] = dimaz
     # ws[1] = dimrg
-    msk = np.isnan(img)
-    img_ = img.copy()
-    img_[msk] = 0
-    ker = np.ones((dimaz, dimrg)) / (dimaz * dimrg)
-    if np.iscomplexobj(img_):
-        # imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
-        imgout = convolve(img_.real, ker) + 1j * convolve(img_.imag, ker)
-        imgout[msk] = np.nan + 1j * np.nan
-    else:
-        # imgout = uflt(img_.real, size=ws)
-        imgout = convolve(img_, ker)
-        imgout[msk] = np.nan
 
-    return imgout
+    if (dimaz > 1) or (dimrg > 1):
+        # avoid nan propagation
+        msk = np.isnan(img)
+        img_ = img.copy()
+        img_[msk] = 0
+        ker = np.ones((dimaz, dimrg)) / (dimaz * dimrg)
+        if np.iscomplexobj(img_):
+            # imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
+            imgout = convolve(img_.real, ker) + 1j * convolve(img_.imag, ker)
+            imgout[msk] = np.nan + 1j * np.nan
+        else:
+            # imgout = uflt(img_.real, size=ws)
+            imgout = convolve(img_, ker)
+            imgout[msk] = np.nan
+        return imgout
+    else:
+        return img
 
 def presum(img, m, n):
     """
