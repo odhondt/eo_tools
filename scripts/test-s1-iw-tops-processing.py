@@ -1,5 +1,6 @@
 # %%
 import logging
+
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 # logging.getLogger("numexpr").setLevel(logging.WARNING)
@@ -14,6 +15,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # print(f"{eo_tools.__file__=}")
 
 import geopandas as gpd
+
 # from eodag import EODataAccessGateway
 from eo_tools_dev.util import show_cog, serve_map, palette_phi
 from math import pi
@@ -23,7 +25,7 @@ from folium import LayerControl
 # credentials need to be stored in the following file (see EODAG docs)
 # confpath = "/data/eodag_config.yml"
 # dag = EODataAccessGateway(user_conf_file_path=confpath)
-# make sure cop_dataspace will be used 
+# make sure cop_dataspace will be used
 # dag.set_preferred_provider("cop_dataspace")
 
 # %%
@@ -32,16 +34,16 @@ data_dir = "/data/S1"
 out_dir = f"/data/res/test-iw-tops-process"
 
 ids = [
- "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1", 
- "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814"
+    "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
+    "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
 primary_dir = f"{data_dir}/{ids[0]}.zip"
 secondary_dir = f"{data_dir}/{ids[1]}.zip"
 
-iw = 1 # subswath
-pol = "vv" # polarization ("vv"or "vh")
+iw = 1  # subswath
+pol = "vv"  # polarization ("vv"or "vh")
 min_burst = 3
-max_burst = 6 # Set to None to process all (warning: memory hungry)
+max_burst = 6  # Set to None to process all (warning: memory hungry)
 
 
 # %%
@@ -75,7 +77,7 @@ preprocess_insar_iw(
     max_burst=max_burst,
     dem_upsampling=1.8,
     apply_fast_esd=True,
-    dem_force_download=False
+    dem_force_download=False,
 )
 
 # %%
@@ -91,7 +93,7 @@ file_coh_geo = f"{out_dir}/coh_geo.tif"
 file_lut = f"{out_dir}/lut.tif"
 # computing amplitude and complex coherence  in the radar geometry
 coherence(
-    file_prm, file_sec, file_coh, box_size=[3, 10], multilook=[1, 4], magnitude=False
+    file_prm, file_sec, file_coh, box_size=[3, 3], multilook=[1, 4], magnitude=False
 )
 amplitude(file_prm, file_amp, multilook=[2, 8])
 

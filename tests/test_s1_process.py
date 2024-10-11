@@ -10,7 +10,7 @@ import rasterio as rio
 import rioxarray
 from affine import Affine
 from tempfile import NamedTemporaryFile
-from eo_tools.S1.process import multilook 
+from eo_tools.S1.process import multilook
 from eo_tools.S1.process import goldstein
 import tempfile
 from unittest.mock import patch
@@ -80,7 +80,7 @@ def test_coherence(create_test_data):
 #         dem_upsampling=0.5,
 #         dem_force_download=False,
 #         dem_buffer_arc_sec=20,
-#         boxcar_coherence=[3, 10],
+#         boxcar_coherence=[3, 3],
 #         filter_ifg=True,
 #         multilook=[2, 8],
 #         warp_kernel="nearest",
@@ -159,9 +159,7 @@ def create_dummy_ifg():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a random complex-valued array to simulate the interferogram
         ifg_data = np.random.rand(2048, 2048) + 1j * np.random.rand(2048, 2048)
-        da_ifg = xr.DataArray(
-            ifg_data[None], dims=("band", "y", "x")
-        )
+        da_ifg = xr.DataArray(ifg_data[None], dims=("band", "y", "x"))
         da_ifg.rio.write_crs("EPSG:4326", inplace=True)
 
         # Save to a temporary file
@@ -169,6 +167,7 @@ def create_dummy_ifg():
         da_ifg.rio.to_raster(input_file)
 
         yield input_file
+
 
 @pytest.fixture
 def create_dummy_output():
@@ -182,9 +181,11 @@ def create_dummy_output():
         output_file = os.path.join(tmpdir, "output_ifg.tif")
         yield output_file
 
+
 # Dummy function for process_overlapping_windows to be mocked in the test
 def dummy_block_process(chunk, window_size, overlap, func, alpha):
     return chunk  # returns the chunk as-is for testing purposes
+
 
 def test_goldstein(create_dummy_ifg, create_dummy_output):
     """
