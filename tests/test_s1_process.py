@@ -129,7 +129,7 @@ def test_multilook_transform_and_dimensions():
 
     multilook_factors = [2, 2]
 
-    multilook(input_file, output_file, multilook=multilook_factors)
+    multilook(input_file, output_file, mlt=multilook_factors)
 
     with rio.open(input_file) as src:
         assert src.transform.is_rectilinear  # Check that the transform is rectilinear

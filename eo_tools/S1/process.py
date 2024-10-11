@@ -1081,21 +1081,21 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
+def multilook(file_in: str, file_out: str, mlt: List = [1, 1]) -> None:
     """Apply multilooking to raster.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
-        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
+        mlt (list): number of looks in azimuth and range. Defaults to [1, 1]
         mlt_az (int): multilook in azimuth. Defaults to 1.
         mlt_rg (int): multilook in range. Defaults to 1.
     """
 
-    if not isinstance(multilook, list):
+    if not isinstance(mlt, list):
         raise TypeError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
-        mlt_az, mlt_rg = multilook
+        mlt_az, mlt_rg = mlt
 
     log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
 
