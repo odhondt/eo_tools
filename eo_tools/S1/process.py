@@ -26,6 +26,7 @@ from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
+from skimage.morphology import binary_erosion
 
 # use child processes
 # USE_CP = False
@@ -1252,16 +1253,15 @@ def coherence(
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
-        depth=(mlt_az*box_az, mlt_rg*box_rg),
+        depth=(box_az, box_rg),
     )
 
-    # we need these for interferogram
-    ifg = prm * sec.conj()
+    ifg = presum(prm * sec.conj(), mlt_az, mlt_rg)
+    msk = ~np.isnan(ifg)
 
-    ifg = presum(ifg, mlt_az, mlt_rg)
+    # remove nan to avoid division errors
     prm2 = presum(np.nan_to_num((prm * prm.conj()).real), mlt_az, mlt_rg)
     sec2 = presum(np.nan_to_num((sec * sec.conj()).real), mlt_az, mlt_rg)
-
 
     ifg_box = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
@@ -1269,7 +1269,6 @@ def coherence(
         da.map_overlap(
             boxcar,
             prm2,
-            # np.nan_to_num((prm * prm.conj()).real),
             **process_args,
             dtype="float32",
         )
@@ -1278,7 +1277,6 @@ def coherence(
         da.map_overlap(
             boxcar,
             sec2,
-            # np.nan_to_num((sec * sec.conj()).real),
             **process_args,
             dtype="float32",
         )
@@ -1287,7 +1285,10 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
-    # coh = presum(coh, mlt_az, mlt_rg)
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # msk_out = binary_erosion(msk, struct)
+    coh = da.where(msk_out, coh, np.nan)
 
     nodataval = np.nan
 
@@ -1355,7 +1356,11 @@ def goldstein(
         # complex phase
         chunk_ = np.exp(1j * np.angle(chunk))
         return block_process(
-            chunk_, (32-overlap//2, 32-overlap//2), (overlap//2, overlap//2), filter_base, alpha=alpha
+            chunk_,
+            (32 - overlap // 2, 32 - overlap // 2),
+            (overlap // 2, overlap // 2),
+            filter_base,
+            alpha=alpha,
         )
 
     # TODO: find a way to automatically tune chunk size
@@ -1472,6 +1477,7 @@ def apply_to_patterns_for_single(
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
+
 
 def _process_bursts_insar(
     prm,
