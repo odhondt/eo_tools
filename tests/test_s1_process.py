@@ -35,8 +35,8 @@ def create_test_data():
         prm_file = os.path.join(tmpdirname, "prm.tif")
         sec_file = os.path.join(tmpdirname, "sec.tif")
         out_file = os.path.join(tmpdirname, "out.tif")
-        prm_ds.to_netcdf(prm_file)
-        sec_ds.to_netcdf(sec_file)
+        prm_ds.rio.to_raster(prm_file)
+        sec_ds.rio.to_raster(sec_file)
         yield prm_file, sec_file, out_file
 
 
