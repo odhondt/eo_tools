@@ -3,7 +3,7 @@
 ## New features
 - Better S1 coherence estimator
 	- Multilooking is performed prior to coherence computation
-	- It is applied to Each individual term in the coherence expression
+	- It is applied to each individual term in the coherence expression
 	- This way larger sample sizes can be collected even with small boxcar windows
 	- It avoids averaging the coherence itself (theoretically sounder)
 	- Binary erosion is applied to mitigate discontinuities at subswath borders
