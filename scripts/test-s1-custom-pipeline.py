@@ -27,7 +27,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 # %%
 # change to your custom locations
@@ -103,7 +103,7 @@ apply_to_patterns_for_pair(
     file_prm_prefix="slc_prm",
     file_sec_prefix="slc_sec",
     file_out_prefix="coh",
-    box_size=[3, 10],
+    box_size=[3, 3],
     multilook=[1, 4],
 )
 

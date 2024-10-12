@@ -19,25 +19,31 @@ def boxcar(img, dimaz, dimrg):
     Note:
         The filter is always applied along 2 dimensions (azimuth, range). Please ensure to provide a valid image.
     """
-    # uflt = flt.uniform_filter
-    ndim = len(img.shape)
-    ws = np.ones(ndim)
-    ws[0] = dimaz
-    ws[1] = dimrg
-    msk = np.isnan(img)
-    img_ = img.copy()
-    img_[msk] = 0
-    ker = np.ones((dimaz, dimrg)) / (dimaz * dimrg)
-    if np.iscomplexobj(img_):
-        # imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
-        imgout = convolve(img_.real, ker) + 1j * convolve(img_.imag, ker)
-        imgout[msk] = np.nan + 1j * np.nan
-    else:
-        # imgout = uflt(img_.real, size=ws)
-        imgout = convolve(img_, ker)
-        imgout[msk] = np.nan
-    return imgout
 
+    # old implementation with uniform filter
+    # uflt = uniform_filter
+    # ndim = len(img.shape)
+    # ws = np.ones(ndim)
+    # ws[0] = dimaz
+    # ws[1] = dimrg
+
+    if (dimaz > 1) or (dimrg > 1):
+        # avoid nan propagation
+        msk = np.isnan(img)
+        img_ = img.copy()
+        img_[msk] = 0
+        ker = np.ones((dimaz, dimrg)) / (dimaz * dimrg)
+        if np.iscomplexobj(img_):
+            # imgout = uflt(img_.real, size=ws) + 1j * uflt(img_.imag, size=ws)
+            imgout = convolve(img_.real, ker) + 1j * convolve(img_.imag, ker)
+            imgout[msk] = np.nan + 1j * np.nan
+        else:
+            # imgout = uflt(img_.real, size=ws)
+            imgout = convolve(img_, ker)
+            imgout[msk] = np.nan
+        return imgout
+    else:
+        return img
 
 def presum(img, m, n):
     """
@@ -89,39 +95,6 @@ def presum(img, m, n):
         return t / float(m * n)
     else:
         return img
-
-
-# @njit(parallel=True, nogil=True)
-# def presum(img, m, n):
-#     """
-#     Computes the average of an image over m lines and n columns in parallel.
-
-#     Args:
-#         img (numpy.ndarray): Input image array of shape (height, width, ...).
-#         m (int): Number of lines to average.
-#         n (int): Number of columns to average.
-
-#     Returns:
-#         numpy.ndarray: Output image array of shape (height // m, width // n, ...).
-#     """
-#     height, width = img.shape[:2]
-#     new_height = height // m
-#     new_width = width // n
-
-#     img_out = np.zeros((new_height, new_width) + img.shape[2:], dtype=img.dtype)
-
-#     for i in prange(new_height):
-#         for j in range(new_width):
-#             # Compute the sum over the region
-#             block_sum = 0
-#             for x in range(i * m, (i + 1) * m):
-#                 for y in range(j * n, (j + 1) * n):
-#                     block_sum += img[x, y]
-
-#             # Compute the average and assign to output image
-#             img_out[i, j] = block_sum / (m * n)
-
-#     return img_out
 
 
 # TODO: add truncated sinc

@@ -36,8 +36,8 @@ dependencies:
   - uvloop 
   - python-dotenv 
   - httptools
-  - numexpr
   - planetary-computer
+  # - numexpr
   # - pip:
     # - titiler.application
     # - eodag

@@ -1,3 +1,19 @@
+# 2024.10.1
+
+## New features
+- Better S1 coherence estimator
+	- Multilooking is performed prior to coherence computation
+	- It is applied to each individual term in the coherence expression
+	- This way larger sample sizes can be collected even with small boxcar windows
+	- It avoids averaging the coherence itself (theoretically sounder)
+	- Binary erosion is applied to mitigate discontinuities at subswath borders
+	- Default multilook is still `[1, 4]` but coherence window size is now `[3, 3]`
+## Bugfixes
+- Fixed an error with DEM download due to Planetary Computer now requiring signed urls
+
+## Other
+- Upgraded dependencies
+
 # 2024.10.0
 
 ## New features
