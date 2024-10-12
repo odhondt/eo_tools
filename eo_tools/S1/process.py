@@ -26,6 +26,7 @@ from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
+from skimage.morphology import binary_erosion
 
 # use child processes
 # USE_CP = False
@@ -51,7 +52,7 @@ def process_insar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    boxcar_coherence: Union[int, List[int]] = [3, 10],
+    boxcar_coherence: Union[int, List[int]] = [3, 3],
     filter_ifg: bool = True,
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
@@ -78,7 +79,7 @@ def process_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 10].
+        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 3].
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None or write_coherence is set to False. Defaults to True.x
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
@@ -1081,21 +1082,21 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def apply_multilook(file_in: str, file_out: str, multilook: List = [1, 1]) -> None:
+def multilook(file_in: str, file_out: str, mlt: List = [1, 1]) -> None:
     """Apply multilooking to raster.
 
     Args:
         file_in (str): GeoTiff file of the primary SLC image
         file_out (str): output file
-        multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
+        mlt (list): number of looks in azimuth and range. Defaults to [1, 1]
         mlt_az (int): multilook in azimuth. Defaults to 1.
         mlt_rg (int): multilook in range. Defaults to 1.
     """
 
-    if not isinstance(multilook, list):
+    if not isinstance(mlt, list):
         raise TypeError("Multilook must be a list like [mlt_az, mlt_rg]")
     else:
-        mlt_az, mlt_rg = multilook
+        mlt_az, mlt_rg = mlt
 
     log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
 
@@ -1255,14 +1256,19 @@ def coherence(
         depth=(box_az, box_rg),
     )
 
-    # we need these for interferogram
-    ifg = prm * sec.conj()
+    ifg = presum(prm * sec.conj(), mlt_az, mlt_rg)
+    msk = ~np.isnan(ifg)
+
+    # remove nan to avoid division errors
+    prm2 = presum(np.nan_to_num((prm * prm.conj()).real), mlt_az, mlt_rg)
+    sec2 = presum(np.nan_to_num((sec * sec.conj()).real), mlt_az, mlt_rg)
+
     ifg_box = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
 
     coh = ifg_box / np.sqrt(
         da.map_overlap(
             boxcar,
-            np.nan_to_num((prm * prm.conj()).real),
+            prm2,
             **process_args,
             dtype="float32",
         )
@@ -1270,7 +1276,7 @@ def coherence(
     coh /= np.sqrt(
         da.map_overlap(
             boxcar,
-            np.nan_to_num((sec * sec.conj()).real),
+            sec2,
             **process_args,
             dtype="float32",
         )
@@ -1279,7 +1285,10 @@ def coherence(
     if magnitude:
         coh = np.abs(coh)
 
-    coh = presum(coh, mlt_az, mlt_rg)
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # msk_out = binary_erosion(msk, struct)
+    coh = da.where(msk_out, coh, np.nan)
 
     nodataval = np.nan
 
@@ -1298,13 +1307,13 @@ def coherence(
     # useful as users may want non-filtered interferograms
     if file_complex_ifg:
         if filter_ifg:
-            ifg_box = presum(ifg_box, mlt_az, mlt_rg)
+            # ifg_box = presum(ifg_box, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg_box[None],
                 dims=("band", "y", "x"),
             )
         else:
-            ifg = presum(ifg, mlt_az, mlt_rg)
+            # ifg = presum(ifg, mlt_az, mlt_rg)
             da_ifg = xr.DataArray(
                 data=ifg[None],
                 dims=("band", "y", "x"),
@@ -1347,7 +1356,11 @@ def goldstein(
         # complex phase
         chunk_ = np.exp(1j * np.angle(chunk))
         return block_process(
-            chunk_, (32-overlap//2, 32-overlap//2), (overlap//2, overlap//2), filter_base, alpha=alpha
+            chunk_,
+            (32 - overlap // 2, 32 - overlap // 2),
+            (overlap // 2, overlap // 2),
+            filter_base,
+            alpha=alpha,
         )
 
     # TODO: find a way to automatically tune chunk size
@@ -1464,6 +1477,7 @@ def apply_to_patterns_for_single(
 
 
 # Auxiliary functions which are not supposed to be used outside of the processor
+
 
 def _process_bursts_insar(
     prm,
