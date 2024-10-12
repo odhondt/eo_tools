@@ -5,7 +5,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 # Uncomment the next block to test conda imports
 
@@ -39,7 +39,7 @@ data_dir = "/data/S1"
 ids = [
  "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1", 
 ]
-slc_dir = f"{data_dir}/{ids[0]}.SAFE"
+slc_dir = f"{data_dir}/{ids[0]}.zip"
 outputs_prefix="/data/res/test-slc-processor-sigma"
 outputs_prefix_2="/data/res/test-slc-processor-beta"
 
@@ -105,8 +105,8 @@ out_dir_beta = process_slc(
 m = folium.Map()
 _ = show_cog(f"{out_dir_beta}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_sigma}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
 # open in a browser

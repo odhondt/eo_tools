@@ -27,7 +27,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 # %%
 # change to your custom locations
@@ -37,8 +37,8 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.SAFE"
-secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
+primary_dir = f"{data_dir}/{ids[0]}.zip"
+secondary_dir = f"{data_dir}/{ids[1]}.zip"
 outputs_prefix = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
@@ -103,7 +103,7 @@ apply_to_patterns_for_pair(
     file_prm_prefix="slc_prm",
     file_sec_prefix="slc_sec",
     file_out_prefix="coh",
-    box_size=[3, 10],
+    box_size=[3, 3],
     multilook=[1, 4],
 )
 

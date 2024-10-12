@@ -19,7 +19,7 @@ from joblib import Parallel, delayed
 
 from pyroSAR import identify
 from xmltodict import parse
-from zipfile import ZipFile
+import zipfile
 
 
 import logging
@@ -34,6 +34,7 @@ class S1IWSwath:
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
+    - Apply Beta or Sigma Naught calibration
     - Computing the topographic phase from slant range values
     """
 
@@ -41,13 +42,14 @@ class S1IWSwath:
         """Object intialization
 
         Args:
-            safe_dir (str): Directory containing the (unzipped) product.
+            safe_dir (str): Directory or zip file containing the product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
             dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
-        if not os.path.isdir(safe_dir):
-            raise ValueError("Directory not found.")
+        # if not os.path.isdir(safe_dir):
+        if not os.path.exists(safe_dir):
+            raise ValueError("Product not found.")
 
         if not isinstance(iw, int) or iw < 1 or iw > 3:
             raise ValueError("Parameter 'iw' must an int be between 1 and 3")
@@ -55,37 +57,39 @@ class S1IWSwath:
         if pol not in ["vv", "vh"]:
             raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
+        self.is_zip = Path(safe_dir).suffix == ".zip"
+        self.product = zipfile.Path(safe_dir) if self.is_zip else Path(safe_dir)
+
         # check product type using dir name
-        parts = Path(safe_dir).stem.split("_")
+        parts = self.product.stem.split("_")
         if not all(["S1" in parts[0], parts[1] == "IW", parts[2] == "SLC"]):
             raise RuntimeError(
                 "Unexpected product name. Should start with S1{A,B}_IW_SLC."
             )
 
-        # read raster file
-        dir_tiff = Path(safe_dir) / "measurement"
-        pth_tiff = dir_tiff.glob(f"*iw{iw}*{pol}*.tiff")
+        # raster path
         try:
-            self.pth_tiff = list(pth_tiff)[0]
+            str_tiff = f"**/measurement/*iw{iw}*{pol}*.tiff"
+            pth_tiff = list(self.product.glob(str_tiff))[0]
         except IndexError:
             raise FileNotFoundError("Tiff file is missing.")
+        self.pth_tiff = f"zip://{pth_tiff}" if self.is_zip else pth_tiff
 
-        # read metadata file
-        dir_xml = Path(safe_dir) / "annotation"
-        pth_xml = dir_xml.glob(f"*iw{iw}*{pol}*.xml")
+        # metadata path
         try:
-            pth_xml = list(pth_xml)[0]
+            str_xml = f"**/annotation/*iw{iw}*{pol}*.xml"
+            pth_xml = list(self.product.glob(str_xml))[0]
         except IndexError:
             raise FileNotFoundError("Metadata file is missing.")
 
-        # read calibration file
-        dir_cal = Path(safe_dir) / "annotation" / "calibration"
-        pth_cal = dir_cal.glob(f"calibration*iw{iw}*{pol}*.xml")
+        # calibration path
         try:
-            pth_cal = list(pth_cal)[0]
+            str_cal = f"**/annotation/calibration/calibration*iw{iw}*{pol}*.xml"
+            pth_cal = list(self.product.glob(str_cal))[0]
         except IndexError:
             raise FileNotFoundError("Calibration file is missing.")
 
+        # read annotation data
         self.meta = read_metadata(pth_xml)
         self.start_time = self.meta["product"]["adsHeader"]["startTime"]
         burst_info = self.meta["product"]["swathTiming"]
@@ -93,7 +97,7 @@ class S1IWSwath:
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
         self.burst_count = int(burst_info["burstList"]["@count"])
 
-        # extract beta_nought to rescale data
+        # extract calibration LUT to rescale data
         calinfo = read_metadata(pth_cal)
         self.calvec = calinfo["calibration"]["calibrationVectorList"][
             "calibrationVector"
@@ -110,11 +114,11 @@ class S1IWSwath:
 
         log.info(f"S1IWSwath Initialization:")
         log.info(f"- Read metadata file {pth_xml}")
-        log.info(f"- Read  calibration file {pth_cal}")
+        log.info(f"- Read calibration file {pth_cal}")
         log.info(f"- Set up raster path {self.pth_tiff}")
         log.info(f"- Look for available OSV (Orbit State Vectors)")
 
-        # read state vectors
+        # read state vectors (orbit)
         product = identify(safe_dir)
         zip_orb = product.getOSV(dir_orb, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
@@ -127,7 +131,7 @@ class S1IWSwath:
         else:
             raise RuntimeError("Unknown orbit file")
 
-        with ZipFile(zip_orb) as zf:
+        with zipfile.ZipFile(zip_orb) as zf:
             file_orb = zf.namelist()[0]
             with zf.open(file_orb) as f:
                 orbdict = parse(f.read())
@@ -201,9 +205,9 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        dem_name = "nasadem" # will be a parameter in the future
-        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode('utf-8')
-        hash_str = hashlib.md5(hash_input).hexdigest() 
+        dem_name = "nasadem"  # will be a parameter in the future
+        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
+        hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
         file_dem = f"{dir_dem}/{dem_prefix}"
 
@@ -835,7 +839,7 @@ def stitch_bursts(bursts, overlap):
 
 
 def read_metadata(pth_xml):
-    with open(pth_xml) as f:
+    with pth_xml.open() as f:
         meta = xmltodict.parse(f.read())
     return meta
 

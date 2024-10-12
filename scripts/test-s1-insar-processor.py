@@ -3,7 +3,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 # Uncomment the next block to test conda imports
 
@@ -16,6 +16,7 @@ logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 import os
 import geopandas as gpd
+
 # from eodag import EODataAccessGateway
 from eo_tools.S1.process import process_insar
 from eo_tools.auxils import remove
@@ -37,15 +38,15 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.SAFE"
-secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
+primary_dir = f"{data_dir}/{ids[0]}.zip"
+secondary_dir = f"{data_dir}/{ids[1]}.zip"
 outputs_prefix = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_small.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 # search_criteria = {
@@ -83,7 +84,7 @@ process_args = dict(
     dem_upsampling=1.8,
     dem_force_download=False,
     dem_buffer_arc_sec=40,
-    boxcar_coherence=[3, 10],
+    boxcar_coherence=[3, 3],
     filter_ifg=True,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -108,3 +109,4 @@ LayerControl().add_to(m)
 
 # open in a browser
 serve_map(m)
+# %%

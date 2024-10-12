@@ -1,3 +1,46 @@
+# 2024.10.1
+
+## New features
+- Better S1 coherence estimator
+	- Multilooking is performed prior to coherence computation
+	- It is applied to each individual term in the coherence expression
+	- This way larger sample sizes can be collected even with small boxcar windows
+	- It avoids averaging the coherence itself (theoretically sounder)
+	- Binary erosion is applied to mitigate discontinuities at subswath borders
+	- Default multilook is still `[1, 4]` but coherence window size is now `[3, 3]`
+## Bugfixes
+- Fixed an error with DEM download due to Planetary Computer now requiring signed urls
+
+## Other
+- Upgraded dependencies
+
+# 2024.10.0
+
+## New features
+- Sentinel-1 zipped products are now handled (updated all notebooks accordingly).
+- InSAR processing of partially overlapping products, for instance between S1A and S1B, as long as share the same orbit.
+
+## Other
+- Refactored block processing utility to handle larger overlap.
+- Goldstein filter now uses different block size (32) and overlap results in smaller final block size.
+- Added Etna notebook to illustrate partial overlap in InSAR (docker version only)
+- Simple script that shows all S1 products located in a directory on a map (not part of the conda package)
+
+# 2024.9.2
+
+## New features
+- New function `S1.process.goldstein`: the Goldstein interferometric filter is an adaptive method that allows to reduce noise on phase.
+- Tutorial notebooks on how to use the function
+- All file names like `"ifg*"` are now treated as interferograms by `S1.process.geocode_and_merge_iw`. This way users can compare several phase filtering methods easily. 
+
+## Bugfixes
+- Correct options for orbit retrieval `['POE', 'RES']` using `pyrosar`
+- In `S2.process_tiles`, `baseline > 4` replaced by `baseline >= 4`
+- In `S1.process.coherence` output is tiled like input
+
+## Misc
+- `S1.process.coherence` with manually fixed chunk size is faster.
+
 # 2024.9.1
 
 ## New feature -- Sentinel-1 custom pipelines
