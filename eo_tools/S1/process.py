@@ -1253,7 +1253,7 @@ def coherence(
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
-        depth=(mlt_az*box_az, mlt_rg*box_rg),
+        depth=(mlt_az * box_az, mlt_rg * box_rg),
     )
 
     ifg = presum(prm * sec.conj(), mlt_az, mlt_rg)
@@ -1431,6 +1431,40 @@ def apply_to_patterns_for_pair(
             )
             func(file_prm, file_sec, file_out, *args, **kwargs)
             log.info(f"File {Path(file_out).name} written")
+
+
+def polsar_c2(
+    out_dir: str,
+    prefix_in: str,
+    prefix_out: str = "polsar",
+    multilook: List = [1, 4],
+    boxcar: List = [3, 3],
+) -> None:
+    """Computes the C2 dual-polarization covariance matrix
+
+    Args:
+        out_dir (str): output directory
+        prefix_in (str): Prefix of the input slc file
+        prefix_out (str): Prefix of the output file
+        multilook (List, optional): Amount of multilooking in azimuth and range. Defaults to [1, 4].
+        boxcar (List, optional): Boxcar size in azimuth and range. Defaults to [3, 3].
+    """
+    iw_idx = [1, 2, 3]
+    for iw in iw_idx:
+        file_vv = Path({out_dir}) / f"{prefix_in}_vv_iw{iw}.tif"
+        file_vh = Path({out_dir}) / f"{prefix_in}_vh_iw{iw}.tif"
+        check = (not os.path.isfile(file_vv), not os.path.isfile(file_vh))
+        if check[0] and check[1]:
+            slc_vv = riox.open_rasterio(file_vv)
+            slc_vh = riox.open_rasterio(file_vh)
+            c11 = slc_vv * slc_vv.conj()
+            c22 = slc_vh * slc_vh.conj()
+            c12 = slc_vv * slc_vh.conj()
+            c11.to_raster(Path(out_dir) / f"{prefix_out}_c11_iw{iw}.tif")
+            c22.to_raster(Path(out_dir) / f"{prefix_out}_c22_iw{iw}.tif")
+            c12.to_raster(Path(out_dir) / f"{prefix_out}_c12_iw{iw}.tif")
+        elif check[0] != check[1]:
+            raise FileNotFoundError(f"One polarization is missing for subswath IW{iw}.")
 
 
 def apply_to_patterns_for_single(
