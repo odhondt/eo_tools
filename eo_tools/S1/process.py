@@ -1457,15 +1457,70 @@ def polsar_c2(
         if check[0] and check[1]:
             slc_vv = riox.open_rasterio(file_vv)
             slc_vh = riox.open_rasterio(file_vh)
-            c11 = slc_vv * slc_vv.conj()
-            c22 = slc_vh * slc_vh.conj()
+            c11 = (slc_vv * slc_vv.conj()).real
+            c22 = (slc_vh * slc_vh.conj()).real
             c12 = slc_vv * slc_vh.conj()
+            # TODO: mlt + boxcar
             c11.to_raster(Path(out_dir) / f"{prefix_out}_c11_iw{iw}.tif")
             c22.to_raster(Path(out_dir) / f"{prefix_out}_c22_iw{iw}.tif")
             c12.to_raster(Path(out_dir) / f"{prefix_out}_c12_iw{iw}.tif")
         elif check[0] != check[1]:
             raise FileNotFoundError(f"One polarization is missing for subswath IW{iw}.")
 
+
+def polinsar_c4(
+    out_dir: str,
+    prefix_prm: str,
+    prefix_sec: str,
+    prefix_out: str = "polinsar",
+    multilook: List = [1, 4],
+    boxcar: List = [3, 3],
+) -> None:
+    """Computes the C4 dual-polarization covariance matrix
+
+    Args:
+        out_dir (str): output directory
+        prefix_prm (str): Prefix of the primary slc file
+        prefix_sec (str): Prefix of the secondary slc file
+        prefix_out (str): Prefix of the output file
+        multilook (List, optional): Amount of multilooking in azimuth and range. Defaults to [1, 4].
+        boxcar (List, optional): Boxcar size in azimuth and range. Defaults to [3, 3].
+    """
+    iw_idx = [1, 2, 3]
+    for iw in iw_idx:
+        file_prm_vv = Path({out_dir}) / f"{prefix_prm}_vv_iw{iw}.tif"
+        file_prm_vh = Path({out_dir}) / f"{prefix_prm}_vh_iw{iw}.tif"
+        check_prm = (not os.path.isfile(file_prm_vv), not os.path.isfile(file_prm_vh))
+        if check_prm[0] and check_prm[1]:
+            slc_prm_vv = riox.open_rasterio(file_prm_vv)
+            slc_prm_vh = riox.open_rasterio(file_prm_vh)
+        elif check_prm[0] != check_prm[1]:
+            raise FileNotFoundError(f"One polarization is missing for subswath IW{iw} primary image.")
+
+        file_sec_vv = Path({out_dir}) / f"{prefix_sec}_vv_iw{iw}.tif"
+        file_sec_vh = Path({out_dir}) / f"{prefix_sec}_vh_iw{iw}.tif"
+        check_sec = (not os.path.isfile(file_sec_vv), not os.path.isfile(file_sec_vh))
+        if check_sec[0] and check_sec[1]:
+            slc_sec_vv = riox.open_rasterio(file_sec_vv)
+            slc_sec_vh = riox.open_rasterio(file_sec_vh)
+        elif check_sec[0] != check_sec[1]:
+            raise FileNotFoundError(f"One polarization is missing for subswath IW{iw} primary image.")
+        # diagonal
+        c11 = (slc_prm_vv * slc_prm_vv.conj()).real
+        c22 = (slc_prm_vh * slc_prm_vh.conj()).real
+        c33 = (slc_sec_vv * slc_sec_vv.conj()).real
+        c44 = (slc_sec_vh * slc_sec_vh.conj()).real
+        # upper diagonal (Hermitian matrix)
+        c12 = slc_prm_vv * slc_prm_vh.conj()
+        c13 = slc_prm_vv * slc_sec_vv.conj()
+        c14 = slc_prm_vv * slc_sec_vh.conj()
+        c23 = slc_prm_vh * slc_sec_vv.conj()
+        c24 = slc_prm_vh * slc_sec_vh.conj()
+        c34 = slc_sec_vv * slc_sec_vh.conj()
+        # TODO: mlt + boxcar
+        # c11.to_raster(Path(out_dir) / f"{prefix_out}_c11_iw{iw}.tif")
+        # c22.to_raster(Path(out_dir) / f"{prefix_out}_c22_iw{iw}.tif")
+        # c12.to_raster(Path(out_dir) / f"{prefix_out}_c12_iw{iw}.tif")
 
 def apply_to_patterns_for_single(
     func: Callable,
