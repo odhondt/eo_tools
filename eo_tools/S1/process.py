@@ -1438,7 +1438,7 @@ def polsar_c2(
     prefix_in: str,
     prefix_out: str = "polsar",
     multilook: List = [1, 4],
-    boxcar: List = [3, 3],
+    box_size: List = [3, 3],
 ) -> None:
     """Computes the C2 dual-polarization covariance matrix
 
@@ -1449,6 +1449,19 @@ def polsar_c2(
         multilook (List, optional): Amount of multilooking in azimuth and range. Defaults to [1, 4].
         boxcar (List, optional): Boxcar size in azimuth and range. Defaults to [3, 3].
     """
+
+    if not isinstance(box_size, list):
+        raise ValueError("bio_size must be a list like [box_az, box_rg]")
+    else:
+        box_az, box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    scale = Affine.scale(mlt_rg, mlt_az)
+
     iw_idx = [1, 2, 3]
     for iw in iw_idx:
         file_vv = Path({out_dir}) / f"{prefix_in}_vv_iw{iw}.tif"
@@ -1457,24 +1470,28 @@ def polsar_c2(
         if check[0] and check[1]:
             slc_vv = riox.open_rasterio(file_vv)
             slc_vh = riox.open_rasterio(file_vh)
-            c11 = (slc_vv * slc_vv.conj()).real
-            c22 = (slc_vh * slc_vh.conj()).real
-            c12 = slc_vv * slc_vh.conj()
-            # TODO: mlt + boxcar
-            c11.to_raster(Path(out_dir) / f"{prefix_out}_c11_iw{iw}.tif")
-            c22.to_raster(Path(out_dir) / f"{prefix_out}_c22_iw{iw}.tif")
-            c12.to_raster(Path(out_dir) / f"{prefix_out}_c12_iw{iw}.tif")
+            dict_cov = dict(
+                c11=(slc_vv * slc_vv.conj()).real,
+                c22=(slc_vh * slc_vh.conj()).real,
+                c12=slc_vv * slc_vh.conj(),
+            )
+            for key, arr in dict_cov.items():
+                arr = presum(arr, mlt_az, mlt_rg)
+                arr = boxcar(arr, box_az, box_rg)
+                arr.rio.write_transform(arr.rio.transform() * scale, inplace=True)
+                arr.rio.write_nodata(np.nan, inplace=True)
+                arr.rio.to_raster(Path(out_dir) / f"{prefix_out}_{key}_iw{iw}.tif")
         elif check[0] != check[1]:
             raise FileNotFoundError(f"One polarization is missing for subswath IW{iw}.")
 
 
 def polinsar_c4(
     out_dir: str,
-    prefix_prm: str,
-    prefix_sec: str,
+    prefix_prm: str = "slc_prm",
+    prefix_sec: str = "slc_sec",
     prefix_out: str = "polinsar",
     multilook: List = [1, 4],
-    boxcar: List = [3, 3],
+    box_size: List = [3, 3],
 ) -> None:
     """Computes the C4 dual-polarization covariance matrix
 
@@ -1484,8 +1501,21 @@ def polinsar_c4(
         prefix_sec (str): Prefix of the secondary slc file
         prefix_out (str): Prefix of the output file
         multilook (List, optional): Amount of multilooking in azimuth and range. Defaults to [1, 4].
-        boxcar (List, optional): Boxcar size in azimuth and range. Defaults to [3, 3].
+        box_size (List, optional): Boxcar size in azimuth and range. Defaults to [3, 3].
     """
+
+    if not isinstance(box_size, list):
+        raise ValueError("bio_size must be a list like [box_az, box_rg]")
+    else:
+        box_az, box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    scale = Affine.scale(mlt_rg, mlt_az)
+
     iw_idx = [1, 2, 3]
     for iw in iw_idx:
         file_prm_vv = Path({out_dir}) / f"{prefix_prm}_vv_iw{iw}.tif"
@@ -1495,7 +1525,9 @@ def polinsar_c4(
             slc_prm_vv = riox.open_rasterio(file_prm_vv)
             slc_prm_vh = riox.open_rasterio(file_prm_vh)
         elif check_prm[0] != check_prm[1]:
-            raise FileNotFoundError(f"One polarization is missing for subswath IW{iw} primary image.")
+            raise FileNotFoundError(
+                f"One polarization is missing for subswath IW{iw} primary image."
+            )
 
         file_sec_vv = Path({out_dir}) / f"{prefix_sec}_vv_iw{iw}.tif"
         file_sec_vh = Path({out_dir}) / f"{prefix_sec}_vh_iw{iw}.tif"
@@ -1504,23 +1536,31 @@ def polinsar_c4(
             slc_sec_vv = riox.open_rasterio(file_sec_vv)
             slc_sec_vh = riox.open_rasterio(file_sec_vh)
         elif check_sec[0] != check_sec[1]:
-            raise FileNotFoundError(f"One polarization is missing for subswath IW{iw} primary image.")
-        # diagonal
-        c11 = (slc_prm_vv * slc_prm_vv.conj()).real
-        c22 = (slc_prm_vh * slc_prm_vh.conj()).real
-        c33 = (slc_sec_vv * slc_sec_vv.conj()).real
-        c44 = (slc_sec_vh * slc_sec_vh.conj()).real
-        # upper diagonal (Hermitian matrix)
-        c12 = slc_prm_vv * slc_prm_vh.conj()
-        c13 = slc_prm_vv * slc_sec_vv.conj()
-        c14 = slc_prm_vv * slc_sec_vh.conj()
-        c23 = slc_prm_vh * slc_sec_vv.conj()
-        c24 = slc_prm_vh * slc_sec_vh.conj()
-        c34 = slc_sec_vv * slc_sec_vh.conj()
-        # TODO: mlt + boxcar
-        # c11.to_raster(Path(out_dir) / f"{prefix_out}_c11_iw{iw}.tif")
-        # c22.to_raster(Path(out_dir) / f"{prefix_out}_c22_iw{iw}.tif")
-        # c12.to_raster(Path(out_dir) / f"{prefix_out}_c12_iw{iw}.tif")
+            raise FileNotFoundError(
+                f"One polarization is missing for subswath IW{iw} primary image."
+            )
+
+        dict_cov = dict(
+            # diagonal
+            c11=(slc_prm_vv * slc_prm_vv.conj()).real,
+            c22=(slc_prm_vh * slc_prm_vh.conj()).real,
+            c33=(slc_sec_vv * slc_sec_vv.conj()).real,
+            c44=(slc_sec_vh * slc_sec_vh.conj()).real,
+            # upper triangle (Hermitian matrix)
+            c12=slc_prm_vv * slc_prm_vh.conj(),
+            c13=slc_prm_vv * slc_sec_vv.conj(),
+            c14=slc_prm_vv * slc_sec_vh.conj(),
+            c23=slc_prm_vh * slc_sec_vv.conj(),
+            c24=slc_prm_vh * slc_sec_vh.conj(),
+            c34=slc_sec_vv * slc_sec_vh.conj(),
+        )
+        for key, arr in dict_cov.items():
+            arr = presum(arr, mlt_az, mlt_rg)
+            arr = boxcar(arr, box_az, box_rg)
+            arr.rio.write_transform(arr.rio.transform() * scale, inplace=True)
+            arr.rio.write_nodata(np.nan, inplace=True)
+            arr.rio.to_raster(Path(out_dir) / f"{prefix_out}_{key}_iw{iw}.tif")
+
 
 def apply_to_patterns_for_single(
     func: Callable,
