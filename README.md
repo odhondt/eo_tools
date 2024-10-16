@@ -11,7 +11,7 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="360">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="360">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="360">
-    <img src="https://raw.githu6usercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="360">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="360">
 </p>
 
 ## Overview
