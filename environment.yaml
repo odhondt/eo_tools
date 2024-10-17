@@ -6,7 +6,8 @@ dependencies:
   - python=3.12
   - pytest
   - gdal
-  - rasterio
+  # - rasterio=1.4.0
+  - rasterio=1.3.11
   - pyrosar
   - spatialist
   - pip
@@ -37,6 +38,7 @@ dependencies:
   - python-dotenv 
   - httptools
   - planetary-computer
+  # - libgdal-jp2openjpeg
   # - numexpr
   # - pip:
     # - titiler.application
