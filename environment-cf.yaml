@@ -1,3 +1,7 @@
+# This file is only used to generate pinned dependencies for the conda package with scripts/generate_deps_list
+# It imposes dependencies from conda-forge and excludes pip packages
+# Versions extracted will be based on the current build of the docker image. Pinned versions can be forced in environment.yaml
+# DO NOT USE FOR ANOTHER PURPOSE
 name: eo_tools
 channels:
   - conda-forge
