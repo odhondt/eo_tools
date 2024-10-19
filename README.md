@@ -1,5 +1,5 @@
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/eo-tools-v2.3.svg" width="300">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/eo-tools-v2-responsive.svg" width="300">
 </p>
 
 # A python Earth Observation toolbox
