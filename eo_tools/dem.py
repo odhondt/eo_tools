@@ -3,6 +3,7 @@ from pystac_client.client import Client
 import rioxarray as riox
 from rioxarray.merge import merge_arrays
 from rasterio.enums import Resampling
+import planetary_computer
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,10 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", upscale_factor=1):
     """
 
     log.info("Retrieve DEM")
-    catalog = Client.open("https://planetarycomputer.microsoft.com/api/stac/v1")
+    catalog = Client.open(
+        "https://planetarycomputer.microsoft.com/api/stac/v1",
+        modifier=planetary_computer.sign_inplace,
+    )
 
     data_keys = {
         "nasadem": "elevation",
@@ -53,6 +57,8 @@ def retrieve_dem(shp, file_out, dem_name="cop-dem-glo-30", upscale_factor=1):
             shape=(new_height, new_width),
             resampling=Resampling.bilinear,
         )
-        dem_upsampled.rio.to_raster(file_out, tiled=True, blockxsize=512, blockysize=512)
+        dem_upsampled.rio.to_raster(
+            file_out, tiled=True, blockxsize=512, blockysize=512
+        )
     else:
         raise ValueError("Upsampling factor must be positive.")

@@ -5,7 +5,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 # Uncomment the next block to test conda imports
 
@@ -39,7 +39,7 @@ data_dir = "/data/S1"
 ids = [
  "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1", 
 ]
-slc_dir = f"{data_dir}/{ids[0]}.SAFE"
+slc_dir = f"{data_dir}/{ids[0]}.zip"
 outputs_prefix="/data/res/test-slc-processor-sigma"
 outputs_prefix_2="/data/res/test-slc-processor-beta"
 
@@ -47,6 +47,7 @@ outputs_prefix_2="/data/res/test-slc-processor-beta"
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_small.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 search_criteria = {
@@ -69,16 +70,16 @@ out_dir_sigma = process_slc(
     outputs_prefix=outputs_prefix,
     aoi_name=None,
     shp=shp,
-    pol="full",
-    # pol="vv",
+    # pol="full",
+    pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="sigma",
-    # clip_to_shape=True,
+    # clip_to_shape=False,
 )
 
 # %%
@@ -88,11 +89,10 @@ out_dir_beta = process_slc(
     outputs_prefix=outputs_prefix_2,
     aoi_name=None,
     shp=shp,
-    pol="full",
-    # pol="vv",
+    pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -105,8 +105,8 @@ out_dir_beta = process_slc(
 m = folium.Map()
 _ = show_cog(f"{out_dir_beta}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_sigma}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
 # open in a browser

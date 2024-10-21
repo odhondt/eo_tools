@@ -23,7 +23,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 
@@ -36,8 +36,8 @@ if not os.path.isdir(out_dir):
     os.mkdir(out_dir)
 
 # replace with already downloaded and unzipped products (see the other notebooks to download such products)
-primary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
-secondary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.SAFE"
+primary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.zip"
+secondary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.zip"
 
 # subswath to process
 iw = 1
@@ -62,7 +62,7 @@ for burst_idx in range(min_burst, max_burst + 1):
     log.info(f"---- Processing burst {burst_idx} ----")
 
     # compute geocoding LUTs for master and slave bursts
-    file_dem = prm.fetch_dem_burst(burst_idx, dir_dem="/data/tmp", force_download=True)
+    file_dem = prm.fetch_dem_burst(burst_idx, dir_dem="/data/tmp", force_download=False)
     az_p2g, rg_p2g, _ = prm.geocode_burst(
         file_dem, burst_idx=burst_idx, dem_upsampling=up
     )

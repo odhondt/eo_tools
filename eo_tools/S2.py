@@ -195,7 +195,7 @@ def process_s2_tiles(
                                 )
                             else:
                                 raster = tmp_ds.read()
-                    if proc_bsl > 4:
+                    if proc_bsl >= 4:
                         OFF = dict_pid["offsets"][df_bands.loc[band]["id"]]
                         raster = ((raster + OFF) / QV).clip(0).astype(np.float32)
                     else:
