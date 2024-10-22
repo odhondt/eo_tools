@@ -9,16 +9,16 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
 
 Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco:
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="300">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="300">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="300">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
 </p>
 and the comparison between Sentinel-1 amplitude, coherence, change map and Sentinel-2 RGB image over the city of Berlin in Germany:
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="360">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="350">
 </p>
 
 ## Overview
