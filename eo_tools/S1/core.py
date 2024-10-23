@@ -315,7 +315,8 @@ class S1IWSwath:
         vel = interp_vel(t_arr)
 
         log.info("Range-Doppler terrain correction (LUT computation)")
-        az_geo, dist_geo = range_doppler(
+        # az_geo, dist_geo = range_doppler(
+        az_geo, dist_geo, dx, dy, dz = range_doppler_and_look_vectors(
             # Removing first pos to get more precision. Is this useful?
             dem_x.ravel() - pos[0, 0],
             dem_y.ravel() - pos[0, 1],
@@ -339,6 +340,17 @@ class S1IWSwath:
         valid = cnd1 & cnd2
         rg_geo[~valid] = np.nan
         az_geo[~valid] = np.nan
+        norm = np.sqrt(dx**2 + dy**2 + dz**2)
+        dx = dx / norm
+        dy = dy / norm
+        dz = dz / norm
+        dx[~valid] = np.nan
+        dy[~valid] = np.nan
+        dz[~valid] = np.nan
+        dx = dx.reshape(alt.shape)
+        dy = dy.reshape(alt.shape)
+        dz = dz.reshape(alt.shape)
+        local_terrain_gamma(arr_slc, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz)
 
         return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof
 
@@ -1066,9 +1078,95 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     return i_zd, r_zd
 
 
+@njit(nogil=True, cache=True, parallel=True)
+def range_doppler_and_look_vectors(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
+    def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
+        factors = t - np.floor(t)
+
+        px = positions[t0, 0] + factors * (positions[t1, 0] - positions[t0, 0])
+        py = positions[t0, 1] + factors * (positions[t1, 1] - positions[t0, 1])
+        pz = positions[t0, 2] + factors * (positions[t1, 2] - positions[t0, 2])
+        vx = velocities[t0, 0] + factors * (velocities[t1, 0] - velocities[t0, 0])
+        vy = velocities[t0, 1] + factors * (velocities[t1, 1] - velocities[t0, 1])
+        vz = velocities[t0, 2] + factors * (velocities[t1, 2] - velocities[t0, 2])
+
+        dx = x - px
+        dy = y - py
+        dz = z - pz
+        d2 = dx**2 + dy**2 + dz**2
+        fc = -(vx * dx + vy * dy + vz * dz) / np.sqrt(d2)
+
+        return fc, dx, dy, dz
+
+    i_zd = np.zeros_like(xx)
+    r_zd = np.zeros_like(xx)
+    dx = np.zeros_like(xx)
+    dy = np.zeros_like(xx)
+    dz = np.zeros_like(xx)
+    num_orbits = len(positions)
+
+    for i in prange(xx.shape[0]):
+        x_val = xx[i]
+        y_val = yy[i]
+        z_val = zz[i]
+        if np.isnan(x_val):
+            continue
+        a = 0
+        b = num_orbits - 1
+        fa, _, _, _ = doppler_freq(
+            a, x_val, y_val, z_val, positions, velocities, int(a), int(np.ceil(a))
+        )
+        fb, _, _, _ = doppler_freq(
+            b, x_val, y_val, z_val, positions, velocities, int(b), int(np.ceil(b))
+        )
+
+        # exit if no solution
+        if np.sign(fa * fb) > 0:
+            i_zd[i] = np.nan
+            r_zd[i] = np.nan
+            continue
+
+        if np.abs(fa) < tol:
+            i_zd[i] = a
+            r_zd[i] = 0
+            continue
+        elif np.abs(fb) < tol:
+            i_zd[i] = b
+            r_zd[i] = 0
+            continue
+
+        c = (a + b) / 2.0
+        fc, _, _, _ = doppler_freq(
+            c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
+        )
+
+        its = 0
+        while np.abs(fc) > tol and its < maxiter:
+            its += 1
+            if fa * fc < 0:
+                b = c
+                fb = fc
+            else:
+                a = c
+                fa = fc
+            c = (a + b) / 2.0
+            fc, _, _, _ = doppler_freq(
+                c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
+            )
+
+        i_zd[i] = c
+        dx[i], dy[i], dz[i] = doppler_freq(
+            c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
+        )[1:]
+        r_zd[i] = np.sqrt(dx**2 + dy**2 + dz**2)
+
+    return i_zd, r_zd, dx, dy, dz
+
+
 # prototype RTC
 @njit(nogil=True, parallel=True, cache=False)
-def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
+# def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
+def local_terrain_gamma(arr_slc, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -1099,6 +1197,25 @@ def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
         area = 0.5 * cross_magnitude
 
         return area
+    
+    def triangle_normal(xx, yy, zz):
+        # Compute the components of two vectors formed by the triangle's vertices
+        v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
+        v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
+
+        # Compute the cross product components
+        cross_x = v1y * v2z - v1z * v2y
+        cross_y = v1z * v2x - v1x * v2z
+        cross_z = v1x * v2y - v1y * v2x
+
+        # Compute the magnitude of the cross product
+        cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
+
+        cross_x /= cross_magnitude
+        cross_y /= cross_magnitude
+        cross_z /= cross_magnitude
+
+        return cross_x, cross_y, cross_z
 
     naz, nrg = arr_slc.shape
 
@@ -1121,8 +1238,10 @@ def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
             yy = dem_y[i : i + 2, j : j + 2].flatten()
             zz = dem_z[i : i + 2, j : j + 2].flatten()
 
-            area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
-            area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
+            # area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
+            # area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
+            nx1, ny1, nz1 = triangle_normal(xx[ix1], yy[ix1], zz[ix1])
+            nx2, ny2, nz2 = triangle_normal(xx[ix2], yy[ix2], zz[ix2])
 
             # - collect triangle vertices in azimuth-range
             vv = np.vstack((aa, rr)).T
@@ -1145,9 +1264,15 @@ def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
                     p[1] = r
                     l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
                     if is_in_tri(l1, l2):
-                        sigma_t[a, r] += area1
+                        pass
+                        sigma_1 = dx * nx1 + dy * ny1 + dz * nz1
+                        sigma_t[a, r] += sigma_1
+                        # sigma_t[a, r] += area1
                     l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
                     if is_in_tri(l1, l2):
-                        sigma_t[a, r] += area2
+                        pass
+                        sigma_2 = dx * nx2 + dy * ny2 + dz * nz2
+                        sigma_t[a, r] += sigma_2
+                        # sigma_t[a, r] += area2
 
     return sigma_t
