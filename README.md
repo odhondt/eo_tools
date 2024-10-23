@@ -7,11 +7,18 @@
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo_tools.svg)](https://anaconda.org/conda-forge/eo_tools)  
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
+Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco:
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="360">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="360">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="220">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
+</p>
+and a comparison between Sentinel-1 amplitude, coherence, change map and Sentinel-2 RGB image over the city of Berlin in Germany:
+<p float="left">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="350">
 </p>
 
 ## Overview
