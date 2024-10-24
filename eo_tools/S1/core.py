@@ -340,19 +340,45 @@ class S1IWSwath:
         valid = cnd1 & cnd2
         rg_geo[~valid] = np.nan
         az_geo[~valid] = np.nan
+    
+        rg_geo = rg_geo.reshape(alt.shape)
+        az_geo = az_geo.reshape(alt.shape)
+
+        # TODO: re-use slant range as norm? -- dist_geo 
         norm = np.sqrt(dx**2 + dy**2 + dz**2)
-        dx = dx / norm
-        dy = dy / norm
-        dz = dz / norm
         dx[~valid] = np.nan
         dy[~valid] = np.nan
         dz[~valid] = np.nan
+        dx[valid] = dx[valid] / norm[valid]
+        dy[valid] = dy[valid] / norm[valid]
+        dz[valid] = dz[valid] / norm[valid]
         dx = dx.reshape(alt.shape)
         dy = dy.reshape(alt.shape)
         dz = dz.reshape(alt.shape)
-        local_terrain_gamma(arr_slc, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz)
+        # load burst
+        sigma_t = local_terrain_gamma(naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz)
+        
+        # print(alt.shape, dem_x.shape)
 
-        return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof
+        ### DEBUG
+        
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 10))
+        plt.imshow(alt, interpolation="none")
+        plt.colorbar(fraction=0.046, pad=0.04)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(dx, interpolation="none")
+        plt.colorbar(fraction=0.046, pad=0.04)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(sigma_t, interpolation="none", vmin = -0.9, vmax=-0.8)
+        plt.colorbar(fraction=0.046, pad=0.04)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(dx - sigma_t, interpolation="none")
+        plt.colorbar(fraction=0.046, pad=0.04)
+        print(np.nansum(np.abs(dx-sigma_t)))
+
+        return az_geo, rg_geo, dem_prof, sigma_t
+        # return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof, sigma_t
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -1158,15 +1184,15 @@ def range_doppler_and_look_vectors(xx, yy, zz, positions, velocities, tol=1e-8, 
         dx[i], dy[i], dz[i] = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )[1:]
-        r_zd[i] = np.sqrt(dx**2 + dy**2 + dz**2)
+        r_zd[i] = np.sqrt(dx[i]**2 + dy[i]**2 + dz[i]**2)
 
     return i_zd, r_zd, dx, dy, dz
 
 
 # prototype RTC
-@njit(nogil=True, parallel=True, cache=False)
 # def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
-def local_terrain_gamma(arr_slc, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+@njit(nogil=True, parallel=True, cache=False)
+def local_terrain_gamma(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -1217,18 +1243,21 @@ def local_terrain_gamma(arr_slc, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
 
         return cross_x, cross_y, cross_z
 
-    naz, nrg = arr_slc.shape
+    # naz, nrg = arr_slc.shape
 
-    sigma_t = np.zeros((naz, nrg))
     p = np.zeros(2)
     nl, nc = azp.shape
     # triangle indices
     ix1 = np.array([0, 1, 2], dtype="uint8")
     ix2 = np.array([3, 1, 2], dtype="uint8")
+    # sigma_t = np.zeros((naz, nrg))
+    sigma_t = np.zeros((nl, nc), dtype=dx.dtype)
 
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
+
+            # TODO: interpolate normal vertices (?)
             # - triangle in 2D (SAR geometry)
             aa = azp[i : i + 2, j : j + 2].flatten()
             rr = rgp[i : i + 2, j : j + 2].flatten()
@@ -1240,39 +1269,44 @@ def local_terrain_gamma(arr_slc, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
 
             # area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
             # area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
+
             nx1, ny1, nz1 = triangle_normal(xx[ix1], yy[ix1], zz[ix1])
             nx2, ny2, nz2 = triangle_normal(xx[ix2], yy[ix2], zz[ix2])
+            # sigma_1 = dx[i, j] * nx1 + dy[i, j]* ny1 + dz[i, j] * nz1
+            # sigma_2 = dx[i, j] * nx2 + dy[i, j]* ny2 + dz[i, j]* nz2
+
+            # sigma_t[i, j] = sigma_1 + sigma_2
+            # sigma_t[i, j] = nz1
+            # if not np.isnan(dx[i, j]) and i % 100 == 0 and j % 100 == 0:
+                # print(i, j, dx[i, j])
+            sigma_t[i, j] = dx[i, j]
 
             # - collect triangle vertices in azimuth-range
-            vv = np.vstack((aa, rr)).T
-            if np.isnan(vv).any():
-                continue
-            # - compute bounding box in the SAR grid
-            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
-            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
-            amin = np.maximum(amin, 0)
-            rmin = np.maximum(rmin, 0)
-            amax = np.minimum(amax, naz - 1)
-            rmax = np.minimum(rmax, nrg - 1)
-            # - loop on integer positions based on box
-            for a in range(int(amin), int(amax) + 1):
-                for r in range(int(rmin), int(rmax) + 1):
-                    # - separate into 2 triangles
-                    # - test if each point falls into triangle 1 or 2
-                    # p = np.array([a, r])
-                    p[0] = a
-                    p[1] = r
-                    l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
-                    if is_in_tri(l1, l2):
-                        pass
-                        sigma_1 = dx * nx1 + dy * ny1 + dz * nz1
-                        sigma_t[a, r] += sigma_1
-                        # sigma_t[a, r] += area1
-                    l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
-                    if is_in_tri(l1, l2):
-                        pass
-                        sigma_2 = dx * nx2 + dy * ny2 + dz * nz2
-                        sigma_t[a, r] += sigma_2
-                        # sigma_t[a, r] += area2
+            # vv = np.vstack((aa, rr)).T
+            # if np.isnan(vv).any():
+            #     continue
+            # # - compute bounding box in the SAR grid
+            # amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            # rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            # amin = np.maximum(amin, 0)
+            # rmin = np.maximum(rmin, 0)
+            # amax = np.minimum(amax, naz - 1)
+            # rmax = np.minimum(rmax, nrg - 1)
+            # # - loop on integer positions based on box
+            # for a in range(int(amin), int(amax) + 1):
+            #     for r in range(int(rmin), int(rmax) + 1):
+            #         # - separate into 2 triangles
+            #         # - test if each point falls into triangle 1 or 2
+            #         p[0] = a
+            #         p[1] = r
+            #         l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
+            #         # TODO: antialiasing
+            #         if is_in_tri(l1, l2):
+            #             # sigma_t[a, r] += sigma_1
+            #             sigma_t[a, r] += area1
+            #         l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
+            #         if is_in_tri(l1, l2):
+            #             # sigma_t[a, r] += sigma_2
+            #             sigma_t[a, r] += area2
 
     return sigma_t
