@@ -340,11 +340,11 @@ class S1IWSwath:
         valid = cnd1 & cnd2
         rg_geo[~valid] = np.nan
         az_geo[~valid] = np.nan
-    
+
         rg_geo = rg_geo.reshape(alt.shape)
         az_geo = az_geo.reshape(alt.shape)
 
-        # TODO: re-use slant range as norm? -- dist_geo 
+        # TODO: re-use slant range as norm? -- dist_geo
         norm = np.sqrt(dx**2 + dy**2 + dz**2)
         dx[~valid] = np.nan
         dy[~valid] = np.nan
@@ -356,26 +356,54 @@ class S1IWSwath:
         dy = dy.reshape(alt.shape)
         dz = dz.reshape(alt.shape)
         # load burst
-        sigma_t = local_terrain_gamma(naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz)
-        
+
+        from scipy.ndimage import zoom
+
+        # dem_x = zoom(zoom(dem_x, 0.5), 2)
+        # dem_y = zoom(zoom(dem_y, 0.5), 2)
+        # dem_z = zoom(zoom(dem_z, 0.5), 2)
+
+        v1 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
+        v1[:, :-1, 0] = np.diff(dem_x)
+        v1[:, :-1, 1] = np.diff(dem_y)
+        v1[:, :-1, 2] = np.diff(dem_z)
+
+        v2 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
+        v2[:-1, :, 0] = np.diff(dem_x, axis=0)
+        v2[:-1, :, 1] = np.diff(dem_y, axis=0)
+        v2[:-1, :, 2] = np.diff(dem_z, axis=0)
+
+        lv = np.dstack((dx, dy, dz))
+        normal_vec = np.cross(v1, v2)
+        normal_vec_norm = np.sqrt(np.sum(normal_vec**2, 2))[..., None]
+        normal_vec = np.nan_to_num(normal_vec / normal_vec_norm)
+        look_unit_vector = lv / np.sqrt(np.sum((lv**2), 2))[..., None]
+        sigma_t = (normal_vec * look_unit_vector).sum(2)
+
+        # sigma_t = local_terrain_gamma(
+        # naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz
+        # )
+
         # print(alt.shape, dem_x.shape)
 
         ### DEBUG
-        
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(10, 10))
-        plt.imshow(alt, interpolation="none")
-        plt.colorbar(fraction=0.046, pad=0.04)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(dx, interpolation="none")
-        plt.colorbar(fraction=0.046, pad=0.04)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(sigma_t, interpolation="none", vmin = -0.9, vmax=-0.8)
-        plt.colorbar(fraction=0.046, pad=0.04)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(dx - sigma_t, interpolation="none")
-        plt.colorbar(fraction=0.046, pad=0.04)
-        print(np.nansum(np.abs(dx-sigma_t)))
+
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(alt, interpolation="none")
+        # plt.colorbar(fraction=0.046, pad=0.04)
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(dx, interpolation="none")
+        # plt.colorbar(fraction=0.046, pad=0.04)
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(sigma_t, interpolation="none")
+        # plt.colorbar(fraction=0.046, pad=0.04)
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(dx - sigma_t, interpolation="none")
+        # plt.colorbar(fraction=0.046, pad=0.04)
+        # print(np.nansum(np.abs(dx-sigma_t)))
+        # print(np.sum(dx[~np.isnan(dx)]-sigma_t[~np.isnan(dx)]))
+        # print(dx.dtype, sigma_t.dtype)
 
         return az_geo, rg_geo, dem_prof, sigma_t
         # return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof, sigma_t
@@ -1105,7 +1133,9 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
 
 @njit(nogil=True, cache=True, parallel=True)
-def range_doppler_and_look_vectors(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
+def range_doppler_and_look_vectors(
+    xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000
+):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
         factors = t - np.floor(t)
 
@@ -1184,15 +1214,135 @@ def range_doppler_and_look_vectors(xx, yy, zz, positions, velocities, tol=1e-8, 
         dx[i], dy[i], dz[i] = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )[1:]
-        r_zd[i] = np.sqrt(dx[i]**2 + dy[i]**2 + dz[i]**2)
+        r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
 
     return i_zd, r_zd, dx, dy, dz
 
 
 # prototype RTC
 # def local_terrain_area(arr_slc, azp, rgp, dem_x, dem_y, dem_z):
-@njit(nogil=True, parallel=True, cache=False)
-def local_terrain_gamma(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+# @njit(nogil=True, parallel=True, cache=False)
+# def local_terrain_gamma(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+
+#     # barycentric coordinates in a triangle
+#     def bary(p, a, b, c):
+#         det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+#         l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
+#         l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+#         l3 = 1 - l1 - l2
+#         return l1, l2, l3
+
+#     # test if point is in triangle
+#     def is_in_tri(l1, l2):
+#         return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
+
+#     def triangle_area(xx, yy, zz):
+#         # Compute the components of two vectors formed by the triangle's vertices
+#         v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
+#         v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
+
+#         # Compute the cross product components
+#         cross_x = v1y * v2z - v1z * v2y
+#         cross_y = v1z * v2x - v1x * v2z
+#         cross_z = v1x * v2y - v1y * v2x
+
+#         # Compute the magnitude of the cross product
+#         cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
+
+#         # The area of the triangle is half the magnitude of the cross product
+#         area = 0.5 * cross_magnitude
+
+#         return area
+
+#     def triangle_normal(xx, yy, zz):
+#         # Compute the components of two vectors formed by the triangle's vertices
+#         v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
+#         v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
+
+#         # Compute the cross product components
+#         cross_x = v1y * v2z - v1z * v2y
+#         cross_y = v1z * v2x - v1x * v2z
+#         cross_z = v1x * v2y - v1y * v2x
+
+#         # Compute the magnitude of the cross product
+#         cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
+
+#         cross_x /= cross_magnitude
+#         cross_y /= cross_magnitude
+#         cross_z /= cross_magnitude
+
+#         return cross_x, cross_y, cross_z
+
+#     # naz, nrg = arr_slc.shape
+
+#     p = np.zeros(2)
+#     nl, nc = azp.shape
+#     # triangle indices
+#     ix1 = np.array([0, 1, 2], dtype="uint8")
+#     ix2 = np.array([3, 1, 2], dtype="uint8")
+#     sigma_t = np.zeros((naz, nrg))
+#     # sigma_t = np.full((nl, nc), dtype=dx.dtype, fill_value=np.nan)
+
+#     # - loop on DEM
+#     for i in prange(0, nl - 1):
+#         for j in range(0, nc - 1):
+
+#             # TODO: interpolate normal vertices (?)
+#             # - triangle in 2D (SAR geometry)
+#             aa = azp[i : i + 2, j : j + 2].flatten()
+#             rr = rgp[i : i + 2, j : j + 2].flatten()
+
+#             # - triangle in 3D (DEM geometry)
+#             xx = dem_x[i : i + 2, j : j + 2].flatten()
+#             yy = dem_y[i : i + 2, j : j + 2].flatten()
+#             zz = dem_z[i : i + 2, j : j + 2].flatten()
+
+#             # area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
+#             # area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
+
+#             # nx1, ny1, nz1 = triangle_normal(xx[ix1], yy[ix1], zz[ix1])
+#             # nx2, ny2, nz2 = triangle_normal(xx[ix2], yy[ix2], zz[ix2])
+
+#             nx1, ny1, nz1 = xx[i, j] - xx[i, j]
+#             # nx2, ny2, nz2 = triangle_normal(xx[ix2], yy[ix2], zz[ix2])
+#             sigma_1 = dx[i, j] * nx1 + dy[i, j] * ny1 + dz[i, j] * nz1
+#             sigma_2 = 0
+#             # sigma_2 = dx[i, j] * nx2 + dy[i, j] * ny2 + dz[i, j] * nz2
+
+#             # - collect triangle vertices in azimuth-range
+#             vv = np.vstack((aa, rr)).T
+#             if np.isnan(vv).any():
+#                 continue
+#             # - compute bounding box in the SAR grid
+#             amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+#             rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+#             amin = np.maximum(amin, 0)
+#             rmin = np.maximum(rmin, 0)
+#             amax = np.minimum(amax, naz - 1)
+#             rmax = np.minimum(rmax, nrg - 1)
+#             # - loop on integer positions based on box
+#             for a in range(int(amin), int(amax) + 1):
+#                 for r in range(int(rmin), int(rmax) + 1):
+#                     # - separate into 2 triangles
+#                     # - test if each point falls into triangle 1 or 2
+#                     p[0] = a
+#                     p[1] = r
+#                     l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
+#                     # TODO: antialiasing
+#                     if is_in_tri(l1, l2):
+#                         sigma_t[a, r] += sigma_1
+#                         # sigma_t[a, r] += area1
+#                     l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
+#                     if is_in_tri(l1, l2):
+#                         # TODO: switch vertices to get the right sign
+#                         sigma_t[a, r] -= sigma_2
+#                         # sigma_t[a, r] += area2
+
+#     return sigma_t
+
+# project sigma in the SAR geometry with interpolation
+@njit(nogil=True, parallel=True, cache=True)
+def RTC(arr_p, azp, rgp, sigma):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -1206,107 +1356,53 @@ def local_terrain_gamma(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
     def is_in_tri(l1, l2):
         return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
 
-    def triangle_area(xx, yy, zz):
-        # Compute the components of two vectors formed by the triangle's vertices
-        v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
-        v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
+    # linear barycentric interpolation
+    def interp(v1, v2, v3, l1, l2, l3):
+        return l1 * v1 + l2 * v2 + l3 * v3
 
-        # Compute the cross product components
-        cross_x = v1y * v2z - v1z * v2y
-        cross_y = v1z * v2x - v1x * v2z
-        cross_z = v1x * v2y - v1y * v2x
+    naz, nrg = arr_p.shape
 
-        # Compute the magnitude of the cross product
-        cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
-
-        # The area of the triangle is half the magnitude of the cross product
-        area = 0.5 * cross_magnitude
-
-        return area
-    
-    def triangle_normal(xx, yy, zz):
-        # Compute the components of two vectors formed by the triangle's vertices
-        v1x, v1y, v1z = xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]
-        v2x, v2y, v2z = xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]
-
-        # Compute the cross product components
-        cross_x = v1y * v2z - v1z * v2y
-        cross_y = v1z * v2x - v1x * v2z
-        cross_z = v1x * v2y - v1y * v2x
-
-        # Compute the magnitude of the cross product
-        cross_magnitude = (cross_x**2 + cross_y**2 + cross_z**2) ** 0.5
-
-        cross_x /= cross_magnitude
-        cross_y /= cross_magnitude
-        cross_z /= cross_magnitude
-
-        return cross_x, cross_y, cross_z
-
-    # naz, nrg = arr_slc.shape
-
+    az_s2p = np.full((naz, nrg), np.nan)
+    rg_s2p = np.full((naz, nrg), np.nan)
     p = np.zeros(2)
     nl, nc = azp.shape
-    # triangle indices
-    ix1 = np.array([0, 1, 2], dtype="uint8")
-    ix2 = np.array([3, 1, 2], dtype="uint8")
-    # sigma_t = np.zeros((naz, nrg))
-    sigma_t = np.zeros((nl, nc), dtype=dx.dtype)
-
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
+            # - for each 4 neighborhood
+            aa = azp[i : i + 2, j : j + 2].flatten()  # .ravel()
+            rr = rgp[i : i + 2, j : j + 2].flatten()  # .ravel()
+            ss = sigma[i : i + 2, j : j + 2].flatten()  # .ravel()
+            # - collect triangle vertices
+            xx = np.vstack((aa, rr)).T
+            # yy = np.vstack((aas, rrs)).T
+            if np.isnan(xx).any() or np.isnan(ss).any():
+                continue
+            # - compute bounding box in the primary grid
+            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            amin = np.maximum(amin, 0)
+            rmin = np.maximum(rmin, 0)
+            amax = np.minimum(amax, naz - 1)
+            rmax = np.minimum(rmax, nrg - 1)
+            # - loop on integer positions based on box
+            for a in range(int(amin), int(amax) + 1):
+                for r in range(int(rmin), int(rmax) + 1):
+                    # - separate into 2 triangles
+                    # - test if each point falls into triangle 1 or 2
+                    # - interpolate the secondary range and azimuth using triangle vertices
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
+                    l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
+                    if is_in_tri(l1, l2):
+                        az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
+                        rg_s2p[a, r] = interp(rrs[0], rrs[1], rrs[2], l1, l2, l3)
+                    l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
+                    if is_in_tri(l1, l2):
+                        az_s2p[a, r] = interp(aas[3], aas[1], aas[2], l1, l2, l3)
+                        rg_s2p[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)
 
-            # TODO: interpolate normal vertices (?)
-            # - triangle in 2D (SAR geometry)
-            aa = azp[i : i + 2, j : j + 2].flatten()
-            rr = rgp[i : i + 2, j : j + 2].flatten()
+    return az_s2p, rg_s2p
 
-            # - triangle in 3D (DEM geometry)
-            xx = dem_x[i : i + 2, j : j + 2].flatten()
-            yy = dem_y[i : i + 2, j : j + 2].flatten()
-            zz = dem_z[i : i + 2, j : j + 2].flatten()
 
-            # area1 = triangle_area(xx[ix1], yy[ix1], zz[ix1])
-            # area2 = triangle_area(xx[ix2], yy[ix2], zz[ix2])
-
-            nx1, ny1, nz1 = triangle_normal(xx[ix1], yy[ix1], zz[ix1])
-            nx2, ny2, nz2 = triangle_normal(xx[ix2], yy[ix2], zz[ix2])
-            # sigma_1 = dx[i, j] * nx1 + dy[i, j]* ny1 + dz[i, j] * nz1
-            # sigma_2 = dx[i, j] * nx2 + dy[i, j]* ny2 + dz[i, j]* nz2
-
-            # sigma_t[i, j] = sigma_1 + sigma_2
-            # sigma_t[i, j] = nz1
-            # if not np.isnan(dx[i, j]) and i % 100 == 0 and j % 100 == 0:
-                # print(i, j, dx[i, j])
-            sigma_t[i, j] = dx[i, j]
-
-            # - collect triangle vertices in azimuth-range
-            # vv = np.vstack((aa, rr)).T
-            # if np.isnan(vv).any():
-            #     continue
-            # # - compute bounding box in the SAR grid
-            # amin, amax = np.floor(aa.min()), np.ceil(aa.max())
-            # rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
-            # amin = np.maximum(amin, 0)
-            # rmin = np.maximum(rmin, 0)
-            # amax = np.minimum(amax, naz - 1)
-            # rmax = np.minimum(rmax, nrg - 1)
-            # # - loop on integer positions based on box
-            # for a in range(int(amin), int(amax) + 1):
-            #     for r in range(int(rmin), int(rmax) + 1):
-            #         # - separate into 2 triangles
-            #         # - test if each point falls into triangle 1 or 2
-            #         p[0] = a
-            #         p[1] = r
-            #         l1, l2, _ = bary(p, vv[0], vv[1], vv[2])
-            #         # TODO: antialiasing
-            #         if is_in_tri(l1, l2):
-            #             # sigma_t[a, r] += sigma_1
-            #             sigma_t[a, r] += area1
-            #         l1, l2, _ = bary(p, vv[3], vv[1], vv[2])
-            #         if is_in_tri(l1, l2):
-            #             # sigma_t[a, r] += sigma_2
-            #             sigma_t[a, r] += area2
-
-    return sigma_t
