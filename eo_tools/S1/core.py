@@ -378,11 +378,19 @@ class S1IWSwath:
         normal_vec_norm = np.sqrt(np.sum(normal_vec**2, 2))[..., None]
         normal_vec = np.nan_to_num(normal_vec / normal_vec_norm)
         look_unit_vector = lv / np.sqrt(np.sum((lv**2), 2))[..., None]
-        sigma_t = (normal_vec * look_unit_vector).sum(2)
+
+        num = np.sqrt((np.cross(normal_vec, look_unit_vector)**2).sum(2))
+
+        # computing the tangent of the local incidence angle
+        # sigma_t = (normal_vec * look_unit_vector).sum(2)
+        sigma_t =  num / (normal_vec * look_unit_vector).sum(2)
 
         # sigma_t = local_terrain_gamma(
         # naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz
         # )
+
+        # interpolating and accumulating geocoded values in the SAR geometry
+        sigma_t_proj = RTC(naz, nrg, az_geo, rg_geo, sigma_t)
 
         # print(alt.shape, dem_x.shape)
 
@@ -405,7 +413,7 @@ class S1IWSwath:
         # print(np.sum(dx[~np.isnan(dx)]-sigma_t[~np.isnan(dx)]))
         # print(dx.dtype, sigma_t.dtype)
 
-        return az_geo, rg_geo, dem_prof, sigma_t
+        return az_geo, rg_geo, dem_prof, sigma_t_proj
         # return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof, sigma_t
 
     def deramp_burst(self, burst_idx=1):
@@ -1152,7 +1160,7 @@ def range_doppler_and_look_vectors(
         d2 = dx**2 + dy**2 + dz**2
         fc = -(vx * dx + vy * dy + vz * dz) / np.sqrt(d2)
 
-        return fc, dx, dy, dz
+        return fc, dx, dy, dz, vx, vy, vz
 
     i_zd = np.zeros_like(xx)
     r_zd = np.zeros_like(xx)
@@ -1169,10 +1177,10 @@ def range_doppler_and_look_vectors(
             continue
         a = 0
         b = num_orbits - 1
-        fa, _, _, _ = doppler_freq(
+        fa, _, _, _, _, _, _= doppler_freq(
             a, x_val, y_val, z_val, positions, velocities, int(a), int(np.ceil(a))
         )
-        fb, _, _, _ = doppler_freq(
+        fb, _, _, _, _, _, _ = doppler_freq(
             b, x_val, y_val, z_val, positions, velocities, int(b), int(np.ceil(b))
         )
 
@@ -1192,7 +1200,7 @@ def range_doppler_and_look_vectors(
             continue
 
         c = (a + b) / 2.0
-        fc, _, _, _ = doppler_freq(
+        fc, _, _, _, _, _, _ = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )
 
@@ -1206,15 +1214,24 @@ def range_doppler_and_look_vectors(
                 a = c
                 fa = fc
             c = (a + b) / 2.0
-            fc, _, _, _ = doppler_freq(
+            fc, _, _, _, _, _, _  = doppler_freq(
                 c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
             )
 
         i_zd[i] = c
-        dx[i], dy[i], dz[i] = doppler_freq(
+        dx[i], dy[i], dz[i], vx, vy, vz = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )[1:]
         r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
+
+        # trying perpendicular instead
+        # cross_x = dy[i] * vz - dz[i] * vy
+        # cross_y = dz[i] * vx - dx[i] * vz
+        # cross_z = dx[i] * vy - dy[i] * vx
+
+        # dx[i] = cross_x
+        # dy[i] = cross_y
+        # dz[i] = cross_z
 
     return i_zd, r_zd, dx, dy, dz
 
@@ -1342,7 +1359,7 @@ def range_doppler_and_look_vectors(
 
 # project sigma in the SAR geometry with interpolation
 @njit(nogil=True, parallel=True, cache=True)
-def RTC(arr_p, azp, rgp, sigma):
+def RTC(naz, nrg, azp, rgp, sigma):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -1360,10 +1377,12 @@ def RTC(arr_p, azp, rgp, sigma):
     def interp(v1, v2, v3, l1, l2, l3):
         return l1 * v1 + l2 * v2 + l3 * v3
 
-    naz, nrg = arr_p.shape
+    # naz, nrg = arr_p.shape
 
-    az_s2p = np.full((naz, nrg), np.nan)
-    rg_s2p = np.full((naz, nrg), np.nan)
+    # sigma_proj = np.full((naz, nrg), np.nan)
+    sigma_proj = np.zeros((naz, nrg))
+    # az_s2p = np.full((naz, nrg), np.nan)
+    # rg_s2p = np.full((naz, nrg), np.nan)
     p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
@@ -1396,13 +1415,11 @@ def RTC(arr_p, azp, rgp, sigma):
                     p[1] = r
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
-                        rg_s2p[a, r] = interp(rrs[0], rrs[1], rrs[2], l1, l2, l3)
+                        sigma_proj[a, r] += interp(ss[0], ss[1], ss[2], l1, l2, l3)
                     l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        az_s2p[a, r] = interp(aas[3], aas[1], aas[2], l1, l2, l3)
-                        rg_s2p[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)
+                        sigma_proj[a, r] += interp(ss[3], ss[1], ss[2], l1, l2, l3)
 
-    return az_s2p, rg_s2p
+    return sigma_proj
 
 
