@@ -384,7 +384,9 @@ class S1IWSwath:
         nv = np.nan_to_num(nv)
 
         # tangent as the ratio of cross product norm and dot product 
-        gamma_t = np.sqrt((np.cross(nv, lv) ** 2).sum(2)) / (nv * lv).sum(2)
+        # gamma_t = np.sqrt((np.cross(nv, lv) ** 2).sum(2)) / (nv * lv).sum(2)
+        # Area is the inverse of the tangent
+        gamma_t =  (nv * lv).sum(2) / np.sqrt((np.cross(nv, lv) ** 2).sum(2))
         gamma_t = gamma_t.clip(1e-10)
 
         # TODO: decide if reprojecting area or its inverse
@@ -795,6 +797,7 @@ def resample(
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
+            wped[np.isnan(wped)] = 0
             out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
             with rasterio.open(file_out, "w", **out_prof) as dst:
                 dst.write(wped, 1)
@@ -1127,7 +1130,7 @@ def range_doppler(
 
 # project inverse of area in the SAR geometry with interpolation
 @njit(nogil=True, parallel=True, cache=True)
-def project_area_to_sar(naz, nrg, azp, rgp, igamma):
+def project_area_to_sar(naz, nrg, azp, rgp, gamma):
 
     # barycentric coordinates in a triangle
     def bary(p, a, b, c):
@@ -1145,7 +1148,8 @@ def project_area_to_sar(naz, nrg, azp, rgp, igamma):
     def interp(v1, v2, v3, l1, l2, l3):
         return l1 * v1 + l2 * v2 + l3 * v3
 
-    igamma_proj = np.zeros((naz, nrg))
+    gamma_proj = np.zeros((naz, nrg))
+    npts = np.zeros((naz, nrg))
     p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
@@ -1154,7 +1158,7 @@ def project_area_to_sar(naz, nrg, azp, rgp, igamma):
             # - for each 4 neighborhood
             aa = azp[i : i + 2, j : j + 2].flatten()  # .ravel()
             rr = rgp[i : i + 2, j : j + 2].flatten()  # .ravel()
-            gg = igamma[i : i + 2, j : j + 2].flatten()  # .ravel()
+            gg = gamma[i : i + 2, j : j + 2].flatten()  # .ravel()
             # - collect triangle vertices
             xx = np.vstack((aa, rr)).T
             # yy = np.vstack((aas, rrs)).T
@@ -1178,9 +1182,11 @@ def project_area_to_sar(naz, nrg, azp, rgp, igamma):
                     p[1] = r
                     l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        igamma_proj[a, r] += interp(gg[0], gg[1], gg[2], l1, l2, l3)
+                        gamma_proj[a, r] += interp(gg[0], gg[1], gg[2], l1, l2, l3)
+                        # npts[a, r] += 1
                     l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
                     if is_in_tri(l1, l2):
-                        igamma_proj[a, r] += interp(gg[3], gg[1], gg[2], l1, l2, l3)
+                        gamma_proj[a, r] += interp(gg[3], gg[1], gg[2], l1, l2, l3)
+                        # npts[a, r] += 1
 
-    return igamma_proj
+    return gamma_proj
