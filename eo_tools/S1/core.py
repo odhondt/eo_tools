@@ -345,6 +345,8 @@ class S1IWSwath:
         rg_geo = rg_geo.reshape(alt.shape)
         az_geo = az_geo.reshape(alt.shape)
 
+
+        log.info("Terrain Flattening")
         dx[~valid] = np.nan
         dy[~valid] = np.nan
         dz[~valid] = np.nan
@@ -383,15 +385,14 @@ class S1IWSwath:
         nv /= np.sqrt(np.sum(nv**2, 2))[..., None]
         nv = np.nan_to_num(nv)
 
-        # tangent as the ratio of cross product norm and dot product 
-        # gamma_t = np.sqrt((np.cross(nv, lv) ** 2).sum(2)) / (nv * lv).sum(2)
         # Area is the inverse of the tangent
-        gamma_t =  (nv * lv).sum(2) / np.sqrt((np.cross(nv, lv) ** 2).sum(2))
-        gamma_t = gamma_t.clip(1e-10)
+        # gamma_t =  (nv * lv).sum(2) / np.sqrt((np.cross(nv, lv) ** 2).sum(2))
+        # gamma_t = gamma_t.clip(1e-10)
 
         # TODO: decide if reprojecting area or its inverse
         # interpolating and accumulating geocoded values in the SAR geometry
-        gamma_t_proj = project_area_to_sar(naz, nrg, az_geo, rg_geo, gamma_t)
+        # gamma_t_proj = project_area_to_sar(naz, nrg, az_geo, rg_geo, gamma_t)
+        gamma_t_proj = project_area_to_sar_vec(naz, nrg, az_geo, rg_geo, nv, lv)
 
 
         # TODO: change according to prev TODO 
@@ -1128,7 +1129,7 @@ def range_doppler(
     return i_zd, r_zd, dx, dy, dz
 
 
-# project inverse of area in the SAR geometry with interpolation
+# project area in the SAR geometry with interpolation
 @njit(nogil=True, parallel=True, cache=True)
 def project_area_to_sar(naz, nrg, azp, rgp, gamma):
 
@@ -1149,7 +1150,6 @@ def project_area_to_sar(naz, nrg, azp, rgp, gamma):
         return l1 * v1 + l2 * v2 + l3 * v3
 
     gamma_proj = np.zeros((naz, nrg))
-    npts = np.zeros((naz, nrg))
     p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
@@ -1188,5 +1188,78 @@ def project_area_to_sar(naz, nrg, azp, rgp, gamma):
                     if is_in_tri(l1, l2):
                         gamma_proj[a, r] += interp(gg[3], gg[1], gg[2], l1, l2, l3)
                         # npts[a, r] += 1
+
+    return gamma_proj
+
+# project area in the SAR geometry with interpolation
+@njit(nogil=True, parallel=True, cache=True)
+def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
+
+    # barycentric coordinates in a triangle
+    def bary(p, a, b, c):
+        det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
+        l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+        l3 = 1 - l1 - l2
+        return l1, l2, l3
+
+    # test if point is in triangle
+    def is_in_tri(l1, l2):
+        return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
+
+    # linear barycentric interpolation
+    def interp(v1, v2, v3, l1, l2, l3):
+        return l1 * v1 + l2 * v2 + l3 * v3
+
+    gamma_proj = np.zeros((naz, nrg))
+    p = np.zeros(2)
+    nl, nc = azp.shape
+    # - loop on DEM
+    dodo = False
+    for i in prange(0, nl - 1):
+        for j in range(0, nc - 1):
+            # - for each 4 neighborhood
+            aa = azp[i : i + 2, j : j + 2].flatten()
+            rr = rgp[i : i + 2, j : j + 2].flatten()
+            nn = nv[i : i + 2, j : j + 2].copy().reshape((4, 3))
+            ll = lv[i : i + 2, j : j + 2].copy().reshape((4, 3))
+            # - collect triangle vertices
+            xx = np.vstack((aa, rr)).T
+            # yy = np.vstack((aas, rrs)).T
+            if np.isnan(xx).any():
+                continue
+            # - compute bounding box in the primary grid
+            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            amin = np.maximum(amin, 0)
+            rmin = np.maximum(rmin, 0)
+            amax = np.minimum(amax, naz - 1)
+            rmax = np.minimum(rmax, nrg - 1)
+            # - loop on integer positions based on box
+            for a in range(int(amin), int(amax) + 1):
+                for r in range(int(rmin), int(rmax) + 1):
+                    # - separate into 2 triangles
+                    # - test if each point falls into triangle 1 or 2
+                    # - interpolate normal and look vectors triangle vertices
+                    # - Compute the area (inverse of the tangent)
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
+                    l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
+                    if is_in_tri(l1, l2):
+                        li = interp(ll[0], ll[1], ll[2], l1, l2, l3)
+                        ni = interp(nn[0], nn[1], nn[2], l1, l2, l3)
+                        # Area is the inverse of the tangent
+                        area = (ni * li).sum() / np.sqrt((np.cross(ni, li) ** 2).sum())
+                        area = area if area >= 0 else 0
+                        gamma_proj[a, r] += area
+                    l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
+                    if is_in_tri(l1, l2):
+                        li = interp(ll[3], ll[1], ll[2], l1, l2, l3)
+                        ni = interp(nn[3], nn[1], nn[2], l1, l2, l3)
+                        # Area is the inverse of the tangent
+                        area = (ni * li).sum() / np.sqrt((np.cross(ni, li) ** 2).sum())
+                        area = area if area >= 0 else 0
+                        gamma_proj[a, r] += area 
 
     return gamma_proj
