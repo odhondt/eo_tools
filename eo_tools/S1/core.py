@@ -1249,17 +1249,19 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
                     if is_in_tri(l1, l2):
                         li = interp(ll[0], ll[1], ll[2], l1, l2, l3)
                         ni = interp(nn[0], nn[1], nn[2], l1, l2, l3)
-                        # Area is the inverse of the tangent
+                        # area is the inverse of the tangent
                         area = (ni * li).sum() / np.sqrt((np.cross(ni, li) ** 2).sum())
-                        area = area if area >= 1e-10 else 1e-10
+                        # do not apply if in shadow
+                        area = area if area >= 1e-10 else 1
                         gamma_proj[a, r] += area
                     l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         li = interp(ll[3], ll[1], ll[2], l1, l2, l3)
                         ni = interp(nn[3], nn[1], nn[2], l1, l2, l3)
-                        # Area is the inverse of the tangent
+                        # area is the inverse of the tangent
                         area = (ni * li).sum() / np.sqrt((np.cross(ni, li) ** 2).sum())
-                        area = area if area >= 1e-10 else 1e-10
+                        # do not apply if in shadow
+                        area = area if area >= 1e-10 else 1
                         gamma_proj[a, r] += area 
 
     return gamma_proj
