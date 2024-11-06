@@ -345,7 +345,6 @@ class S1IWSwath:
         rg_geo = rg_geo.reshape(alt.shape)
         az_geo = az_geo.reshape(alt.shape)
 
-
         log.info("Terrain Flattening")
         dx[~valid] = np.nan
         dy[~valid] = np.nan
@@ -392,10 +391,10 @@ class S1IWSwath:
         # TODO: decide if reprojecting area or its inverse
         # interpolating and accumulating geocoded values in the SAR geometry
         # gamma_t_proj = project_area_to_sar(naz, nrg, az_geo, rg_geo, gamma_t)
-        gamma_t_proj = project_area_to_sar_vec(naz, nrg, az_geo, rg_geo, nv, lv)
+        # gamma_t_proj = project_area_to_sar_vec(naz, nrg, az_geo, rg_geo, nv, lv)
+        gamma_t_proj = local_terrain_area(naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, lv)
 
-
-        # TODO: change according to prev TODO 
+        # TODO: change according to prev TODO
         return az_geo, rg_geo, dem_prof, gamma_t_proj
 
     def deramp_burst(self, burst_idx=1):
@@ -1042,9 +1041,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
 
 
 @njit(nogil=True, cache=True, parallel=True)
-def range_doppler(
-    xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000
-):
+def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
     def doppler_freq(t, x, y, z, positions, velocities, t0, t1):
         factors = t - np.floor(t)
 
@@ -1125,7 +1122,6 @@ def range_doppler(
         )[1:]
         r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
 
-
     return i_zd, r_zd, dx, dy, dz
 
 
@@ -1191,6 +1187,7 @@ def project_area_to_sar(naz, nrg, azp, rgp, gamma):
 
     return gamma_proj
 
+
 # project area in the SAR geometry with interpolation
 @njit(nogil=True, parallel=True, cache=True)
 def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
@@ -1215,7 +1212,6 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
     p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
-    dodo = False
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
             # - for each 4 neighborhood
@@ -1262,6 +1258,84 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
                         area = (ni * li).sum() / np.sqrt((np.cross(ni, li) ** 2).sum())
                         # do not apply if in shadow
                         area = area if area >= 1e-10 else 1
-                        gamma_proj[a, r] += area 
+                        gamma_proj[a, r] += area
+
+    return gamma_proj
+
+
+@njit(nogil=True, parallel=True, cache=True)
+def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
+
+    # barycentric coordinates in a triangle
+    def bary(p, a, b, c):
+        det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
+        l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+        l3 = 1 - l1 - l2
+        return l1, l2, l3
+
+    # test if point is in triangle
+    def is_in_tri(l1, l2):
+        return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
+
+    # linear barycentric interpolation
+    def interp(v1, v2, v3, l1, l2, l3):
+        return l1 * v1 + l2 * v2 + l3 * v3
+
+    gamma_proj = np.zeros((naz, nrg))
+    p = np.zeros(2)
+    nl, nc = azp.shape
+    # - loop on DEM
+    for i in prange(0, nl - 1):
+        for j in range(0, nc - 1):
+            # - for each 4 neighborhood
+            aa = azp[i : i + 2, j : j + 2].flatten()
+            rr = rgp[i : i + 2, j : j + 2].flatten()
+            xx = dem_x[i : i + 2, j : j + 2].flatten()
+            yy = dem_y[i : i + 2, j : j + 2].flatten()
+            zz = dem_z[i : i + 2, j : j + 2].flatten()
+            # - collect triangle vertices
+            aarr = np.vstack((aa, rr)).T
+            if np.isnan(aarr).any():
+                continue
+            # - compute bounding box in the primary grid
+            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            amin = np.maximum(amin, 0)
+            rmin = np.maximum(rmin, 0)
+            amax = np.minimum(amax, naz - 1)
+            rmax = np.minimum(rmax, nrg - 1)
+
+            ni1 = np.cross(
+                [xx[0] - xx[1], yy[0] - yy[1], zz[0] - zz[1]],
+                [xx[0] - xx[2], yy[0] - yy[2], zz[0] - zz[2]],
+            )
+            ni1 /= np.sqrt((ni1**2).sum())
+            area1 = (ni1 * lv[i, j]).sum() / np.sqrt((np.cross(ni1, lv[i, j]) ** 2).sum())
+            area1 = area1 if area1 >= 1e-10 else 1
+
+            ni2 = -np.cross(
+                [xx[3] - xx[1], yy[3] - yy[1], zz[3] - zz[1]],
+                [xx[3] - xx[2], yy[3] - yy[2], zz[3] - zz[2]],
+            )
+            ni2 /= np.sqrt((ni2**2).sum())
+            area2 = (ni2 * lv[i, j]).sum() / np.sqrt((np.cross(ni2, lv[i, j]) ** 2).sum())
+            area2 = area2 if area2 >= 1e-10 else 1
+            # - loop on integer positions based on box
+            for a in range(int(amin), int(amax) + 1):
+                for r in range(int(rmin), int(rmax) + 1):
+                    # p = np.array([a, r])
+                    p[0] = a
+                    p[1] = r
+                    l1, l2, l3 = bary(p, aarr[0], aarr[1], aarr[2])
+                    if is_in_tri(l1, l2):
+                        # area is the inverse of the tangent
+                        # do not apply if in shadow
+                        gamma_proj[a, r] += area1
+                    l1, l2, l3 = bary(p, aarr[3], aarr[1], aarr[2])
+                    if is_in_tri(l1, l2):
+                        # area is the inverse of the tangent
+                        # do not apply if in shadow
+                        gamma_proj[a, r] += area2
 
     return gamma_proj
