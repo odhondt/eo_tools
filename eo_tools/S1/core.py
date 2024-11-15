@@ -361,15 +361,15 @@ class S1IWSwath:
         dz = dz.reshape(alt.shape)
 
         # compute x, y gradients
-        v1 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
-        v1[:, :-1, 0] = np.diff(dem_x)
-        v1[:, :-1, 1] = np.diff(dem_y)
-        v1[:, :-1, 2] = np.diff(dem_z)
+        # v1 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
+        # v1[:, :-1, 0] = np.diff(dem_x)
+        # v1[:, :-1, 1] = np.diff(dem_y)
+        # v1[:, :-1, 2] = np.diff(dem_z)
 
-        v2 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
-        v2[:-1, :, 0] = np.diff(dem_x, axis=0)
-        v2[:-1, :, 1] = np.diff(dem_y, axis=0)
-        v2[:-1, :, 2] = np.diff(dem_z, axis=0)
+        # v2 = np.zeros_like(dem_x)[..., None] + np.zeros((1, 1, 3))
+        # v2[:-1, :, 0] = np.diff(dem_x, axis=0)
+        # v2[:-1, :, 1] = np.diff(dem_y, axis=0)
+        # v2[:-1, :, 2] = np.diff(dem_z, axis=0)
 
         # normalized look vector
         lv = np.dstack((dx, dy, dz))
@@ -378,11 +378,11 @@ class S1IWSwath:
         # lv /= np.sqrt(np.sum((lv**2), 2))[..., None]
 
         # normalized normal vector
-        nv = np.cross(v1, v2)
+        # nv = np.cross(v1, v2)
         # free memory ?
-        del v1, v2
-        nv /= np.sqrt(np.sum(nv**2, 2))[..., None]
-        nv = np.nan_to_num(nv)
+        # del v1, v2
+        # nv /= np.sqrt(np.sum(nv**2, 2))[..., None]
+        # nv = np.nan_to_num(nv)
 
         # Area is the inverse of the tangent
         # gamma_t =  (nv * lv).sum(2) / np.sqrt((np.cross(nv, lv) ** 2).sum(2))
@@ -1336,42 +1336,51 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             for a in range(int(amin), int(amax) + 1):
                 for r in range(int(rmin), int(rmax) + 1):
                     # p = np.array([a, r])
-                    corners = [
-                        [a - 0.5, r - 0.5],
-                        [a - 0.5, r + 0.5],
-                        [a + 0.5, r - 0.5],
-                        [a + 0.5, r + 0.5],
-                    ]
+                    # corners = [
+                    #     [a - 0.5, r - 0.5],
+                    #     [a - 0.5, r + 0.5],
+                    #     [a + 0.5, r - 0.5],
+                    #     [a + 0.5, r + 0.5],
+                    # ]
 
                     # count corners falling in triangle
-                    in_tri1 = 0
-                    in_tri2 = 0
-                    for c in corners: 
-                        if is_in_tri(c, aarr[0], aarr[1], aarr[2]):
-                            in_tri1 += 1 
-                        if is_in_tri(c, aarr[3], aarr[1], aarr[2]):
-                            in_tri2 += 1 
+                    # in_tri1 = 0
+                    # in_tri2 = 0
+                    # for c in corners: 
+                    #     if is_in_tri(c, aarr[0], aarr[1], aarr[2]):
+                    #         in_tri1 += 1 
+                    #     if is_in_tri(c, aarr[3], aarr[1], aarr[2]):
+                    #         in_tri2 += 1 
 
-                    # if all corners are in one triangle, accumulate full area
-                    if in_tri1 == 4:
-                        gamma_proj[a, r] += area1
-                    elif in_tri2 == 4:
-                        gamma_proj[a, r] += area2
+                    # # if all corners are in one triangle, accumulate full area
+                    # if in_tri1 == 4:
+                    #     # gamma_proj[a, r] += area1
+                    #     gamma_proj[a, r] += 1
+                    # elif in_tri2 == 4:
+                    #     # gamma_proj[a, r] += area2
+                    #     gamma_proj[a, r] += 1
 
                     # else compute subpixel overlap
+                    # else:
+                    nsteps = 4
+                    # delta = 1 / (nsteps - 1)
+                    # weights
+                    w1, w2 = 0, 0
+                    if nsteps == 1:
+                        if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+                            w1 += 1.0
+                        elif is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+                            w2 += 1.0
                     else:
-                        nsteps = 3
-                        # weights
-                        w1, w2 = 0, 0
                         for asub in np.linspace(a - 0.5, a + 0.5, nsteps):
                             for rsub in np.linspace(r - 0.5, r + 0.5, nsteps):
                                 if is_in_tri([asub, rsub], aarr[0], aarr[1], aarr[2]):
                                     w1 += 1.0
                                 elif is_in_tri([asub, rsub], aarr[3], aarr[1], aarr[2]):
                                     w2 += 1.0
-                        if w1 > 0:
-                            gamma_proj[a, r] += area1 * w1 / (nsteps * nsteps)
-                        if w2 > 0:
-                            gamma_proj[a, r] += area2 * w2 / (nsteps * nsteps)
+                    if w1 > 0:
+                        gamma_proj[a, r] += area1 * w1 / (nsteps * nsteps)
+                    if w2 > 0:
+                        gamma_proj[a, r] += area2 * w2 / (nsteps * nsteps)
 
     return gamma_proj
