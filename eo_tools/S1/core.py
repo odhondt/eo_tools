@@ -1268,14 +1268,6 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
 @njit(nogil=True, parallel=True, cache=True)
 def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
 
-    # barycentric coordinates in a triangle
-    # def bary(p, a, b, c):
-    #     det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
-    #     l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
-    #     l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
-    #     l3 = 1 - l1 - l2
-    #     return l1, l2, l3
-
     # test if point is in triangle
     def is_in_tri(p, a, b, c):
         # l1, l2, _ = bary(p, a, b, c)
@@ -1283,7 +1275,6 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
         l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
         l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
         return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
-
 
     gamma_proj = np.zeros((naz, nrg))
 
@@ -1304,21 +1295,20 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             # - compute bounding box in the radar grid
             amin, amax = np.floor(aa.min()), np.ceil(aa.max())
             rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
-            amin = np.maximum(amin, 0)
-            rmin = np.maximum(rmin, 0)
-            amax = np.minimum(amax, naz - 1)
-            rmax = np.minimum(rmax, nrg - 1)
+            amin = int(np.maximum(amin, 0))
+            rmin = int(np.maximum(rmin, 0))
+            amax = int(np.minimum(amax, naz - 1)) + 1
+            rmax = int(np.minimum(rmax, nrg - 1)) + 1
 
             # normal vector
             ni1 = np.cross(
                 [xx[0] - xx[1], yy[0] - yy[1], zz[0] - zz[1]],
                 [xx[0] - xx[2], yy[0] - yy[2], zz[0] - zz[2]],
             )
-            ni1 /= np.sqrt((ni1**2).sum())
-            # inverse of the tangent
-            area1 = (ni1 * lv[i, j]).sum() / np.sqrt(
-                (np.cross(ni1, lv[i, j]) ** 2).sum()
-            )
+            norm1 = np.sqrt((ni1**2).sum())
+            ni1 /= norm1
+            cos1 = (ni1 * lv[i, j]).sum()
+            area1 = cos1 * 0.5 * norm1
             area1 = area1 if area1 >= 1e-10 else 1e-10
 
             # normal vector
@@ -1326,15 +1316,39 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
                 [xx[3] - xx[1], yy[3] - yy[1], zz[3] - zz[1]],
                 [xx[3] - xx[2], yy[3] - yy[2], zz[3] - zz[2]],
             )
-            ni2 /= np.sqrt((ni2**2).sum())
-            # inverse of the tangent
-            area2 = (ni2 * lv[i, j]).sum() / np.sqrt(
-                (np.cross(ni2, lv[i, j]) ** 2).sum()
-            )
+            norm2 = np.sqrt((ni2**2).sum())
+            ni2 /= norm2
+            cos2 = (ni2 * lv[i, j]).sum()
+            area2 = cos2 * 0.5 * norm2
             area2 = area2 if area2 >= 1e-10 else 1e-10
-            # - loop on integer positions based on box
-            for a in range(int(amin), int(amax) + 1):
-                for r in range(int(rmin), int(rmax) + 1):
-                   pass 
+
+            # weights1 = np.zeros((amax - amin, rmax - rmin))
+            # weights2 = np.zeros((amax - amin, rmax - rmin))
+
+            # accumulate weights
+            for a in range(amin, amax):
+                for r in range(rmin, rmax):
+                    if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+                        # weights1[a - amin, r - rmin] += 1
+                        gamma_proj[a, r] += area1
+                    if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+                        # weights2[a - amin, r - rmin] += 1
+                        gamma_proj[a, r] += area2
+
+            # sum1 = weights1.sum()
+            # sum2 = weights2.sum()
+
+            # if sum1 > 0:
+            #     weights1 /= sum1
+            # if sum2 > 0:
+            #     weights2 /= sum2
+
+            # distribute area among pixels
+            # for a in range(amin, amax):
+            #     for r in range(rmin, rmax):
+            #         gamma_proj[a, r] += (
+            #             area1 * weights1[a - amin, r - rmin]
+            #             + area2 * weights2[a - amin, r - rmin]
+            #         )
 
     return gamma_proj
