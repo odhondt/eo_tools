@@ -318,10 +318,10 @@ class S1IWSwath:
         # az_geo, dist_geo = range_doppler(
         az_geo, dist_geo, dx, dy, dz = range_doppler(
             # Removing first pos to get more precision. Is this useful?
-            dem_x.ravel() - pos[0, 0],
-            dem_y.ravel() - pos[0, 1],
-            dem_z.ravel() - pos[0, 2],
-            pos - pos[0],
+            dem_x.ravel(),# - pos[0, 0],
+            dem_y.ravel(),# - pos[0, 1],
+            dem_z.ravel(),# - pos[0, 2],
+            pos,# - pos[0],
             vel,
             tol=1e-8,
             maxiter=10000,
@@ -1276,9 +1276,38 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
         l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
         return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
 
-    gamma_proj = np.zeros((naz, nrg))
+    def project_point_on_plane(p, u, v):
+
+        # Dot products
+        # uu = np.dot(u, u)  # Should be 1 since u is a unit vector
+        # vv = np.dot(v, v)  # Should be 1 since v is a unit vector
+        uv = np.dot(u, v)  # Cosine of the angle between u and v
+        
+        # Dot products with the point
+        up = np.dot(u, p)
+        vp = np.dot(v, p)
+        
+        # Matrix inversion for coefficients
+        denom = 1 - uv**2
+        # if denom == 0:
+            # raise ValueError("u and v are collinear.")
+        
+        alpha = (up - uv * vp) / denom
+        beta = (vp - uv * up) / denom
+        
+        # Compute the projection
+        p_proj = alpha * u + beta * v
+        return p_proj
+
+    # def norm_vec(v):
+    #     return np.sqrt((v**2).sum())
+
+    # gamma_proj = np.zeros((naz, nrg))
+    # gamma_proj = np.nan
 
     nl, nc = azp.shape
+    theta = np.zeros((nl, nc))
+    theta[:,:] = np.nan
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1302,38 +1331,75 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
 
             # normal vector
             ni1 = np.cross(
-                [xx[0] - xx[1], yy[0] - yy[1], zz[0] - zz[1]],
-                [xx[0] - xx[2], yy[0] - yy[2], zz[0] - zz[2]],
+                [xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]],
+                [xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]],
             )
             norm1 = np.sqrt((ni1**2).sum())
             ni1 /= norm1
             cos1 = (ni1 * lv[i, j]).sum()
-            area1 = cos1 * 0.5 * norm1
-            area1 = area1 if area1 >= 1e-10 else 1e-10
+            # area1 = cos1 * 0.5 * norm1
+            # area1 = area1 if area1 >= 1e-10 else 1e-10
 
-            # normal vector
-            ni2 = -np.cross(
-                [xx[3] - xx[1], yy[3] - yy[1], zz[3] - zz[1]],
-                [xx[3] - xx[2], yy[3] - yy[2], zz[3] - zz[2]],
-            )
-            norm2 = np.sqrt((ni2**2).sum())
-            ni2 /= norm2
-            cos2 = (ni2 * lv[i, j]).sum()
-            area2 = cos2 * 0.5 * norm2
-            area2 = area2 if area2 >= 1e-10 else 1e-10
+            #  normal vector
+            # ni2 = -np.cross(
+            #     [xx[1] - xx[3], yy[1] - yy[3], zz[1] - zz[3]],
+            #     [xx[2] - xx[3], yy[2] - yy[3], zz[2] - zz[3]],
+            # )
+            # norm2 = np.sqrt((ni2**2).sum())
+            # ni2 /= norm2
+            # cos2 = (ni2 * lv[i, j]).sum()
+
+            theta[i, j] = np.arccos(cos1) * 180 / np.pi
+
+            
+            # area2 = cos2 * 0.5 * norm2
+            # area2 = area2 if area2 >= 1e-10 else 1e-10
 
             # weights1 = np.zeros((amax - amin, rmax - rmin))
             # weights2 = np.zeros((amax - amin, rmax - rmin))
 
+            # Trying DS implementation
+            # s = lv[i, j]
+
+            # t00 = np.array([xx[0], yy[0], zz[0]])
+            # t01 = np.array([xx[1], yy[1], zz[1]])
+            # t10 = np.array([xx[2], yy[2], zz[2]])
+            # t11 = np.array([xx[3], yy[3], zz[3]])
+
+            # t00s = (t00 * s).sum()
+            # t01s = (t01 * s).sum()
+            # t10s = (t10 * s).sum()
+            # t11s = (t11 * s).sum()
+            
+            # p00 = t00 - t00s * s 
+            # p01 = t01 - t01s * s 
+            # p10 = t10 - t10s * s 
+            # p11 = t11 - t11s * s 
+
+            # p00p01 = norm_vec(p00 - p01)
+            # p00p10 = norm_vec(p00 - p10)
+            # p11p01 = norm_vec(p11 - p01)
+            # p11p10 = norm_vec(p11 - p10)
+            # p10p01 = norm_vec(p10 - p01)
+
+            # h1 = 0.5 * (p00p01 + p00p10 + p10p01);
+            # h2 = 0.5 * (p11p01 + p11p10 + p10p01);
+            # area1 = np.sqrt(h1 * (h1 - p00p01) * (h1 - p00p10) * (h1 - p10p01))
+            # area2 = np.sqrt(h2 * (h2 - p11p01) * (h2 - p11p10) * (h2 - p10p01))
+
             # accumulate weights
-            for a in range(amin, amax):
-                for r in range(rmin, rmax):
-                    if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+            # for a in range(amin, amax):
+                # for r in range(rmin, rmax):
+                    # if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
                         # weights1[a - amin, r - rmin] += 1
-                        gamma_proj[a, r] += area1
-                    if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+                        # gamma_proj[a, r] += area1
+                        # gamma_proj[a, r] = area1
+                        # gamma_proj[a, r] = np.arccos(cos1) * 180 / np.pi
+                    # if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
                         # weights2[a - amin, r - rmin] += 1
-                        gamma_proj[a, r] += area2
+                        # gamma_proj[a, r] += area2
+                        # gamma_proj[a, r] = np.arccos(cos2) * 180 / np.pi
+                        # gamma_proj[a, r] = area2
 
             # sum1 = weights1.sum()
             # sum2 = weights2.sum()
@@ -1351,4 +1417,5 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             #             + area2 * weights2[a - amin, r - rmin]
             #         )
 
-    return gamma_proj
+    return theta
+    # return gamma_proj
