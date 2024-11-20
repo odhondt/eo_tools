@@ -1313,12 +1313,12 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
     def norm_vec(v):
         return np.sqrt((v**2).sum())
 
-    # gamma_proj = np.zeros((naz, nrg))
+    gamma_proj = np.zeros((naz, nrg))
     # gamma_proj = np.nan
 
     nl, nc = azp.shape
-    theta = np.zeros((nl, nc))
-    theta[:, :] = np.nan
+    # theta = np.zeros((nl, nc))
+    # theta[:, :] = np.nan
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1349,7 +1349,7 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
                 [xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]],
                 [xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]],
             )
-            # norm1 = np.sqrt((ni1**2).sum())
+            norm1 = np.sqrt((ni1**2).sum())
             # norm1 = norm_vec(ni1)
             # ni1 /= norm1
 
@@ -1358,89 +1358,22 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
             s /= norm_vec(s)
             ni1p = project_point_on_plane(ni1, lv, s)
             ni1p /= norm_vec(ni1p)
-            # cos1 = (ni1 * lv).sum()
             cos1p = (ni1p * lv).sum()
-            # using the inverse of the tangent
-            area1 = cos1p + 1e-10 / (1e-10 + np.sqrt(1 - cos1p**2))
+            # gamma convention: area == inverse of the tangent
+            area1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
             area1 = area1 if area1 >= 1e-10 else 1e-10
 
-            #  normal vector
-            # ni2 = -np.cross(
-            #     [xx[1] - xx[3], yy[1] - yy[3], zz[1] - zz[3]],
-            #     [xx[2] - xx[3], yy[2] - yy[3], zz[2] - zz[3]],
-            # )
-            # norm2 = np.sqrt((ni2**2).sum())
-            # ni2 /= norm2
-            # cos2 = (ni2 * lv[i, j]).sum()
-
-            # theta[i, j] = np.arccos(cos1p) * 180 / np.pi - np.arccos(cos1) * 180 / np.pi
-            # theta[i, j] = np.arccos(cos1p) * 180 / np.pi
-            theta[i, j] = area1
+            # theta[i, j] = area1
 
             # area2 = cos2 * 0.5 * norm2
             # area2 = area2 if area2 >= 1e-10 else 1e-10
 
-            # weights1 = np.zeros((amax - amin, rmax - rmin))
-            # weights2 = np.zeros((amax - amin, rmax - rmin))
-
-            # Trying DS implementation
-            # s = lv[i, j]
-
-            # t00 = np.array([xx[0], yy[0], zz[0]])
-            # t01 = np.array([xx[1], yy[1], zz[1]])
-            # t10 = np.array([xx[2], yy[2], zz[2]])
-            # t11 = np.array([xx[3], yy[3], zz[3]])
-
-            # t00s = (t00 * s).sum()
-            # t01s = (t01 * s).sum()
-            # t10s = (t10 * s).sum()
-            # t11s = (t11 * s).sum()
-
-            # p00 = t00 - t00s * s
-            # p01 = t01 - t01s * s
-            # p10 = t10 - t10s * s
-            # p11 = t11 - t11s * s
-
-            # p00p01 = norm_vec(p00 - p01)
-            # p00p10 = norm_vec(p00 - p10)
-            # p11p01 = norm_vec(p11 - p01)
-            # p11p10 = norm_vec(p11 - p10)
-            # p10p01 = norm_vec(p10 - p01)
-
-            # h1 = 0.5 * (p00p01 + p00p10 + p10p01);
-            # h2 = 0.5 * (p11p01 + p11p10 + p10p01);
-            # area1 = np.sqrt(h1 * (h1 - p00p01) * (h1 - p00p10) * (h1 - p10p01))
-            # area2 = np.sqrt(h2 * (h2 - p11p01) * (h2 - p11p10) * (h2 - p10p01))
-
             # accumulate weights
-            # for a in range(amin, amax):
-            # for r in range(rmin, rmax):
-            # if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
-            # weights1[a - amin, r - rmin] += 1
-            # gamma_proj[a, r] += area1
-            # gamma_proj[a, r] = area1
-            # gamma_proj[a, r] = np.arccos(cos1) * 180 / np.pi
-            # if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
-            # weights2[a - amin, r - rmin] += 1
-            # gamma_proj[a, r] += area2
-            # gamma_proj[a, r] = np.arccos(cos2) * 180 / np.pi
-            # gamma_proj[a, r] = area2
+            for a in range(amin, amax):
+                for r in range(rmin, rmax):
+                    if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+                        gamma_proj[a, r] += area1
+                    if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+                        gamma_proj[a, r] += area1
 
-            # sum1 = weights1.sum()
-            # sum2 = weights2.sum()
-
-            # if sum1 > 0:
-            #     weights1 /= sum1
-            # if sum2 > 0:
-            #     weights2 /= sum2
-
-            # distribute area among pixels
-            # for a in range(amin, amax):
-            #     for r in range(rmin, rmax):
-            #         gamma_proj[a, r] += (
-            #             area1 * weights1[a - amin, r - rmin]
-            #             + area2 * weights2[a - amin, r - rmin]
-            #         )
-
-    return theta
-    # return gamma_proj
+    return gamma_proj
