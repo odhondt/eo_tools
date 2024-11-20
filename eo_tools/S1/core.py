@@ -318,10 +318,10 @@ class S1IWSwath:
         # az_geo, dist_geo = range_doppler(
         az_geo, dist_geo, dx, dy, dz = range_doppler(
             # Removing first pos to get more precision. Is this useful?
-            dem_x.ravel(),# - pos[0, 0],
-            dem_y.ravel(),# - pos[0, 1],
-            dem_z.ravel(),# - pos[0, 2],
-            pos,# - pos[0],
+            dem_x.ravel(),  # - pos[0, 0],
+            dem_y.ravel(),  # - pos[0, 1],
+            dem_z.ravel(),  # - pos[0, 2],
+            pos,  # - pos[0],
             vel,
             tol=1e-8,
             maxiter=10000,
@@ -372,9 +372,9 @@ class S1IWSwath:
         # v2[:-1, :, 2] = np.diff(dem_z, axis=0)
 
         # normalized look vector
-        lv = np.dstack((dx, dy, dz))
+        # lv = np.dstack((dx, dy, dz))
         # free memory ?
-        del dx, dy, dz
+        # del dx, dy, dz
         # lv /= np.sqrt(np.sum((lv**2), 2))[..., None]
 
         # normalized normal vector
@@ -393,7 +393,17 @@ class S1IWSwath:
         # gamma_t_proj = project_area_to_sar(naz, nrg, az_geo, rg_geo, gamma_t)
         # gamma_t_proj = project_area_to_sar_vec(naz, nrg, az_geo, rg_geo, nv, lv)
         gamma_t_proj = local_terrain_area(
-            naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, lv
+            naz,
+            nrg,
+            az_geo,
+            rg_geo,
+            dem_x,
+            dem_y,
+            dem_z,
+            dx,
+            dy,
+            dz,
+            # naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, lv
         )
 
         # TODO: change according to prev TODO
@@ -1060,7 +1070,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         d2 = dx**2 + dy**2 + dz**2
         fc = -(vx * dx + vy * dy + vz * dz) / np.sqrt(d2)
 
-        return fc, dx, dy, dz, vx, vy, vz
+        return fc, dx, dy, dz, px, py, pz
 
     i_zd = np.zeros_like(xx)
     r_zd = np.zeros_like(xx)
@@ -1266,7 +1276,8 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
 
 
 @njit(nogil=True, parallel=True, cache=True)
-def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
+def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+    # def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
 
     # test if point is in triangle
     def is_in_tri(p, a, b, c):
@@ -1282,32 +1293,32 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
         # uu = np.dot(u, u)  # Should be 1 since u is a unit vector
         # vv = np.dot(v, v)  # Should be 1 since v is a unit vector
         uv = np.dot(u, v)  # Cosine of the angle between u and v
-        
+
         # Dot products with the point
         up = np.dot(u, p)
         vp = np.dot(v, p)
-        
+
         # Matrix inversion for coefficients
         denom = 1 - uv**2
         # if denom == 0:
-            # raise ValueError("u and v are collinear.")
-        
+        # raise ValueError("u and v are collinear.")
+
         alpha = (up - uv * vp) / denom
         beta = (vp - uv * up) / denom
-        
+
         # Compute the projection
         p_proj = alpha * u + beta * v
         return p_proj
 
-    # def norm_vec(v):
-    #     return np.sqrt((v**2).sum())
+    def norm_vec(v):
+        return np.sqrt((v**2).sum())
 
     # gamma_proj = np.zeros((naz, nrg))
     # gamma_proj = np.nan
 
     nl, nc = azp.shape
     theta = np.zeros((nl, nc))
-    theta[:,:] = np.nan
+    theta[:, :] = np.nan
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1329,16 +1340,29 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             amax = int(np.minimum(amax, naz - 1)) + 1
             rmax = int(np.minimum(rmax, nrg - 1)) + 1
 
+            # look vector
+            lv = np.array([dx[i, j], dy[i, j], dz[i, j]])
+            lv /= norm_vec(lv)
+
             # normal vector
             ni1 = np.cross(
                 [xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]],
                 [xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]],
             )
-            norm1 = np.sqrt((ni1**2).sum())
-            ni1 /= norm1
-            cos1 = (ni1 * lv[i, j]).sum()
-            # area1 = cos1 * 0.5 * norm1
-            # area1 = area1 if area1 >= 1e-10 else 1e-10
+            # norm1 = np.sqrt((ni1**2).sum())
+            # norm1 = norm_vec(ni1)
+            # ni1 /= norm1
+
+            # compute S vector (normalized position)
+            s = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dx[i, j]])
+            s /= norm_vec(s)
+            ni1p = project_point_on_plane(ni1, lv, s)
+            ni1p /= norm_vec(ni1p)
+            # cos1 = (ni1 * lv).sum()
+            cos1p = (ni1p * lv).sum()
+            # using the inverse of the tangent
+            area1 = cos1p + 1e-10 / (1e-10 + np.sqrt(1 - cos1p**2))
+            area1 = area1 if area1 >= 1e-10 else 1e-10
 
             #  normal vector
             # ni2 = -np.cross(
@@ -1349,9 +1373,10 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             # ni2 /= norm2
             # cos2 = (ni2 * lv[i, j]).sum()
 
-            theta[i, j] = np.arccos(cos1) * 180 / np.pi
+            # theta[i, j] = np.arccos(cos1p) * 180 / np.pi - np.arccos(cos1) * 180 / np.pi
+            # theta[i, j] = np.arccos(cos1p) * 180 / np.pi
+            theta[i, j] = area1
 
-            
             # area2 = cos2 * 0.5 * norm2
             # area2 = area2 if area2 >= 1e-10 else 1e-10
 
@@ -1370,11 +1395,11 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
             # t01s = (t01 * s).sum()
             # t10s = (t10 * s).sum()
             # t11s = (t11 * s).sum()
-            
-            # p00 = t00 - t00s * s 
-            # p01 = t01 - t01s * s 
-            # p10 = t10 - t10s * s 
-            # p11 = t11 - t11s * s 
+
+            # p00 = t00 - t00s * s
+            # p01 = t01 - t01s * s
+            # p10 = t10 - t10s * s
+            # p11 = t11 - t11s * s
 
             # p00p01 = norm_vec(p00 - p01)
             # p00p10 = norm_vec(p00 - p10)
@@ -1389,17 +1414,17 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
 
             # accumulate weights
             # for a in range(amin, amax):
-                # for r in range(rmin, rmax):
-                    # if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
-                        # weights1[a - amin, r - rmin] += 1
-                        # gamma_proj[a, r] += area1
-                        # gamma_proj[a, r] = area1
-                        # gamma_proj[a, r] = np.arccos(cos1) * 180 / np.pi
-                    # if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
-                        # weights2[a - amin, r - rmin] += 1
-                        # gamma_proj[a, r] += area2
-                        # gamma_proj[a, r] = np.arccos(cos2) * 180 / np.pi
-                        # gamma_proj[a, r] = area2
+            # for r in range(rmin, rmax):
+            # if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+            # weights1[a - amin, r - rmin] += 1
+            # gamma_proj[a, r] += area1
+            # gamma_proj[a, r] = area1
+            # gamma_proj[a, r] = np.arccos(cos1) * 180 / np.pi
+            # if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+            # weights2[a - amin, r - rmin] += 1
+            # gamma_proj[a, r] += area2
+            # gamma_proj[a, r] = np.arccos(cos2) * 180 / np.pi
+            # gamma_proj[a, r] = area2
 
             # sum1 = weights1.sum()
             # sum2 = weights2.sum()
