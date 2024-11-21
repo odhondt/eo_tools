@@ -1340,40 +1340,68 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
             amax = int(np.minimum(amax, naz - 1)) + 1
             rmax = int(np.minimum(rmax, nrg - 1)) + 1
 
+            # Triangle 1
             # look vector
             lv = np.array([dx[i, j], dy[i, j], dz[i, j]])
             lv /= norm_vec(lv)
 
             # normal vector
-            ni1 = np.cross(
+            nv1 = np.cross(
                 [xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]],
                 [xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]],
             )
-            norm1 = np.sqrt((ni1**2).sum())
-            # norm1 = norm_vec(ni1)
-            # ni1 /= norm1
+            norm1 = np.sqrt((nv1**2).sum())
+            norm1 = norm_vec(nv1)
+            nv1 /= norm1
 
             # compute S vector (normalized position)
             s = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dx[i, j]])
             s /= norm_vec(s)
-            ni1p = project_point_on_plane(ni1, lv, s)
-            ni1p /= norm_vec(ni1p)
-            cos1p = (ni1p * lv).sum()
-            # gamma convention: area == inverse of the tangent
-            area1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
-            area1 = area1 if area1 >= 1e-10 else 1e-10
+            
+            # project normal in the slant-range plane
+            nv1p = project_point_on_plane(nv1, lv, s)
+            nv1p /= norm_vec(nv1p)
+            cos1p = (nv1p * lv).sum()
 
-            # theta[i, j] = area1
+            # gamma convention: inverse of the tangent
+            gamma1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
+            gamma1 = gamma1 if gamma1 >= 1e-10 else 1e-10
 
-            # area2 = cos2 * 0.5 * norm2
-            # area2 = area2 if area2 >= 1e-10 else 1e-10
+            # Triangle 2
+            # look vector
+            lv = np.array([dx[i+1, j+1], dy[i+1, j+1], dz[i+1, j+1]])
+            lv /= norm_vec(lv)
 
-            # accumulate weights
+            # normal vector
+            nv2 = -np.cross(
+                [xx[1] - xx[3], yy[1] - yy[3], zz[1] - zz[3]],
+                [xx[2] - xx[3], yy[2] - yy[3], zz[2] - zz[3]],
+            )
+            norm2 = np.sqrt((nv2**2).sum())
+            norm2 = norm_vec(nv2)
+            nv2 /= norm2
+
+            # compute S vector (normalized position)
+            s = -np.array([xx[3] + dx[i+1, j+1], yy[3] + dy[i+1, j+1], zz[3] + dx[i+1, j+1]])
+            s /= norm_vec(s)
+
+            # project normal in the slant-range plane
+            nv2p = project_point_on_plane(nv2, lv, s)
+            nv2p /= norm_vec(nv2p)
+            cos2p = (nv2p * lv).sum()
+
+            # gamma convention: inverse of the tangent
+            gamma2 = cos2p / (1e-10 + np.sqrt(1 - cos2p**2))
+            gamma2 = gamma2 if gamma2 >= 1e-10 else 1e-10
+
+
+            # project into SAR geometry
             for a in range(amin, amax):
                 for r in range(rmin, rmax):
                     if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
-                        gamma_proj[a, r] += area1
+                        gamma_proj[a, r] += gamma1
                     if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
-                        gamma_proj[a, r] += area1
+                        gamma_proj[a, r] += gamma2
 
+            # theta[i, j] = area1
     return gamma_proj
