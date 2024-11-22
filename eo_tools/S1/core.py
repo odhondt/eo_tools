@@ -392,7 +392,7 @@ class S1IWSwath:
         # interpolating and accumulating geocoded values in the SAR geometry
         # gamma_t_proj = project_area_to_sar(naz, nrg, az_geo, rg_geo, gamma_t)
         # gamma_t_proj = project_area_to_sar_vec(naz, nrg, az_geo, rg_geo, nv, lv)
-        gamma_t_proj = local_terrain_area(
+        gamma_t= simulate_terrain_backscatter(
             naz,
             nrg,
             az_geo,
@@ -403,11 +403,10 @@ class S1IWSwath:
             dx,
             dy,
             dz,
-            # naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, lv
         )
 
         # TODO: change according to prev TODO
-        return az_geo, rg_geo, dem_prof, gamma_t_proj
+        return az_geo, rg_geo, dem_prof, gamma_t
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -1276,32 +1275,41 @@ def project_area_to_sar_vec(naz, nrg, azp, rgp, nv, lv):
 
 
 @njit(nogil=True, parallel=True, cache=True)
-def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
-    # def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, lv):
+def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+    """Use DEM and look vectors to simulate terrain backscatter in the SAR geometry
+
+    Args:
+        naz (int): azimuth size
+        nrg (int): slant range size
+        azp (array): Lookup table of azimuth indices
+        rgp (array): Lookup table of range indices
+        dem_x (array): DEM x coordinates
+        dem_y (array): DEM y coordinates
+        dem_z (array): DEM z coordinates
+        dx (array): Look vector x coordinates
+        dy (array): Look vector y coordinates
+        dz (array): Look vector z coordinates
+
+    Returns:
+        array: simulated terrain gamma nought
+    """
 
     # test if point is in triangle
     def is_in_tri(p, a, b, c):
-        # l1, l2, _ = bary(p, a, b, c)
+
         det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
         l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
         l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+
         return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
 
     def project_point_on_plane(p, u, v):
 
-        # Dot products
-        # uu = np.dot(u, u)  # Should be 1 since u is a unit vector
-        # vv = np.dot(v, v)  # Should be 1 since v is a unit vector
-        uv = np.dot(u, v)  # Cosine of the angle between u and v
-
-        # Dot products with the point
+        uv = np.dot(u, v)
         up = np.dot(u, p)
         vp = np.dot(v, p)
 
-        # Matrix inversion for coefficients
         denom = 1 - uv**2
-        # if denom == 0:
-        # raise ValueError("u and v are collinear.")
 
         alpha = (up - uv * vp) / denom
         beta = (vp - uv * up) / denom
@@ -1314,11 +1322,8 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
         return np.sqrt((v**2).sum())
 
     gamma_proj = np.zeros((naz, nrg))
-    # gamma_proj = np.nan
 
     nl, nc = azp.shape
-    # theta = np.zeros((nl, nc))
-    # theta[:, :] = np.nan
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1357,7 +1362,7 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
             # compute S vector (normalized position)
             s = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dx[i, j]])
             s /= norm_vec(s)
-            
+
             # project normal in the slant-range plane
             nv1p = project_point_on_plane(nv1, lv, s)
             nv1p /= norm_vec(nv1p)
@@ -1369,7 +1374,7 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
 
             # Triangle 2
             # look vector
-            lv = np.array([dx[i+1, j+1], dy[i+1, j+1], dz[i+1, j+1]])
+            lv = np.array([dx[i + 1, j + 1], dy[i + 1, j + 1], dz[i + 1, j + 1]])
             lv /= norm_vec(lv)
 
             # normal vector
@@ -1382,7 +1387,13 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
             nv2 /= norm2
 
             # compute S vector (normalized position)
-            s = -np.array([xx[3] + dx[i+1, j+1], yy[3] + dy[i+1, j+1], zz[3] + dx[i+1, j+1]])
+            s = -np.array(
+                [
+                    xx[3] + dx[i + 1, j + 1],
+                    yy[3] + dy[i + 1, j + 1],
+                    zz[3] + dx[i + 1, j + 1],
+                ]
+            )
             s /= norm_vec(s)
 
             # project normal in the slant-range plane
@@ -1393,7 +1404,6 @@ def local_terrain_area(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
             # gamma convention: inverse of the tangent
             gamma2 = cos2p / (1e-10 + np.sqrt(1 - cos2p**2))
             gamma2 = gamma2 if gamma2 >= 1e-10 else 1e-10
-
 
             # project into SAR geometry
             for a in range(amin, amax):
