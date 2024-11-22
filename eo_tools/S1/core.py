@@ -1119,6 +1119,14 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     Returns:
         array: simulated terrain gamma nought
+    
+    Note:
+        This is a modified version of the algorithm described in SNAP terrain correction 
+        documentation. Two things are different:
+            - Instead of the sine of the incidence angle, the tangent is computed to
+            comply with the gamma nought convention.
+            - The simulated backscatter is regridded and accumulated in the SAR geometry
+            to account for many-to-one and one-to-many relationships.
     """
 
     # test if point is in triangle
