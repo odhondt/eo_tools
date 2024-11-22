@@ -1034,7 +1034,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         d2 = dx**2 + dy**2 + dz**2
         fc = -(vx * dx + vy * dy + vz * dz) / np.sqrt(d2)
 
-        return fc, dx, dy, dz, px, py, pz
+        return fc, dx, dy, dz
 
     i_zd = np.zeros_like(xx)
     r_zd = np.zeros_like(xx)
@@ -1051,10 +1051,10 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             continue
         a = 0
         b = num_orbits - 1
-        fa, _, _, _, _, _, _ = doppler_freq(
+        fa, _, _, _ = doppler_freq(
             a, x_val, y_val, z_val, positions, velocities, int(a), int(np.ceil(a))
         )
-        fb, _, _, _, _, _, _ = doppler_freq(
+        fb, _, _, _ = doppler_freq(
             b, x_val, y_val, z_val, positions, velocities, int(b), int(np.ceil(b))
         )
 
@@ -1074,7 +1074,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             continue
 
         c = (a + b) / 2.0
-        fc, _, _, _, _, _, _ = doppler_freq(
+        fc, _, _, _ = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )
 
@@ -1088,12 +1088,12 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
                 a = c
                 fa = fc
             c = (a + b) / 2.0
-            fc, _, _, _, _, _, _ = doppler_freq(
+            fc, _, _, _ = doppler_freq(
                 c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
             )
 
         i_zd[i] = c
-        dx[i], dy[i], dz[i], vx, vy, vz = doppler_freq(
+        dx[i], dy[i], dz[i] = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )[1:]
         r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
