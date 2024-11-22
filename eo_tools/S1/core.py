@@ -240,16 +240,18 @@ class S1IWSwath:
             burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
         )
 
-    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
+    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1, simulate_terrain=False):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
             file_dem (str): path to the DEM
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
+            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry 
+            which can be used for terrain flattening.
 
         Returns:
-            (array, array): azimuth slant range indices. Arrays have the shape of the DEM.
+            (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -315,16 +317,28 @@ class S1IWSwath:
         vel = interp_vel(t_arr)
 
         log.info("Range-Doppler terrain correction (LUT computation)")
-        az_geo, dist_geo, dx, dy, dz = range_doppler(
-            # Removing first pos to get more precision. Is this useful?
-            dem_x.ravel() - pos[0, 0],
-            dem_y.ravel() - pos[0, 1],
-            dem_z.ravel() - pos[0, 2],
-            pos - pos[0],
-            vel,
-            tol=1e-8,
-            maxiter=10000,
-        )
+        if simulate_terrain:
+            az_geo, dist_geo, dx, dy, dz = range_doppler(
+                # Removing first pos to get more precision. Is this useful?
+                dem_x.ravel() - pos[0, 0],
+                dem_y.ravel() - pos[0, 1],
+                dem_z.ravel() - pos[0, 2],
+                pos - pos[0],
+                vel,
+                tol=1e-8,
+                maxiter=10000,
+            )
+        else:
+            az_geo, dist_geo, _, _, _ = range_doppler(
+                # Removing first pos to get more precision. Is this useful?
+                dem_x.ravel() - pos[0, 0],
+                dem_y.ravel() - pos[0, 1],
+                dem_z.ravel() - pos[0, 2],
+                pos - pos[0],
+                vel,
+                tol=1e-8,
+                maxiter=10000,
+            )
 
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
@@ -343,35 +357,37 @@ class S1IWSwath:
         rg_geo = rg_geo.reshape(alt.shape)
         az_geo = az_geo.reshape(alt.shape)
 
-        log.info("Terrain Flattening")
-        dx[~valid] = np.nan
-        dy[~valid] = np.nan
-        dz[~valid] = np.nan
+        if simulate_terrain:
+            log.info("Terrain Flattening")
+            dx[~valid] = np.nan
+            dy[~valid] = np.nan
+            dz[~valid] = np.nan
 
-        # normalize look vector
-        dx[valid] = dx[valid] / dist_geo[valid]
-        dy[valid] = dy[valid] / dist_geo[valid]
-        dz[valid] = dz[valid] / dist_geo[valid]
+            # normalize look vector
+            dx[valid] = dx[valid] / dist_geo[valid]
+            dy[valid] = dy[valid] / dist_geo[valid]
+            dz[valid] = dz[valid] / dist_geo[valid]
 
-        # reshape to DEM dimensions
-        dx = dx.reshape(alt.shape)
-        dy = dy.reshape(alt.shape)
-        dz = dz.reshape(alt.shape)
+            # reshape to DEM dimensions
+            dx = dx.reshape(alt.shape)
+            dy = dy.reshape(alt.shape)
+            dz = dz.reshape(alt.shape)
 
-        gamma_t = simulate_terrain_backscatter(
-            naz,
-            nrg,
-            az_geo,
-            rg_geo,
-            dem_x,
-            dem_y,
-            dem_z,
-            dx,
-            dy,
-            dz,
-        )
-
-        return az_geo, rg_geo, dem_prof, gamma_t
+            gamma_t = simulate_terrain_backscatter(
+                naz,
+                nrg,
+                az_geo,
+                rg_geo,
+                dem_x,
+                dem_y,
+                dem_z,
+                dx,
+                dy,
+                dz,
+            )
+            return az_geo, rg_geo, dem_prof, gamma_t
+        else:
+            return az_geo, rg_geo, dem_prof
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
