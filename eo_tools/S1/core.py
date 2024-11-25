@@ -364,9 +364,9 @@ class S1IWSwath:
             dz[~valid] = np.nan
 
             # normalize look vector
-            dx[valid] = dx[valid] / dist_geo[valid]
-            dy[valid] = dy[valid] / dist_geo[valid]
-            dz[valid] = dz[valid] / dist_geo[valid]
+            # dx[valid] = dx[valid] / dist_geo[valid]
+            # dy[valid] = dy[valid] / dist_geo[valid]
+            # dz[valid] = dz[valid] / dist_geo[valid]
 
             # reshape to DEM dimensions
             dx = dx.reshape(alt.shape)
@@ -1174,6 +1174,23 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     gamma_proj = np.zeros((naz, nrg))
 
+    # accumulate slant range of pixels in azimuth / look angle buckets
+    # nrg / 2 is an arbitrary number, it may change
+
+    # idx_rg_min = np.nanargmin(rgp)
+    # idx_rg_max = np.nanargmin(rgp)
+
+    # lv_min = np.array([dx.ravel()[idx_rg_min], dy.ravel()[idx_rg_min], dz.ravel()[idx_rg_min]])
+    # lv_min /= norm_vec(lv_min)
+
+    # s_min = -np.array([dem_x.ravel()[idx_rg_min] + dx.ravel()[idx_rg_min], dem_y + dy[i, j], dem_z + dx[i, j]])
+    # s_min /= norm_vec(s_min)
+
+    # shadow_acc = np.zeros((naz, int(nrg/2)))
+
+    # TODO: compute lv and s for min and max range
+    # devive min-max angles for buckets
+
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -1198,8 +1215,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
             # Triangle 1
             # look vector
-            lv = np.array([dx[i, j], dy[i, j], dz[i, j]])
-            lv /= norm_vec(lv)
+            lv1 = np.array([dx[i, j], dy[i, j], dz[i, j]])
+            lv1 /= norm_vec(lv1)
 
             # normal vector
             nv1 = np.cross(
@@ -1211,13 +1228,13 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             nv1 /= norm1
 
             # compute S vector (normalized position)
-            s = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dx[i, j]])
-            s /= norm_vec(s)
+            s1 = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dz[i, j]])
+            s1 /= norm_vec(s1)
 
             # project normal in the slant-range plane
-            nv1p = project_point_on_plane(nv1, lv, s)
+            nv1p = project_point_on_plane(nv1, lv1, s1)
             nv1p /= norm_vec(nv1p)
-            cos1p = (nv1p * lv).sum()
+            cos1p = (nv1p * lv1).sum()
 
             # gamma convention: inverse of the tangent
             gamma1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
@@ -1225,8 +1242,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
             # Triangle 2
             # look vector
-            lv = np.array([dx[i + 1, j + 1], dy[i + 1, j + 1], dz[i + 1, j + 1]])
-            lv /= norm_vec(lv)
+            lv2 = np.array([dx[i + 1, j + 1], dy[i + 1, j + 1], dz[i + 1, j + 1]])
+            lv2 /= norm_vec(lv2)
 
             # normal vector
             nv2 = -np.cross(
@@ -1238,19 +1255,19 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             nv2 /= norm2
 
             # compute S vector (normalized position)
-            s = -np.array(
+            s2 = -np.array(
                 [
                     xx[3] + dx[i + 1, j + 1],
                     yy[3] + dy[i + 1, j + 1],
-                    zz[3] + dx[i + 1, j + 1],
+                    zz[3] + dz[i + 1, j + 1],
                 ]
             )
-            s /= norm_vec(s)
+            s2 /= norm_vec(s2)
 
             # project normal in the slant-range plane
-            nv2p = project_point_on_plane(nv2, lv, s)
+            nv2p = project_point_on_plane(nv2, lv2, s2)
             nv2p /= norm_vec(nv2p)
-            cos2p = (nv2p * lv).sum()
+            cos2p = (nv2p * lv2).sum()
 
             # gamma convention: inverse of the tangent
             gamma2 = cos2p / (1e-10 + np.sqrt(1 - cos2p**2))
@@ -1264,4 +1281,5 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
                     if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
                         gamma_proj[a, r] += gamma2
 
+    gamma_proj[gamma_proj==0] = np.nan
     return gamma_proj
