@@ -365,17 +365,12 @@ class S1IWSwath:
             dy[~valid] = np.nan
             dz[~valid] = np.nan
 
-            # normalize look vector
-            # dx[valid] = dx[valid] / dist_geo[valid]
-            # dy[valid] = dy[valid] / dist_geo[valid]
-            # dz[valid] = dz[valid] / dist_geo[valid]
-
             # reshape to DEM dimensions
             dx = dx.reshape(alt.shape)
             dy = dy.reshape(alt.shape)
             dz = dz.reshape(alt.shape)
 
-            gamma_t = simulate_terrain_backscatter(
+            gamma_t= simulate_terrain_backscatter(
                 naz,
                 nrg,
                 az_geo,
@@ -1178,34 +1173,6 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
 
     nl, nc = azp.shape
-
-    # compute max and min look angle
-    la_max = 0
-    la_min = np.pi
-    for i in prange(0, nl - 1):
-        for j in range(0, nc - 1):
-            lv = np.array([dx[i, j], dy[i, j], dz[i, j]])
-            lv /= norm_vec(lv)
-
-            s = -np.array(
-                [dem_x[i, j] + dx[i, j], dem_y[i, j] + dy[i, j], dem_z[i, j] + dz[i, j]]
-            )
-            s /= norm_vec(s)
-            la = np.arccos(np.sum(lv*s))
-            la_max = la if la > la_max else la_max
-            la_min = la if la < la_min else la_min
-
-    # store closest slant range index of pixels in azimuth / look angle buckets
-    # nrg / 2 is an arbitrary number, it may change
-    n_buckets = int(nrg/2)
-    range_buckets = np.full((naz, n_buckets), fill_value=-1, dtype="int32")
-    delta_bucket = (la_max - la_min) / n_buckets
-
-
-    # The initial mask is set to shadow and each foreground pixel will be set to zero
-    shadow_mask = np.full((naz, nrg), fill_value=1, dtype="uint8")
-
-
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
@@ -1290,13 +1257,11 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
                 for r in range(rmin, rmax):
                     if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
                         gamma_proj[a, r] += gamma1
-                        la1 = np.arccos(np.sum(lv1*s1))
                     if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
                         gamma_proj[a, r] += gamma2
-                        la2 = np.arccos(np.sum(lv2*s2))
 
     for a in prange(gamma_proj.shape[0]):
-        for r in prange(gamma_proj.shape[0]):
+        for r in range(gamma_proj.shape[1]):
             if gamma_proj[a, r] == 0.0:
                 gamma_proj[a, r] = np.nan
 
