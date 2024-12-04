@@ -370,7 +370,7 @@ class S1IWSwath:
             dy = dy.reshape(alt.shape)
             dz = dz.reshape(alt.shape)
 
-            gamma_t= simulate_terrain_backscatter(
+            gamma_t = simulate_terrain_backscatter(
                 naz,
                 nrg,
                 az_geo,
@@ -382,6 +382,10 @@ class S1IWSwath:
                 dy,
                 dz,
             )
+
+            # finding occluded shadow pixels
+            reproject_dem_in_ground_range_geometry(lat, lon, dem_prof["crs"])
+
             return az_geo, rg_geo, dem_prof, gamma_t
         else:
             return az_geo, rg_geo, dem_prof
@@ -1171,7 +1175,6 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     gamma_proj = np.zeros((naz, nrg))
 
-
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -1266,3 +1269,52 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
                 gamma_proj[a, r] = np.nan
 
     return gamma_proj
+
+# TODO: move imports to top
+
+from rasterio.transform import from_gcps
+from rasterio.warp import reproject
+from rasterio import MemoryFile
+from rasterio.control import GroundControlPoint as GCP
+
+def reproject_dem_in_ground_range_geometry(
+    az, rg, lat, lon, dem_crs, dem_x, dem_y, dem_z, dx, dy, dz
+):
+    """Reprojects the DEM in a ground range geometry so each line represents an azimuth position and each column a ground range coordinate.
+
+    Args:
+        az (array): azimuth lookup table
+        rg (array): range lookup table
+        lat (array): longitudes of the resampled DEM
+        lon (array): latitudes of the resampled DEM
+        dem_crs (str): DEM CRS
+        dem_x (float): dem x coordinate
+        dem_y (float): dem y coordinate
+        dem_z (float): dem z coordinate
+        dx (float): zero doppler x coordinate
+        dy (float):  zero doppler y coordinate
+        dz (float): zero doppler z coordinate
+    """
+    # first let's express the dem lat and lon as xyz coordinates
+    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat),dem_crs)
+
+    # distance between orbit zero doppler and dem projected on ellipsoid
+    ground_range = np.sqrt(
+        (dem_x - dx + dem_xg) ** 2
+        + (dem_y - dy + dem_yg) ** 2
+        + (dem_z - dz + dem_zg) ** 2
+    )
+    delta_gr = 20  # trying 20m pixel size
+
+    # convert to index
+    rg0 = (ground_range - ground_range.min()) / delta_gr
+
+    sub = 16
+    gcps = []
+    for i in np.arange(0, rg0.shape[0], sub):
+        for j in np.arange(0, rg0.shape[1], sub):
+            gcps.append(GCP(i , j, az[i, j], rg0[i, j]))
+
+
+    # A = from_gcps(gcps)
+    
