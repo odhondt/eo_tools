@@ -342,6 +342,7 @@ class S1IWSwath:
                 maxiter=10000,
             )
 
+
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
         r0 = float(slant_range_time) * c0 / 2
@@ -369,7 +370,10 @@ class S1IWSwath:
             dx = dx.reshape(alt.shape)
             dy = dy.reshape(alt.shape)
             dz = dz.reshape(alt.shape)
-
+            # finding occluded shadow pixels
+            shadow_mask = detect_active_shadow(
+                az_geo, rg_geo, lat, lon, alt, dem_x, dem_y, dem_z, dx, dy, dz
+            )
             gamma_t = simulate_terrain_backscatter(
                 naz,
                 nrg,
@@ -383,8 +387,6 @@ class S1IWSwath:
                 dz,
             )
 
-            # finding occluded shadow pixels
-            reproject_dem_in_ground_range_geometry(lat, lon, dem_prof["crs"])
 
             return az_geo, rg_geo, dem_prof, gamma_t
         else:
@@ -1270,24 +1272,19 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     return gamma_proj
 
-# TODO: move imports to top
 
-from rasterio.transform import from_gcps
-from rasterio.warp import reproject
-from rasterio import MemoryFile
-from rasterio.control import GroundControlPoint as GCP
 
-def reproject_dem_in_ground_range_geometry(
-    az, rg, lat, lon, dem_crs, dem_x, dem_y, dem_z, dx, dy, dz
+
+
+def detect_active_shadow(
+    az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
 ):
-    """Reprojects the DEM in a ground range geometry so each line represents an azimuth position and each column a ground range coordinate.
+    """Find occluded pixels in DEM according to the sensor zero doppler positions.Reprojects the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scans the azimuth lines and find where the look angle is below its stored maximum.
 
     Args:
         az (array): azimuth lookup table
-        rg (array): range lookup table
         lat (array): longitudes of the resampled DEM
         lon (array): latitudes of the resampled DEM
-        dem_crs (str): DEM CRS
         dem_x (float): dem x coordinate
         dem_y (float): dem y coordinate
         dem_z (float): dem z coordinate
@@ -1295,26 +1292,66 @@ def reproject_dem_in_ground_range_geometry(
         dy (float):  zero doppler y coordinate
         dz (float): zero doppler z coordinate
     """
-    # first let's express the dem lat and lon as xyz coordinates
-    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat),dem_crs)
 
-    # distance between orbit zero doppler and dem projected on ellipsoid
-    ground_range = np.sqrt(
-        (dem_x - dx + dem_xg) ** 2
-        + (dem_y - dy + dem_yg) ** 2
-        + (dem_z - dz + dem_zg) ** 2
+    # compute zero altitude coordinates
+    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), "EPSG:4326")
+
+    # distance between orbit zero doppler and ellipsoid or egm
+    dist0 = np.sqrt(
+        (dx - dem_x + dem_xg) ** 2
+        + (dy - dem_y + dem_yg) ** 2
+        + (dz - dem_z + dem_zg) ** 2
     )
-    delta_gr = 20  # trying 20m pixel size
+
+    # look angle for DEM points
+    px = dx - dem_x
+    py = dy - dem_y
+    pz = dz - dem_z
+    pn = np.sqrt(px**2 + py**2 + pz**2)
+    dn = np.sqrt(dx**2 + dy**2 + dz**2)
+    cos_theta = (px * dx + py * dy + pz * dz) / (pn * dn)
+    theta = np.arccos(cos_theta)
+
+    # compute zero altitude steps
+    d0_diffs = np.sqrt(np.diff(dist0, axis=1, append=np.nan)**2 + np.diff(dist0, axis=0, append=np.nan)**2)
+    delta_d0 = np.nanmean(d0_diffs) 
 
     # convert to index
-    rg0 = (ground_range - ground_range.min()) / delta_gr
+    rg0 = (dist0 - np.nanmin(dist0)) / delta_d0
 
-    sub = 16
-    gcps = []
-    for i in np.arange(0, rg0.shape[0], sub):
-        for j in np.arange(0, rg0.shape[1], sub):
-            gcps.append(GCP(i , j, az[i, j], rg0[i, j]))
+    mask = _shadow_mask(theta, rg0, az)
+
+    return mask
 
 
-    # A = from_gcps(gcps)
-    
+@njit(parallel=True)
+def _shadow_mask(theta, rg0, az):
+
+    naz, nrg0 = int(np.ceil(az.max())), int(np.ceil(rg0.max()))
+
+    # coarse warping into zero altitude geometry 
+    theta0 = np.full((naz, nrg0), fill_value=np.nan)
+    for i in prange(theta.shape[0]):
+        for j in range(theta.shape[1]):
+            if not np.isnan(az[i, j]):
+                theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
+
+    # scanning lines in ground range
+    mask0 = np.full_like(theta0, fill_value=np.nan)
+    for i in prange(theta0.shape[0]):
+        max_elev = 0.0
+        for j in range(theta0.shape[1]):
+            if not np.isnan(theta0[i, j]):
+                if theta0[i, j] > max_elev:
+                    max_elev = theta0[i, j]
+                else:
+                    mask0[i, j] = 1.0
+
+    # back to DEM geometry
+    mask = np.full_like(theta, fill_value=np.nan)
+    for i in prange(mask.shape[0]):
+        for j in range(mask.shape[1]):
+            if not np.isnan(az[i, j]):
+                mask[i, j] = mask0[int(az[i, j]), int(rg0[i, j])]
+
+    return mask
