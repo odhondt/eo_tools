@@ -342,7 +342,6 @@ class S1IWSwath:
                 maxiter=10000,
             )
 
-
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
         r0 = float(slant_range_time) * c0 / 2
@@ -370,24 +369,16 @@ class S1IWSwath:
             dx = dx.reshape(alt.shape)
             dy = dy.reshape(alt.shape)
             dz = dz.reshape(alt.shape)
+
             # finding occluded shadow pixels
             shadow_mask = detect_active_shadow(
                 az_geo, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
             )
-            gamma_t = simulate_terrain_backscatter(
-                naz,
-                nrg,
-                az_geo,
-                rg_geo,
-                dem_x,
-                dem_y,
-                dem_z,
-                dx,
-                dy,
-                dz,
-                shadow_mask
-            )
 
+            # simulating terrain backscatter
+            gamma_t = simulate_terrain_backscatter(
+                naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+            )
 
             return az_geo, rg_geo, dem_prof, gamma_t
         else:
@@ -1122,7 +1113,9 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
 
 @njit(nogil=True, parallel=True, cache=True)
-def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask=None):
+def simulate_terrain_backscatter(
+    naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+):
     """Use DEM and look vectors to simulate terrain backscatter in the SAR geometry
 
     Args:
@@ -1136,6 +1129,7 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
         dx (array): Look vector x coordinates
         dy (array): Look vector y coordinates
         dz (array): Look vector z coordinates
+        shadow_mask(array): Shadow mask containing ones for shadow areas and NaN elsewhere
 
     Returns:
         array: simulated terrain gamma nought
@@ -1178,13 +1172,6 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     gamma_proj = np.zeros((naz, nrg))
 
-    # _shadow_mask = np.full_like(azp, fill_value=np.nan)
-    # if not shadow_mask:
-        # _shadow_mask = np.full_like(azp, fill_value=np.nan)
-    # else:
-    # if shadow_mask:
-        # _shadow_mask = shadow_mask
-
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -1223,7 +1210,7 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             nv1 /= norm1
 
             # compute S vector (normalized position)
-            s1 = -np.array([xx[0] + dx[i, j], yy[0] + dy[i, j], zz[0] + dz[i, j]])
+            s1 = np.array([dx[i, j] - xx[0], dy[i, j] - yy[0], dz[i, j] - zz[0]])
             s1 /= norm_vec(s1)
 
             # project normal in the slant-range plane
@@ -1232,9 +1219,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             cos1p = (nv1p * lv1).sum()
 
             # gamma convention: inverse of the tangent
-            gamma1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
-            # gamma1 = gamma1 if gamma1 >= 1e-10 else 1e-10
-            gamma1 = gamma1 if gamma1 >= 1e-12 else np.nan
+            gamma1 = cos1p / (1e-12 + np.sqrt(1 - cos1p**2))
+            gamma1 = gamma1 if gamma1 > 0 else 0
 
             # Triangle 2
             # look vector
@@ -1249,12 +1235,11 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             norm2 = norm_vec(nv2)
             nv2 /= norm2
 
-            # compute S vector (normalized position)
-            s2 = -np.array(
+            s2 = np.array(
                 [
-                    xx[3] + dx[i + 1, j + 1],
-                    yy[3] + dy[i + 1, j + 1],
-                    zz[3] + dz[i + 1, j + 1],
+                    dx[i + 1, j + 1] - xx[3],
+                    dy[i + 1, j + 1] - yy[3],
+                    dz[i + 1, j + 1] - zz[3],
                 ]
             )
             s2 /= norm_vec(s2)
@@ -1265,9 +1250,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
             cos2p = (nv2p * lv2).sum()
 
             # gamma convention: inverse of the tangent
-            gamma2 = cos2p / (1e-10 + np.sqrt(1 - cos2p**2))
-            # gamma2 = gamma2 if gamma2 >= 1e-10 else 1e-10
-            gamma2 = gamma2 if gamma2 >= 1e-12 else np.nan
+            gamma2 = cos2p / (1e-12 + np.sqrt(1 - cos2p**2))
+            gamma2 = gamma2 if gamma2 >= 0 else 0
 
             # project into SAR geometry
             for a in range(amin, amax):
@@ -1285,12 +1269,7 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
     return gamma_proj
 
 
-
-
-
-def detect_active_shadow(
-    az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
-):
+def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
     """Find occluded pixels in DEM according to the sensor zero doppler positions.Reprojects the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scans the azimuth lines and find where the look angle is below its stored maximum.
 
     Args:
@@ -1325,8 +1304,11 @@ def detect_active_shadow(
     theta = np.arccos(cos_theta)
 
     # compute zero altitude steps
-    d0_diffs = np.sqrt(np.diff(dist0, axis=1, append=np.nan)**2 + np.diff(dist0, axis=0, append=np.nan)**2)
-    delta_d0 = np.nanmean(d0_diffs) 
+    d0_diffs = np.sqrt(
+        np.diff(dist0, axis=1, append=np.nan) ** 2
+        + np.diff(dist0, axis=0, append=np.nan) ** 2
+    )
+    delta_d0 = np.nanmean(d0_diffs)
 
     # convert to index
     rg0 = (dist0 - np.nanmin(dist0)) / delta_d0
@@ -1341,7 +1323,7 @@ def _shadow_mask(theta, rg0, az):
 
     naz, nrg0 = int(np.ceil(az.max())), int(np.ceil(rg0.max()))
 
-    # coarse warping into zero altitude geometry 
+    # coarse warping into zero altitude geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
     for i in prange(theta.shape[0]):
         for j in range(theta.shape[1]):
