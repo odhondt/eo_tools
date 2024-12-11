@@ -1270,7 +1270,7 @@ def simulate_terrain_backscatter(
 
 
 def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
-    """Find occluded pixels in DEM according to the sensor zero doppler positions.Reprojects the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scans the azimuth lines and find where the look angle is below its stored maximum.
+    """Find occluded pixels in DEM according to the sensor zero doppler positions. Reproject the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scan the azimuth lines and find where the look angle is below its stored maximum.
 
     Args:
         az (array): azimuth lookup table
