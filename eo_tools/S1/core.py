@@ -372,7 +372,7 @@ class S1IWSwath:
             dz = dz.reshape(alt.shape)
             # finding occluded shadow pixels
             shadow_mask = detect_active_shadow(
-                az_geo, rg_geo, lat, lon, alt, dem_x, dem_y, dem_z, dx, dy, dz
+                az_geo, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
             )
             gamma_t = simulate_terrain_backscatter(
                 naz,
@@ -385,6 +385,7 @@ class S1IWSwath:
                 dx,
                 dy,
                 dz,
+                shadow_mask
             )
 
 
@@ -1121,7 +1122,7 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
 
 @njit(nogil=True, parallel=True, cache=True)
-def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz):
+def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask=None):
     """Use DEM and look vectors to simulate terrain backscatter in the SAR geometry
 
     Args:
@@ -1177,10 +1178,19 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
     gamma_proj = np.zeros((naz, nrg))
 
+    # _shadow_mask = np.full_like(azp, fill_value=np.nan)
+    # if not shadow_mask:
+        # _shadow_mask = np.full_like(azp, fill_value=np.nan)
+    # else:
+    # if shadow_mask:
+        # _shadow_mask = shadow_mask
+
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
+            if shadow_mask[i, j] == 1:
+                continue
             # - for each 4 neighborhood
             aa = azp[i : i + 2, j : j + 2].flatten()
             rr = rgp[i : i + 2, j : j + 2].flatten()
@@ -1223,7 +1233,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
             # gamma convention: inverse of the tangent
             gamma1 = cos1p / (1e-10 + np.sqrt(1 - cos1p**2))
-            gamma1 = gamma1 if gamma1 >= 1e-10 else 1e-10
+            # gamma1 = gamma1 if gamma1 >= 1e-10 else 1e-10
+            gamma1 = gamma1 if gamma1 >= 1e-12 else np.nan
 
             # Triangle 2
             # look vector
@@ -1255,7 +1266,8 @@ def simulate_terrain_backscatter(naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy
 
             # gamma convention: inverse of the tangent
             gamma2 = cos2p / (1e-10 + np.sqrt(1 - cos2p**2))
-            gamma2 = gamma2 if gamma2 >= 1e-10 else 1e-10
+            # gamma2 = gamma2 if gamma2 >= 1e-10 else 1e-10
+            gamma2 = gamma2 if gamma2 >= 1e-12 else np.nan
 
             # project into SAR geometry
             for a in range(amin, amax):
