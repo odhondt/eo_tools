@@ -249,8 +249,7 @@ class S1IWSwath:
             file_dem (str): path to the DEM
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
-            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry
-            which can be used for terrain flattening.
+            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
 
         Returns:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
