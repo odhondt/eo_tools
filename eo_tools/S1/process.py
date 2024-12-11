@@ -1742,19 +1742,32 @@ def _process_bursts_slc(
             )
 
             # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _, _ = slc.geocode_burst(
-                file_dem_burst,
-                burst_idx=burst_idx,
-                dem_upsampling=1,
-            )
+            if cal_type != "radiometric":
+                az_p2g, rg_p2g, _, _ = slc.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx,
+                    dem_upsampling=1,
+                )
+            else:
+                az_p2g, rg_p2g, _, gamma_t = slc.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx,
+                    dem_upsampling=1,
+                    simulate_terrain=True
+                )
 
             # read primary and secondary burst rasters
             arr_p = slc.read_burst(burst_idx, True)
 
             # radiometric calibration (beta or sigma nought)
-            cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
-            log.info("Apply calibration factor")
-            arr_p /= cal_p
+            if cal_type != "radiometric":
+                cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
+                log.info("Apply calibration factor")
+                arr_p /= cal_p
+            else:
+                cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
+                log.info("Apply calibration factor")
+                arr_p /= cal_p * gamma_t
 
             first_line = (burst_idx - min_burst) * slc.lines_per_burst
 
