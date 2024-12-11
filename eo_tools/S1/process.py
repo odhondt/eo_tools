@@ -1576,12 +1576,12 @@ def _process_bursts_insar(
             )
 
             # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _ = prm.geocode_burst(
+            az_p2g, rg_p2g, _, _ = prm.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx,
                 dem_upsampling=1,
             )
-            az_s2g, rg_s2g, _ = sec.geocode_burst(
+            az_s2g, rg_s2g, _, _ = sec.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx + burst_offset,
                 dem_upsampling=1,
@@ -1742,7 +1742,7 @@ def _process_bursts_slc(
             )
 
             # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _ = slc.geocode_burst(
+            az_p2g, rg_p2g, _, _ = slc.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx,
                 dem_upsampling=1,
