@@ -187,7 +187,7 @@ def test_range_doppler():
     expected_i_zd = np.array([4.5, 6.75])
     expected_r_zd = np.array([10, 5])
 
-    i_zd, r_zd = range_doppler(xx, yy, zz, positions, velocities)
+    i_zd, r_zd, _, _, _ = range_doppler(xx, yy, zz, positions, velocities)
 
     np.testing.assert_allclose(i_zd, expected_i_zd, rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(r_zd, expected_r_zd, rtol=1e-5, atol=1e-8)
