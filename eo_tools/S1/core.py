@@ -359,7 +359,6 @@ class S1IWSwath:
         az_geo = az_geo.reshape(alt.shape)
 
         if simulate_terrain:
-            log.info("Terrain Flattening")
             dx[~valid] = np.nan
             dy[~valid] = np.nan
             dz[~valid] = np.nan
@@ -370,11 +369,13 @@ class S1IWSwath:
             dz = dz.reshape(alt.shape)
 
             # finding occluded shadow pixels
+            log.info("Shadow detection")
             shadow_mask = detect_active_shadow(
                 az_geo, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
             )
 
             # simulating terrain backscatter
+            log.info("Terrain simulation")
             gamma_t = simulate_terrain_backscatter(
                 naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
             )
@@ -1283,7 +1284,7 @@ def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
         dz (float): zero doppler z coordinate
     """
 
-    # compute zero altitude coordinates
+    # compute zero altitude coordinates (use DEM reference height)
     dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), "EPSG:4326")
 
     # distance between orbit zero doppler and ellipsoid or egm
@@ -1307,11 +1308,13 @@ def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
         np.diff(dist0, axis=1, append=np.nan) ** 2
         + np.diff(dist0, axis=0, append=np.nan) ** 2
     )
+    # rule-of-thumb: use average difference
     delta_d0 = np.nanmean(d0_diffs)
 
     # convert to index
     rg0 = (dist0 - np.nanmin(dist0)) / delta_d0
 
+    # compute mask by projecting the angle in a ground geometry
     mask = _shadow_mask(theta, rg0, az)
 
     return mask
@@ -1322,14 +1325,14 @@ def _shadow_mask(theta, rg0, az):
 
     naz, nrg0 = int(np.ceil(az.max())), int(np.ceil(rg0.max()))
 
-    # coarse warping into zero altitude geometry
+    # coarse warping into zero altitude (ground) geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
     for i in prange(theta.shape[0]):
         for j in range(theta.shape[1]):
             if not np.isnan(az[i, j]):
                 theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
 
-    # scanning lines in ground range
+    # scanning lines in ground geometry
     mask0 = np.full_like(theta0, fill_value=np.nan)
     for i in prange(theta0.shape[0]):
         max_elev = 0.0
