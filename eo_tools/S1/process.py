@@ -29,8 +29,8 @@ from eo_tools.util import _has_overlap
 from skimage.morphology import binary_erosion
 
 # use child processes
-# USE_CP = False
-USE_CP = True
+USE_CP = False
+# USE_CP = True
 
 log = logging.getLogger(__name__)
 
@@ -1576,12 +1576,12 @@ def _process_bursts_insar(
             )
 
             # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _, _ = prm.geocode_burst(
+            az_p2g, rg_p2g, _ = prm.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx,
                 dem_upsampling=1,
             )
-            az_s2g, rg_s2g, _, _ = sec.geocode_burst(
+            az_s2g, rg_s2g, _ = sec.geocode_burst(
                 file_dem_burst,
                 burst_idx=burst_idx + burst_offset,
                 dem_upsampling=1,
@@ -1743,7 +1743,7 @@ def _process_bursts_slc(
 
             # this implementation upsamples DEM at download, not during geocoding
             if cal_type != "radiometric":
-                az_p2g, rg_p2g, _, _ = slc.geocode_burst(
+                az_p2g, rg_p2g, _ = slc.geocode_burst(
                     file_dem_burst,
                     burst_idx=burst_idx,
                     dem_upsampling=1,
@@ -1766,8 +1766,10 @@ def _process_bursts_slc(
                 arr_p /= cal_p
             else:
                 cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
-                log.info("Apply calibration factor")
-                arr_p /= cal_p * gamma_t
+                log.info("Apply calibration factor and terrain flattening")
+                arr_p /= cal_p 
+                arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
+                arr_p[np.isnan(gamma_t)] = np.nan
 
             first_line = (burst_idx - min_burst) * slc.lines_per_burst
 
