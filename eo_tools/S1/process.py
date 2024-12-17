@@ -29,8 +29,9 @@ from eo_tools.util import _has_overlap
 from skimage.morphology import binary_erosion
 
 # use child processes
-USE_CP = False
 # USE_CP = True
+# not needed anymore due to better memory handling in the latest rasterio
+USE_CP = False
 
 log = logging.getLogger(__name__)
 
@@ -1281,16 +1282,13 @@ def coherence(
             dtype="float32",
         )
     )
-
+    nodataval = np.nan
     if magnitude:
         coh = np.abs(coh)
 
     struct = np.ones((box_az, box_rg))
     msk_out = da.map_blocks(binary_erosion, msk, struct)
-    # msk_out = binary_erosion(msk, struct)
     coh = da.where(msk_out, coh, np.nan)
-
-    nodataval = np.nan
 
     da_coh = xr.DataArray(
         name="coh",
@@ -1543,112 +1541,118 @@ def _process_bursts_insar(
         blockysize=512,
     )
 
+    # for now we hardcode this as benchmarks show lower peak memory and
+    # slight speed gain
+    gdal_cachemax = 512
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
+    with rio.Env(GDAL_CACHEMAX=gdal_cachemax) as env:
+        with (
+            rio.open(tmp_prm, "w", **prof_tmp) as ds_prm,
+            rio.open(tmp_sec, "w", **prof_tmp) as ds_sec,
+            rio.open(file_dem) as ds_dem,
+        ):
+            off_az = 0
+            for burst_idx in range(min_burst, max_burst + 1):
+                log.info(f"---- Processing burst {burst_idx} ----")
 
-    with rio.open(tmp_prm, "w", **prof_tmp) as ds_prm, rio.open(
-        tmp_sec, "w", **prof_tmp
-    ) as ds_sec:
-        off_az = 0
-        for burst_idx in range(min_burst, max_burst + 1):
-            log.info(f"---- Processing burst {burst_idx} ----")
+                # compute geocoding LUTs (lookup tables) for primary and secondary bursts
+                file_dem_burst = f"{dir_out}/dem_burst.tif"
+                burst_geoms = prm.gdf_burst_geom
+                burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
+                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
 
-            # compute geocoding LUTs (lookup tables) for primary and secondary bursts
-            file_dem_burst = f"{dir_out}/dem_burst.tif"
-            burst_geoms = prm.gdf_burst_geom
-            burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
-            shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
-
-            with rio.open(file_dem) as ds_dem:
                 w = geometry_window(ds_dem, shapes=[shp])
                 # window to read in the DEM
                 burst_window = [w.col_off, w.row_off, w.width, w.height]
                 # pixel position to write burst in the LUT
                 slices = w.toslices()
 
-            # use virtual raster to keep using the same geocoding function
-            file_dem_burst = f"{dir_out}/dem_burst.vrt"
-            gdal.Translate(
-                destName=file_dem_burst,
-                srcDS=file_dem,
-                format="VRT",
-                srcWin=burst_window,
-                creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
-            )
+                # use virtual raster to keep using the same geocoding function
+                file_dem_burst = f"{dir_out}/dem_burst.vrt"
+                gdal.Translate(
+                    destName=file_dem_burst,
+                    srcDS=file_dem,
+                    format="VRT",
+                    srcWin=burst_window,
+                    creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
+                )
 
-            # this implementation upsamples DEM at download, not during geocoding
-            az_p2g, rg_p2g, _ = prm.geocode_burst(
-                file_dem_burst,
-                burst_idx=burst_idx,
-                dem_upsampling=1,
-            )
-            az_s2g, rg_s2g, _ = sec.geocode_burst(
-                file_dem_burst,
-                burst_idx=burst_idx + burst_offset,
-                dem_upsampling=1,
-            )
+                # this implementation upsamples DEM at download, not during geocoding
+                az_p2g, rg_p2g, _ = prm.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx,
+                    dem_upsampling=1,
+                )
+                az_s2g, rg_s2g, _ = sec.geocode_burst(
+                    file_dem_burst,
+                    burst_idx=burst_idx + burst_offset,
+                    dem_upsampling=1,
+                )
 
-            # read primary and secondary burst rasters
-            arr_p = prm.read_burst(burst_idx, True)
-            arr_s = sec.read_burst(burst_idx + burst_offset, True)
+                # read primary and secondary burst rasters
+                arr_p = prm.read_burst(burst_idx, True)
+                arr_s = sec.read_burst(burst_idx + burst_offset, True)
 
-            # radiometric calibration (beta or sigma nought)
-            cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
-            cal_s = sec.calibration_factor(burst_idx + burst_offset, cal_type=cal_type)
-            log.info("Apply calibration factor")
-            arr_p /= cal_p
-            arr_s /= cal_s
+                # radiometric calibration (beta or sigma nought)
+                cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
+                cal_s = sec.calibration_factor(
+                    burst_idx + burst_offset, cal_type=cal_type
+                )
+                log.info("Apply calibration factor")
+                arr_p /= cal_p
+                arr_s /= cal_s
 
-            # deramp secondary
-            pdb_s = sec.deramp_burst(burst_idx + burst_offset)
-            log.info("Apply phase deramping")
-            arr_s *= np.exp(1j * pdb_s)
+                # deramp secondary
+                pdb_s = sec.deramp_burst(burst_idx + burst_offset)
+                log.info("Apply phase deramping")
+                arr_s *= np.exp(1j * pdb_s)
 
-            # project Secondary LUT into Primary grid
-            az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+                # project Secondary LUT into Primary grid
+                az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
-            # warp raster secondary and deramping phase
-            arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
-            pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
+                # warp raster secondary and deramping phase
+                arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
 
-            # reramp secondary
-            log.info("Apply phase reramping")
-            arr_s *= np.exp(-1j * pdb_s)
+                # reramp secondary
+                log.info("Apply phase reramping")
+                arr_s *= np.exp(-1j * pdb_s)
 
-            # compute topographic phases
-            rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
-            pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-            pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-            log.info("Apply topographic phase removal")
-            pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+                # compute topographic phases
+                rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
+                pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+                pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+                log.info("Apply topographic phase removal")
+                pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
 
-            arr_s *= pha_topo
+                arr_s *= pha_topo
+                first_line = (burst_idx - min_burst) * prm.lines_per_burst
 
-            first_line = (burst_idx - min_burst) * prm.lines_per_burst
+                # write the coregistered SLCs
+                ds_prm.write(
+                    arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
+                )
+                ds_sec.write(
+                    arr_s,
+                    1,
+                    window=Window(0, first_line, nrg, prm.lines_per_burst),
+                )
 
-            # write the coregistered SLCs
-            ds_prm.write(
-                arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
-            )
-            ds_sec.write(
-                arr_s,
-                1,
-                window=Window(0, first_line, nrg, prm.lines_per_burst),
-            )
-
-            # place overlapping burst LUT with azimuth offset
-            if burst_idx > min_burst:
-                msk_overlap = az_p2g < H
-                az_p2g[msk_overlap] = np.nan
-                rg_p2g[msk_overlap] = np.nan
-            msk = ~np.isnan(az_p2g)
-            arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
-            arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-            off_az += prm.lines_per_burst - 2 * H
+                # place overlapping burst LUT with azimuth offset
+                if burst_idx > min_burst:
+                    msk_overlap = az_p2g < H
+                    az_p2g[msk_overlap] = np.nan
+                    rg_p2g[msk_overlap] = np.nan
+                msk = ~np.isnan(az_p2g)
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
+                off_az += prm.lines_per_burst - 2 * H
 
     remove(file_dem_burst)
 
-    with rio.open(file_lut, "w", **prof_lut) as ds_lut:
-        ds_lut.write(arr_lut)
+    with rio.Env(GDAL_CACHEMAX=gdal_cachemax) as env:
+        with rio.open(file_lut, "w", **prof_lut) as ds_lut:
+            ds_lut.write(arr_lut)
 
 
 def _process_bursts_slc(
@@ -1712,86 +1716,90 @@ def _process_bursts_slc(
     )
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
+    with rio.Env(GDAL_CACHEMAX=512) as env:
+        with (rio.open(tmp_slc, "w", **prof_tmp) as ds_prm,
+              rio.open(file_dem) as ds_dem):
+            off_az =0
+            for burst_idx in range(min_burst, max_burst + 1):
+                log.info(f"---- Processing burst {burst_idx} ----")
 
-    with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm:
-        off_az = 0
-        for burst_idx in range(min_burst, max_burst + 1):
-            log.info(f"---- Processing burst {burst_idx} ----")
+                # compute geocoding LUTs (lookup tables) for primary and secondary bursts
+                file_dem_burst = f"{dir_out}/dem_burst.tif"
+                burst_geoms = slc.gdf_burst_geom
+                burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
+                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
 
-            # compute geocoding LUTs (lookup tables) for primary and secondary bursts
-            file_dem_burst = f"{dir_out}/dem_burst.tif"
-            burst_geoms = slc.gdf_burst_geom
-            burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
-            shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
-
-            with rio.open(file_dem) as ds_dem:
                 w = geometry_window(ds_dem, shapes=[shp])
                 # window to read in the DEM
                 burst_window = [w.col_off, w.row_off, w.width, w.height]
                 # pixel position to write burst in the LUT
                 slices = w.toslices()
 
-            # use virtual raster to keep using the same geocoding function
-            file_dem_burst = f"{dir_out}/dem_burst.vrt"
-            gdal.Translate(
-                destName=file_dem_burst,
-                srcDS=file_dem,
-                format="VRT",
-                srcWin=burst_window,
-                creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
-            )
-
-            # this implementation upsamples DEM at download, not during geocoding
-            if cal_type != "radiometric":
-                az_p2g, rg_p2g, _ = slc.geocode_burst(
-                    file_dem_burst,
-                    burst_idx=burst_idx,
-                    dem_upsampling=1,
-                )
-            else:
-                az_p2g, rg_p2g, _, gamma_t = slc.geocode_burst(
-                    file_dem_burst,
-                    burst_idx=burst_idx,
-                    dem_upsampling=1,
-                    simulate_terrain=True
+                # use virtual raster to keep using the same geocoding function
+                file_dem_burst = f"{dir_out}/dem_burst.vrt"
+                gdal.Translate(
+                    destName=file_dem_burst,
+                    srcDS=file_dem,
+                    format="VRT",
+                    srcWin=burst_window,
+                    creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
                 )
 
-            # read primary and secondary burst rasters
-            arr_p = slc.read_burst(burst_idx, True)
+                # this implementation upsamples DEM at download, not during geocoding
+                if cal_type != "radiometric":
+                    az_p2g, rg_p2g, _ = slc.geocode_burst(
+                        file_dem_burst,
+                        burst_idx=burst_idx,
+                        dem_upsampling=1,
+                    )
+                else:
+                    az_p2g, rg_p2g, _, gamma_t = slc.geocode_burst(
+                        file_dem_burst,
+                        burst_idx=burst_idx,
+                        dem_upsampling=1,
+                        simulate_terrain=True,
+                    )
 
-            # radiometric calibration (beta or sigma nought)
-            if cal_type != "radiometric":
-                cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
-                log.info("Apply calibration factor")
-                arr_p /= cal_p
-            else:
-                cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
-                log.info("Apply calibration factor and terrain flattening")
-                arr_p /= cal_p 
-                arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
-                arr_p[np.isnan(gamma_t)] = np.nan
+                # read primary and secondary burst rasters
+                arr_p = slc.read_burst(burst_idx, True)
 
-            first_line = (burst_idx - min_burst) * slc.lines_per_burst
+                # radiometric calibration (beta or sigma nought)
+                if cal_type != "radiometric":
+                    cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
+                    log.info("Apply calibration factor")
+                    arr_p /= cal_p
+                else:
+                    cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
+                    log.info("Apply calibration factor and terrain flattening")
+                    arr_p /= cal_p
+                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(
+                        gamma_t[~np.isnan(gamma_t)]
+                    )
+                    arr_p[np.isnan(gamma_t)] = np.nan
 
-            # write the coregistered SLCs
-            ds_prm.write(
-                arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
-            )
+                # read primary and secondary burst raster
+                first_line = (burst_idx - min_burst) * slc.lines_per_burst
 
-            # place overlapping burst LUT with azimuth offset
-            if burst_idx > min_burst:
-                msk_overlap = az_p2g < H
-                az_p2g[msk_overlap] = np.nan
-                rg_p2g[msk_overlap] = np.nan
-            msk = ~np.isnan(az_p2g)
-            arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
-            arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-            off_az += slc.lines_per_burst - 2 * H
+                # write the coregistered SLCs
+                ds_prm.write(
+                    arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
+                )
+
+                # place overlapping burst LUT with azimuth offset
+                if burst_idx > min_burst:
+                    msk_overlap = az_p2g < H
+                    az_p2g[msk_overlap] = np.nan
+                    rg_p2g[msk_overlap] = np.nan
+                msk = ~np.isnan(az_p2g)
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
+                off_az += slc.lines_per_burst - 2 * H
 
     remove(file_dem_burst)
 
-    with rio.open(file_lut, "w", **prof_lut) as ds_lut:
-        ds_lut.write(arr_lut)
+    with rio.Env(GDAL_CACHEMAX=512) as env:
+        with rio.open(file_lut, "w", **prof_lut) as ds_lut:
+            ds_lut.write(arr_lut)
 
 
 def _apply_fast_esd(
