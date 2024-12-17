@@ -42,7 +42,7 @@ ids = [
 slc_dir = f"{data_dir}/{ids[0]}.zip"
 outputs_prefix="/data/res/test-slc-processor-sigma"
 outputs_prefix_2="/data/res/test-slc-processor-beta"
-outputs_prefix_3="/data/res/test-slc-processor-beta"
+outputs_prefix_3="/data/res/test-slc-processor-rtc"
 
 # %%
 # load a geometry
