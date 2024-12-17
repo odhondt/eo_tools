@@ -370,8 +370,11 @@ class S1IWSwath:
 
             # finding occluded shadow pixels
             log.info("Shadow detection")
+            # compute ero altitude coordinates (use DEM reference height)
+            dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), dem_prof["crs"])
+
             shadow_mask = detect_active_shadow(
-                az_geo, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz
+                az_geo, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
             )
 
             # simulating terrain backscatter
@@ -801,8 +804,6 @@ def fast_esd(ifgs, overlap):
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """
 
-    import matplotlib.pyplot as plt
-
     if len(ifgs) < 2:
         log.warning(
             "Skipping ESD: there must be at least 2 consecutive bursts from the same subsawths."
@@ -1006,6 +1007,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     # dem_pts = tf.transform(*WGS84_points)
 
     # multi-threaded
+    # WARNING: this fails with pyproj 3.7.0
     chunk = 128
     wgs_pts = [
         (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
@@ -1269,13 +1271,14 @@ def simulate_terrain_backscatter(
     return gamma_proj
 
 
-def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
+def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz):
     """Find occluded pixels in DEM according to the sensor zero doppler positions. Reproject the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scan the azimuth lines and find where the look angle is below its stored maximum.
 
     Args:
         az (array): azimuth lookup table
-        lat (array): longitudes of the resampled DEM
-        lon (array): latitudes of the resampled DEM
+        dem_xg (float): dem x ground coordinate
+        dem_yg (float): dem y ground coordinate
+        dem_zg (float): dem z ground coordinate
         dem_x (float): dem x coordinate
         dem_y (float): dem y coordinate
         dem_z (float): dem z coordinate
@@ -1283,9 +1286,6 @@ def detect_active_shadow(az, lat, lon, dem_x, dem_y, dem_z, dx, dy, dz):
         dy (float):  zero doppler y coordinate
         dz (float): zero doppler z coordinate
     """
-
-    # compute zero altitude coordinates (use DEM reference height)
-    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), "EPSG:4326")
 
     # distance between orbit zero doppler and ellipsoid or egm
     dist0 = np.sqrt(
