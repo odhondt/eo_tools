@@ -371,7 +371,9 @@ class S1IWSwath:
             # finding occluded shadow pixels
             log.info("Shadow detection")
             # compute ero altitude coordinates (use DEM reference height)
-            dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), dem_prof["crs"])
+            dem_xg, dem_yg, dem_zg = lla_to_ecef(
+                lat, lon, np.zeros_like(lat), dem_prof["crs"]
+            )
 
             shadow_mask = detect_active_shadow(
                 az_geo, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
@@ -1116,15 +1118,15 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
 @njit(nogil=True, parallel=True, cache=True)
 def simulate_terrain_backscatter(
-    naz, nrg, azp, rgp, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+    naz, nrg, az, rg, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
 ):
     """Use DEM and look vectors to simulate terrain backscatter in the SAR geometry
 
     Args:
         naz (int): azimuth size
         nrg (int): slant range size
-        azp (array): Lookup table of azimuth indices
-        rgp (array): Lookup table of range indices
+        az (array): Lookup table of azimuth indices
+        rg (array): Lookup table of range indices
         dem_x (array): DEM x coordinates
         dem_y (array): DEM y coordinates
         dem_z (array): DEM z coordinates
@@ -1174,15 +1176,15 @@ def simulate_terrain_backscatter(
 
     gamma_proj = np.zeros((naz, nrg))
 
-    nl, nc = azp.shape
+    nl, nc = az.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
         for j in range(0, nc - 1):
             if shadow_mask[i, j] == 1:
                 continue
             # - for each 4 neighborhood
-            aa = azp[i : i + 2, j : j + 2].flatten()
-            rr = rgp[i : i + 2, j : j + 2].flatten()
+            aa = az[i : i + 2, j : j + 2].flatten()
+            rr = rg[i : i + 2, j : j + 2].flatten()
             xx = dem_x[i : i + 2, j : j + 2].flatten()
             yy = dem_y[i : i + 2, j : j + 2].flatten()
             zz = dem_z[i : i + 2, j : j + 2].flatten()
@@ -1286,7 +1288,6 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
         dy (float):  zero doppler y coordinate
         dz (float): zero doppler z coordinate
     """
-
     # distance between orbit zero doppler and ellipsoid or egm
     dist0 = np.sqrt(
         (dx - dem_x + dem_xg) ** 2
@@ -1323,13 +1324,15 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
 @njit(parallel=True)
 def _shadow_mask(theta, rg0, az):
 
-    naz, nrg0 = int(np.ceil(az.max())), int(np.ceil(rg0.max()))
+    naz = int(np.ceil(az.max())) - int(np.floor(az.min())) + 1
+    nrg0 = int(np.ceil(rg0.max())) - int(np.floor(rg0.min())) + 1
+    
 
     # coarse warping into zero altitude (ground) geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
     for i in prange(theta.shape[0]):
         for j in range(theta.shape[1]):
-            if not np.isnan(az[i, j]):
+            if not np.isnan(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
                 theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
 
     # scanning lines in ground geometry
