@@ -563,7 +563,7 @@ def process_slc(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
 
@@ -654,6 +654,7 @@ def prepare_slc(
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -780,6 +781,7 @@ def preprocess_slc_iw(
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
         min_burst (int, optional): first burst to process. Defaults to 1.
         max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
@@ -1746,7 +1748,7 @@ def _process_bursts_slc(
                 )
 
                 # this implementation upsamples DEM at download, not during geocoding
-                if cal_type != "radiometric":
+                if cal_type != "terrain":
                     az_p2g, rg_p2g, _ = slc.geocode_burst(
                         file_dem_burst,
                         burst_idx=burst_idx,
@@ -1763,12 +1765,13 @@ def _process_bursts_slc(
                 # read primary and secondary burst rasters
                 arr_p = slc.read_burst(burst_idx, True)
 
-                # radiometric calibration (beta or sigma nought)
-                if cal_type != "radiometric":
+                # radiometric calibration (beta, sigma nought or terrain)
+                if cal_type != "terrain":
                     cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
                     log.info("Apply calibration factor")
                     arr_p /= cal_p
                 else:
+                    # we use beta as a normalization reference
                     cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
                     log.info("Apply calibration factor and terrain flattening")
                     arr_p /= cal_p

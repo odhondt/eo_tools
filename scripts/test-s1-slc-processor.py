@@ -117,7 +117,7 @@ out_dir_rtc = process_slc(
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
-    cal_type="radiometric",
+    cal_type="terrain",
     # clip_to_shape=True,
 )
 
