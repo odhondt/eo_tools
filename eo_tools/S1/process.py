@@ -801,6 +801,9 @@ def preprocess_slc_iw(
     if pol not in ["vv", "vh"]:
         ValueError("pol must be 'vv' or 'vh'")
 
+    if cal_type not in ["beta", "sigma", "terrain"]:
+        ValueError("Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain.")
+
     slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
     prm_burst_info = slc.meta["product"]["swathTiming"]["burstList"]["burst"]
