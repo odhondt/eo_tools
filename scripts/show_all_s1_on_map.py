@@ -43,3 +43,5 @@ for f in list(Path(data_dir).glob("S1*")):
 
 LayerControl().add_to(m)
 m
+
+# %%
