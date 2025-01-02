@@ -6,11 +6,11 @@
     - Instead of the sine of the projected incidence angle, the tangent is computed to comply with the gamma nought convention (as in Small's algorithm).
     - The simulated backscatter is regridded and accumulated in the SAR geometry to account for the many-to-one and one-to-many relationships.
 - Shadows are detected and set to NaNs in the normalized image.
-- Tutorial notebooks show feature usage.
+- Added tutorial notebooks to demonstrate feature usage.
 
 ## Bugfixes and improvements
-- Add libgdal jpeg dependencies to work with the new version of rasterio.
-- Temporary fix: latest pyproj version was introducing a bug in the computation of the DEM XYZ coordinates. Forcing to use the previous version.
+- Add libgdal jpeg dependency to work with the new version of rasterio.
+- Temporary fix: latest pyproj version was introducing a bug in the computation of the DEM XYZ coordinates. Force to use the previous version.
 - Refactored both InSAR and SLC processors: we do not use child processes anymore and set the GDAL_CACHEMAX value to a small number. Benchmarks showed smaller memory usage than previously and no performance loss. 
 - Fixed some exceptions in the processors (the raise keyword was missing leading the exception to not be triggered).
 
