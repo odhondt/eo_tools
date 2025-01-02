@@ -13,6 +13,7 @@
 - Temporary fix: latest pyproj version was introducing a bug in the computation of the DEM XYZ coordinates. Force to use the previous version.
 - Refactored both InSAR and SLC processors: we do not use child processes anymore and set the GDAL_CACHEMAX value to a small number. Benchmarks showed smaller memory usage than previously and no performance loss. 
 - Fixed some exceptions in the processors (the raise keyword was missing leading the exception to not be triggered).
+- Notebooks for conda-forge and docs now use urls to geojson data instead of file paths, making them usable without cloning the github repo.
 
 # 2024.10.1
 
