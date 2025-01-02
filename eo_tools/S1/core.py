@@ -34,7 +34,7 @@ class S1IWSwath:
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
-    - Apply Beta or Sigma Nought calibration
+    - Compute Beta, Sigma Nought or terrain flattening calibration factor
     - Computing the topographic phase from slant range values
     """
 
@@ -1139,12 +1139,10 @@ def simulate_terrain_backscatter(
         array: simulated terrain gamma nought
 
     Note:
-        This is a modified version of the algorithm described in SNAP terrain correction
-        documentation. Two things are different:
+        This is a modified version of the algorithm described in SNAP terrain correction documentation. Two things are different:
             - Instead of the sine of the projected incidence angle,
             the tangent is computed to comply with the gamma nought convention.
-            - The simulated backscatter is regridded and accumulated in the SAR geometry
-            to account for many-to-one and one-to-many relationships.
+            - The simulated backscatter is regridded and accumulated in the SAR geometry to account for many-to-one and one-to-many relationships.
     """
 
     # test if point is in triangle
