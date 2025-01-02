@@ -1,10 +1,12 @@
 import pytest
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import range_doppler
+from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
 import hashlib
 from shapely.geometry import box
 from unittest.mock import patch
 import numpy as np
+import rioxarray as riox
 
 
 @pytest.fixture
@@ -187,31 +189,29 @@ def test_range_doppler():
     expected_i_zd = np.array([4.5, 6.75])
     expected_r_zd = np.array([10, 5])
 
-    i_zd, r_zd = range_doppler(xx, yy, zz, positions, velocities)
+    i_zd, r_zd, _, _, _ = range_doppler(xx, yy, zz, positions, velocities)
 
     np.testing.assert_allclose(i_zd, expected_i_zd, rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(r_zd, expected_r_zd, rtol=1e-5, atol=1e-8)
 
+
 def test_fetch_dem_filename_uniqueness(create_swath):
     swath = create_swath
 
-    with patch('os.path.exists') as mock_exists, \
-         patch('eo_tools.S1.core.retrieve_dem') as mock_retrieve_dem:
+    with patch("os.path.exists") as mock_exists, patch(
+        "eo_tools.S1.core.retrieve_dem"
+    ) as mock_retrieve_dem:
 
         mock_exists.return_value = False  # Simulate that the DEM doesn't exist
 
         # Mock burst count
         swath.burst_count = 3
 
-
         # Create bounding box from GeoDataFrame geometries
         geom_all = swath.gdf_burst_geom
-        geom_sub_nobuf = (
-            geom_all[
-                (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
-            ]
-            .union_all()
-        )
+        geom_sub_nobuf = geom_all[
+            (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
+        ].union_all()
 
         def expected_filename(buffer_arc_sec, upscale_factor):
             # Apply the buffer in degrees
@@ -219,26 +219,56 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             shp = box(*geom_sub.bounds)
             shp_wkt = shp.wkt
             dem_name = "nasadem"
-            hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode('utf-8')
+            hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
             return f"/tmp/dem-{hash_str}.tif"
 
         # Generate DEM with different parameters and capture filenames
-        file_dem_1 = swath.fetch_dem(min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=40)
-        file_dem_2 = swath.fetch_dem(min_burst=1, max_burst=2, upscale_factor=2.0, buffer_arc_sec=40)
+        file_dem_1 = swath.fetch_dem(
+            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=40
+        )
+        file_dem_2 = swath.fetch_dem(
+            min_burst=1, max_burst=2, upscale_factor=2.0, buffer_arc_sec=40
+        )
 
         # Now change buffer_arc_sec to affect geometry and the resulting filename
-        file_dem_3 = swath.fetch_dem(min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=50)
+        file_dem_3 = swath.fetch_dem(
+            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=50
+        )
 
         # Ensure unique filenames are generated based on the parameters
-        assert file_dem_1 != file_dem_2, "DEM filenames should differ for different upscale factors"
-        assert file_dem_1 != file_dem_3, "DEM filenames should differ for different buffer_arc_sec values"
-        assert file_dem_2 != file_dem_3, "DEM filenames should differ for different parameters"
+        assert (
+            file_dem_1 != file_dem_2
+        ), "DEM filenames should differ for different upscale factors"
+        assert (
+            file_dem_1 != file_dem_3
+        ), "DEM filenames should differ for different buffer_arc_sec values"
+        assert (
+            file_dem_2 != file_dem_3
+        ), "DEM filenames should differ for different parameters"
 
         # Verify that the filenames are as expected
-        assert file_dem_1 == expected_filename(40, 1.0), "Generated DEM filename for upscale_factor=1.0, buffer=40 is incorrect"
-        assert file_dem_2 == expected_filename(40, 2.0), "Generated DEM filename for upscale_factor=2.0 is incorrect"
-        assert file_dem_3 == expected_filename(50, 1.0), "Generated DEM filename for buffer_arc_sec=50 is incorrect"
+        assert file_dem_1 == expected_filename(
+            40, 1.0
+        ), "Generated DEM filename for upscale_factor=1.0, buffer=40 is incorrect"
+        assert file_dem_2 == expected_filename(
+            40, 2.0
+        ), "Generated DEM filename for upscale_factor=2.0 is incorrect"
+        assert file_dem_3 == expected_filename(
+            50, 1.0
+        ), "Generated DEM filename for buffer_arc_sec=50 is incorrect"
+
+
+def test_burst_geocoding(create_swath):
+    swath = create_swath
+    file_dem = swath.fetch_dem_burst(burst_idx=3)
+    arr = riox.open_rasterio(file_dem)
+    dem_shape = arr[0].shape
+    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
+    az, rg, _, gamma_t = swath.geocode_burst(file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True)
+    assert np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
+    assert (az.shape == dem_shape) and (rg.shape == dem_shape) 
+    assert (gamma_t.shape == raster_shape)
 
 
 if __name__ == "__main__":

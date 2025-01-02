@@ -34,7 +34,7 @@ class S1IWSwath:
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
-    - Apply Beta or Sigma Naught calibration
+    - Compute Beta, Sigma Nought or terrain flattening calibration factor
     - Computing the topographic phase from slant range values
     """
 
@@ -240,16 +240,19 @@ class S1IWSwath:
             burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
         )
 
-    def geocode_burst(self, file_dem, burst_idx=1, dem_upsampling=1):
+    def geocode_burst(
+        self, file_dem, burst_idx=1, dem_upsampling=1, simulate_terrain=False
+    ):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
             file_dem (str): path to the DEM
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
+            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
 
         Returns:
-            (array, array): azimuth slant range indices. Arrays have the shape of the DEM.
+            (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
         """
 
         if burst_idx < 1 or burst_idx > self.burst_count:
@@ -315,32 +318,76 @@ class S1IWSwath:
         vel = interp_vel(t_arr)
 
         log.info("Range-Doppler terrain correction (LUT computation)")
-        az_geo, dist_geo = range_doppler(
-            # Removing first pos to get more precision. Is this useful?
-            dem_x.ravel() - pos[0, 0],
-            dem_y.ravel() - pos[0, 1],
-            dem_z.ravel() - pos[0, 2],
-            pos - pos[0],
-            vel,
-            tol=1e-8,
-            maxiter=10000,
-            # dem_x.ravel(), dem_y.ravel(), dem_z.ravel(), pos, vel, tol=1e-8
-        )
+        if simulate_terrain:
+            az_geo, dist_geo, dx, dy, dz = range_doppler(
+                # Removing first pos to get more precision. Is this useful?
+                dem_x.ravel() - pos[0, 0],
+                dem_y.ravel() - pos[0, 1],
+                dem_z.ravel() - pos[0, 2],
+                pos - pos[0],
+                vel,
+                tol=1e-8,
+                maxiter=10000,
+            )
+        else:
+            az_geo, dist_geo, _, _, _ = range_doppler(
+                # Removing first pos to get more precision. Is this useful?
+                dem_x.ravel() - pos[0, 0],
+                dem_y.ravel() - pos[0, 1],
+                dem_z.ravel() - pos[0, 2],
+                pos - pos[0],
+                vel,
+                tol=1e-8,
+                maxiter=10000,
+            )
 
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
         r0 = float(slant_range_time) * c0 / 2
         dr = c0 / (2 * float(range_sampling_rate))
-
         rg_geo = (dist_geo - r0) / dr
 
+        # masking points with invalid radar coordinates
         cnd1 = (rg_geo >= 0) & (rg_geo < nrg)
         cnd2 = (az_geo >= 0) & (az_geo < naz)
         valid = cnd1 & cnd2
         rg_geo[~valid] = np.nan
         az_geo[~valid] = np.nan
 
-        return az_geo.reshape(alt.shape), rg_geo.reshape(alt.shape), dem_prof
+        # reshape to DEM dimensions
+        rg_geo = rg_geo.reshape(alt.shape)
+        az_geo = az_geo.reshape(alt.shape)
+
+        if simulate_terrain:
+            dx[~valid] = np.nan
+            dy[~valid] = np.nan
+            dz[~valid] = np.nan
+
+            # reshape to DEM dimensions
+            dx = dx.reshape(alt.shape)
+            dy = dy.reshape(alt.shape)
+            dz = dz.reshape(alt.shape)
+
+            # finding occluded shadow pixels
+            log.info("Shadow detection")
+            # compute ero altitude coordinates (use DEM reference height)
+            dem_xg, dem_yg, dem_zg = lla_to_ecef(
+                lat, lon, np.zeros_like(lat), dem_prof["crs"]
+            )
+
+            shadow_mask = detect_active_shadow(
+                az_geo, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
+            )
+
+            # simulating terrain backscatter
+            log.info("Terrain simulation")
+            gamma_t = simulate_terrain_backscatter(
+                naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+            )
+
+            return az_geo, rg_geo, dem_prof, gamma_t
+        else:
+            return az_geo, rg_geo, dem_prof
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -742,6 +789,7 @@ def resample(
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
+            wped[np.isnan(wped)] = 0
             out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
             with rasterio.open(file_out, "w", **out_prof) as dst:
                 dst.write(wped, 1)
@@ -757,8 +805,6 @@ def fast_esd(ifgs, overlap):
         Based on ideas introduced in:
         Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """
-
-    import matplotlib.pyplot as plt
 
     if len(ifgs) < 2:
         log.warning(
@@ -963,6 +1009,7 @@ def lla_to_ecef(lat, lon, alt, dem_crs):
     # dem_pts = tf.transform(*WGS84_points)
 
     # multi-threaded
+    # WARNING: this fails with pyproj 3.7.0
     chunk = 128
     wgs_pts = [
         (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
@@ -1006,6 +1053,9 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
 
     i_zd = np.zeros_like(xx)
     r_zd = np.zeros_like(xx)
+    dx = np.zeros_like(xx)
+    dy = np.zeros_like(xx)
+    dz = np.zeros_like(xx)
     num_orbits = len(positions)
 
     for i in prange(xx.shape[0]):
@@ -1058,9 +1108,247 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
             )
 
         i_zd[i] = c
-        dx, dy, dz = doppler_freq(
+        dx[i], dy[i], dz[i] = doppler_freq(
             c, x_val, y_val, z_val, positions, velocities, int(c), int(np.ceil(c))
         )[1:]
-        r_zd[i] = np.sqrt(dx**2 + dy**2 + dz**2)
+        r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
 
-    return i_zd, r_zd
+    return i_zd, r_zd, dx, dy, dz
+
+
+@njit(nogil=True, parallel=True, cache=True)
+def simulate_terrain_backscatter(
+    naz, nrg, az, rg, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+):
+    """Use DEM and look vectors to simulate terrain backscatter in the SAR geometry
+
+    Args:
+        naz (int): azimuth size
+        nrg (int): slant range size
+        az (array): Lookup table of azimuth indices
+        rg (array): Lookup table of range indices
+        dem_x (array): DEM x coordinates
+        dem_y (array): DEM y coordinates
+        dem_z (array): DEM z coordinates
+        dx (array): Look vector x coordinates
+        dy (array): Look vector y coordinates
+        dz (array): Look vector z coordinates
+        shadow_mask(array): Shadow mask containing ones for shadow areas and NaN elsewhere
+
+    Returns:
+        array: simulated terrain gamma nought
+
+    Note:
+        This is a modified version of the algorithm described in SNAP terrain correction documentation. Two things are different:
+            - Instead of the sine of the projected incidence angle,
+            the tangent is computed to comply with the gamma nought convention.
+            - The simulated backscatter is regridded and accumulated in the SAR geometry to account for many-to-one and one-to-many relationships.
+    """
+
+    # test if point is in triangle
+    def is_in_tri(p, a, b, c):
+
+        det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
+        l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+
+        return (l1 >= 0) and (l2 >= 0) and (l1 + l2 < 1)
+
+    def project_point_on_plane(p, u, v):
+
+        uv = np.dot(u, v)
+        up = np.dot(u, p)
+        vp = np.dot(v, p)
+
+        denom = 1 - uv**2
+
+        alpha = (up - uv * vp) / denom
+        beta = (vp - uv * up) / denom
+
+        # Compute the projection
+        p_proj = alpha * u + beta * v
+        return p_proj
+
+    def norm_vec(v):
+        return np.sqrt((v**2).sum())
+
+    gamma_proj = np.zeros((naz, nrg))
+
+    nl, nc = az.shape
+    # - loop on DEM
+    for i in prange(0, nl - 1):
+        for j in range(0, nc - 1):
+            if shadow_mask[i, j] == 1:
+                continue
+            # - for each 4 neighborhood
+            aa = az[i : i + 2, j : j + 2].flatten()
+            rr = rg[i : i + 2, j : j + 2].flatten()
+            xx = dem_x[i : i + 2, j : j + 2].flatten()
+            yy = dem_y[i : i + 2, j : j + 2].flatten()
+            zz = dem_z[i : i + 2, j : j + 2].flatten()
+            # - collect triangle vertices
+            aarr = np.vstack((aa, rr)).T
+            if np.isnan(aarr).any():
+                continue
+            # - compute bounding box in the radar grid
+            amin, amax = np.floor(aa.min()), np.ceil(aa.max())
+            rmin, rmax = np.floor(rr.min()), np.ceil(rr.max())
+            amin = int(np.maximum(amin, 0))
+            rmin = int(np.maximum(rmin, 0))
+            amax = int(np.minimum(amax, naz - 1)) + 1
+            rmax = int(np.minimum(rmax, nrg - 1)) + 1
+
+            # Triangle 1
+            # look vector
+            lv1 = np.array([dx[i, j], dy[i, j], dz[i, j]])
+            lv1 /= norm_vec(lv1)
+
+            # normal vector
+            nv1 = np.cross(
+                [xx[1] - xx[0], yy[1] - yy[0], zz[1] - zz[0]],
+                [xx[2] - xx[0], yy[2] - yy[0], zz[2] - zz[0]],
+            )
+            norm1 = norm_vec(nv1)
+            nv1 /= norm1
+
+            # compute S vector (normalized position)
+            s1 = np.array([dx[i, j] - xx[0], dy[i, j] - yy[0], dz[i, j] - zz[0]])
+            s1 /= norm_vec(s1)
+
+            # project normal in the slant-range plane
+            nv1p = project_point_on_plane(nv1, lv1, s1)
+            nv1p /= norm_vec(nv1p)
+            cos1p = (nv1p * lv1).sum()
+
+            # gamma convention: inverse of the tangent
+            gamma1 = cos1p / (1e-12 + np.sqrt(1 - cos1p**2))
+            gamma1 = gamma1 if gamma1 > 0 else 0
+
+            # Triangle 2
+            # look vector
+            lv2 = np.array([dx[i + 1, j + 1], dy[i + 1, j + 1], dz[i + 1, j + 1]])
+            lv2 /= norm_vec(lv2)
+
+            # normal vector
+            nv2 = -np.cross(
+                [xx[1] - xx[3], yy[1] - yy[3], zz[1] - zz[3]],
+                [xx[2] - xx[3], yy[2] - yy[3], zz[2] - zz[3]],
+            )
+            norm2 = norm_vec(nv2)
+            nv2 /= norm2
+
+            s2 = np.array(
+                [
+                    dx[i + 1, j + 1] - xx[3],
+                    dy[i + 1, j + 1] - yy[3],
+                    dz[i + 1, j + 1] - zz[3],
+                ]
+            )
+            s2 /= norm_vec(s2)
+
+            # project normal in the slant-range plane
+            nv2p = project_point_on_plane(nv2, lv2, s2)
+            nv2p /= norm_vec(nv2p)
+            cos2p = (nv2p * lv2).sum()
+
+            # gamma convention: inverse of the tangent
+            gamma2 = cos2p / (1e-12 + np.sqrt(1 - cos2p**2))
+            gamma2 = gamma2 if gamma2 >= 0 else 0
+
+            # project into SAR geometry
+            for a in range(amin, amax):
+                for r in range(rmin, rmax):
+                    if is_in_tri([a, r], aarr[0], aarr[1], aarr[2]):
+                        gamma_proj[a, r] += gamma1
+                    if is_in_tri([a, r], aarr[3], aarr[1], aarr[2]):
+                        gamma_proj[a, r] += gamma2
+
+    for a in prange(gamma_proj.shape[0]):
+        for r in range(gamma_proj.shape[1]):
+            if gamma_proj[a, r] == 0.0:
+                gamma_proj[a, r] = np.nan
+
+    return gamma_proj
+
+
+def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz):
+    """Find occluded pixels in DEM according to the sensor zero doppler positions. Reproject the look angles in a monotonic ground geometry so each line represents an azimuth position and each column a distinct range coordinate. Then scan the azimuth lines and find where the look angle is below its stored maximum.
+
+    Args:
+        az (array): azimuth lookup table
+        dem_xg (float): dem x ground coordinate
+        dem_yg (float): dem y ground coordinate
+        dem_zg (float): dem z ground coordinate
+        dem_x (float): dem x coordinate
+        dem_y (float): dem y coordinate
+        dem_z (float): dem z coordinate
+        dx (float): zero doppler x coordinate
+        dy (float):  zero doppler y coordinate
+        dz (float): zero doppler z coordinate
+    """
+    # distance between orbit zero doppler and ellipsoid or egm
+    dist0 = np.sqrt(
+        (dx - dem_x + dem_xg) ** 2
+        + (dy - dem_y + dem_yg) ** 2
+        + (dz - dem_z + dem_zg) ** 2
+    )
+
+    # look angle for DEM points
+    px = dx - dem_x
+    py = dy - dem_y
+    pz = dz - dem_z
+    pn = np.sqrt(px**2 + py**2 + pz**2)
+    dn = np.sqrt(dx**2 + dy**2 + dz**2)
+    cos_theta = (px * dx + py * dy + pz * dz) / (pn * dn)
+    theta = np.arccos(cos_theta)
+
+    # compute zero altitude steps
+    d0_diffs = np.sqrt(
+        np.diff(dist0, axis=1, append=np.nan) ** 2
+        + np.diff(dist0, axis=0, append=np.nan) ** 2
+    )
+    # rule-of-thumb: use average difference
+    delta_d0 = np.nanmean(d0_diffs)
+
+    # convert to index
+    rg0 = (dist0 - np.nanmin(dist0)) / delta_d0
+
+    # compute mask by projecting the angle in a ground geometry
+    mask = _shadow_mask(theta, rg0, az)
+
+    return mask
+
+
+@njit(parallel=True)
+def _shadow_mask(theta, rg0, az):
+
+    naz = int(np.ceil(az.max())) - int(np.floor(az.min())) + 1
+    nrg0 = int(np.ceil(rg0.max())) - int(np.floor(rg0.min())) + 1
+    
+
+    # coarse warping into zero altitude (ground) geometry
+    theta0 = np.full((naz, nrg0), fill_value=np.nan)
+    for i in prange(theta.shape[0]):
+        for j in range(theta.shape[1]):
+            if not np.isnan(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
+                theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
+
+    # scanning lines in ground geometry
+    mask0 = np.full_like(theta0, fill_value=np.nan)
+    for i in prange(theta0.shape[0]):
+        max_elev = 0.0
+        for j in range(theta0.shape[1]):
+            if not np.isnan(theta0[i, j]):
+                if theta0[i, j] > max_elev:
+                    max_elev = theta0[i, j]
+                else:
+                    mask0[i, j] = 1.0
+
+    # back to DEM geometry
+    mask = np.full_like(theta, fill_value=np.nan)
+    for i in prange(mask.shape[0]):
+        for j in range(mask.shape[1]):
+            if not np.isnan(az[i, j]):
+                mask[i, j] = mask0[int(az[i, j]), int(rg0[i, j])]
+
+    return mask

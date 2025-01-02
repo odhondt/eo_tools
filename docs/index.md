@@ -8,6 +8,10 @@ Some examples can be viewed here:
 
 - [Sentinel-1 InSAR processing](s1-easy-tops-insar.ipynb)  
 
+- [Sentinel-1 SLC geocoding](s1-easy-slc-geocoding.ipynb)  
+
+- [Sentinel-1 SLC terrain normalization](s1-easy-terrain-flattening.ipynb)  
+
 - [Sentinel-1 custom pipeline](s1-custom-pipeline.ipynb)
 
 - [Sentinel-1 Goldstein phase denoising](s1-goldstein-phase-denoising.ipynb)

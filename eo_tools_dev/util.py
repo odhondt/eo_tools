@@ -10,6 +10,7 @@ from matplotlib.colors import to_hex
 from eo_tools.S2 import make_s2_rgb, make_s2_color
 import httpx
 
+
 def ttcog_get_stats(url, **kwargs):
     if "port" in kwargs.keys():
         port = kwargs["port"]
@@ -22,7 +23,9 @@ def ttcog_get_stats(url, **kwargs):
             params={"url": url, **kwargs},
         ).json()
     except:
-        raise RuntimeError("Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function.")
+        raise RuntimeError(
+            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+        )
     return r
 
 
@@ -50,7 +53,8 @@ def ttcog_get_tilejson(url, **kwargs):
     titiler_endpoint = f"http://localhost:{port}"
     try:
         r = httpx.get(
-            f"{titiler_endpoint}/cog/tilejson.json", params={"url": url, **kwargs}
+            f"{titiler_endpoint}/cog/WebMercatorQuad/tilejson.json",
+            params={"url": url, **kwargs},
         ).json()
     except:
         raise RuntimeError(
@@ -334,26 +338,29 @@ def show_cog(url, folium_map=None, port=8085, **kwargs):
 
     return m
 
+
 def serve_map(map_object, port=8000):
     """Opens folium map in a browser by starting a local server.
 
     Args:
         map_object (folim.Map): map to display
         port (int, optional): port on localhost. Defaults to 8000.
-    """    
+    """
     # temporary file to store the html map
-    with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp_file:
         map_filename = tmp_file.name
         map_dir = os.path.dirname(map_filename)  # Directory of the temp file
         map_object.save(map_filename)
 
     def start_server():
         os.chdir(map_dir)
-        
+
         handler = SimpleHTTPRequestHandler
         httpd = HTTPServer(("", port), handler)
-        print(f"Serving map on http://localhost:{port}/{os.path.basename(map_filename)}")
-        
+        print(
+            f"Serving map on http://localhost:{port}/{os.path.basename(map_filename)}"
+        )
+
         # Open the map in the default web browser
         webbrowser.open(f"http://localhost:{port}/{os.path.basename(map_filename)}")
 
