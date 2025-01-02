@@ -397,10 +397,10 @@ def preprocess_insar_iw(
         os.mkdir(dir_out)
 
     if iw not in [1, 2, 3]:
-        ValueError("iw must be 1, 2 or 3")
+        raise ValueError("iw must be 1, 2 or 3")
 
     if pol not in ["vv", "vh"]:
-        ValueError("pol must be 'vv' or 'vh'")
+        raise ValueError("pol must be 'vv' or 'vh'")
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -742,7 +742,6 @@ def prepare_slc(
                     min_burst=burst_prm_min,
                     max_burst=burst_prm_max,
                     cal_type=cal_type,
-                    # warp_kernel=warp_kernel,
                     dir_dem=dir_dem,
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
@@ -796,13 +795,13 @@ def preprocess_slc_iw(
         os.mkdir(dir_out)
 
     if iw not in [1, 2, 3]:
-        ValueError("iw must be 1, 2 or 3")
+        raise ValueError("iw must be 1, 2 or 3")
 
     if pol not in ["vv", "vh"]:
-        ValueError("pol must be 'vv' or 'vh'")
+        raise ValueError("pol must be 'vv' or 'vh'")
 
     if cal_type not in ["beta", "sigma", "terrain"]:
-        ValueError("Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain.")
+        raise ValueError("Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain.")
 
     slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
