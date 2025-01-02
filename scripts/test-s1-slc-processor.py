@@ -79,7 +79,7 @@ out_dir_sigma = process_slc(
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="sigma",
-    clip_to_shape=False,
+    clip_to_shape=True,
 )
 
 # %%
