@@ -1,3 +1,19 @@
+# 2025.1.0
+
+## New features
+- Radiometric terrain correction (or flattening) is now available in the SLC processor
+- Our algorithm differs from the SNAP implementation. This is actually a modified version of the radiometric normalization algorithm described in SNAP's terrain correction documentation (see https://step.esa.int/main/wp-content/help/versions/9.0.0/snap-toolboxes/org.esa.s1tbx.s1tbx.op.sar.processing.ui/operators/RangeDopplerGeocodingOp.html). Two things are different:
+    - Instead of the sine of the projected incidence angle, the tangent is computed to comply with the gamma nought convention (as in Small's algorithm).
+    - The simulated backscatter is regridded and accumulated in the SAR geometry to account for the many-to-one and one-to-many relationships.
+- Shadows are detected and set to NaNs in the normalized image.
+- Tutorial notebooks show feature usage.
+
+## Bugfixes and improvements
+- Add libgdal jpeg dependencies to work with the new version of rasterio.
+- Temporary fix: latest pyproj version was introducing a bug in the computation of the DEM XYZ coordinates. Forcing to use the previous version.
+- Refactored both InSAR and SLC processors: we do not use child processes anymore and set the GDAL_CACHEMAX value to a small number. Benchmarks showed smaller memory usage than previously and no performance loss. 
+- Fixed some exceptions in the processors (the raise keyword was missing leading the exception to not be triggered).
+
 # 2024.10.1
 
 ## New features
