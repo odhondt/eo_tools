@@ -42,8 +42,8 @@ secondary_dir = f"{data_dir}/{ids[1]}.zip"
 outputs_prefix = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
-file_aoi = "/eo_tools/data/Morocco_small.geojson"
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_small.geojson"
+file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
 # file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 

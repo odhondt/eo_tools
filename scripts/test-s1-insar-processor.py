@@ -45,8 +45,8 @@ outputs_prefix = "/data/res/test-full-processor"
 # %%
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_small.geojson"
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(file_aoi).geometry[0]
 
 # search_criteria = {

@@ -72,7 +72,6 @@ out_dir_sigma = process_slc(
     aoi_name=None,
     shp=shp,
     pol="full",
-    # pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
@@ -80,7 +79,7 @@ out_dir_sigma = process_slc(
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="sigma",
-    # clip_to_shape=False,
+    clip_to_shape=False,
 )
 
 # %%
@@ -91,7 +90,6 @@ out_dir_beta = process_slc(
     aoi_name=None,
     shp=shp,
     pol="full",
-    # pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
@@ -99,7 +97,7 @@ out_dir_beta = process_slc(
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="beta",
-    # clip_to_shape=True,
+    clip_to_shape=True,
 )
 
 # %%
@@ -110,7 +108,6 @@ out_dir_rtc = process_slc(
     aoi_name=None,
     shp=shp,
     pol="full",
-    # pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
@@ -118,7 +115,7 @@ out_dir_rtc = process_slc(
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="terrain",
-    # clip_to_shape=True,
+    clip_to_shape=True,
 )
 
 # %%
