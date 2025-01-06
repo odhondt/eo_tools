@@ -63,10 +63,10 @@ for burst_idx in range(min_burst, max_burst + 1):
 
     # compute geocoding LUTs for master and slave bursts
     file_dem = prm.fetch_dem_burst(burst_idx, dir_dem="/data/tmp", force_download=False)
-    az_p2g, rg_p2g, _ = prm.geocode_burst(
+    az_p2g, rg_p2g = prm.geocode_burst(
         file_dem, burst_idx=burst_idx, dem_upsampling=up
     )
-    az_s2g, rg_s2g, _ = sec.geocode_burst(
+    az_s2g, rg_s2g = sec.geocode_burst(
         file_dem, burst_idx=burst_idx, dem_upsampling=up
     )
 

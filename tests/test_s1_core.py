@@ -265,7 +265,7 @@ def test_burst_geocoding(create_swath):
     arr = riox.open_rasterio(file_dem)
     dem_shape = arr[0].shape
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    az, rg, _, gamma_t = swath.geocode_burst(file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True)
+    az, rg, gamma_t = swath.geocode_burst(file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True)
     assert np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
     assert (az.shape == dem_shape) and (rg.shape == dem_shape) 
     assert (gamma_t.shape == raster_shape)
