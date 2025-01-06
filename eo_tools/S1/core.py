@@ -385,9 +385,9 @@ class S1IWSwath:
                 naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
             )
 
-            return az_geo, rg_geo, dem_prof, gamma_t
+            return az_geo, rg_geo, gamma_t
         else:
-            return az_geo, rg_geo, dem_prof
+            return az_geo, rg_geo
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
