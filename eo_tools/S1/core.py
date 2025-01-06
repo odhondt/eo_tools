@@ -1009,10 +1009,8 @@ def load_dem_coords(file_dem, upscale_factor=1):
     return lat, lon, alt, dem_prof, composite_crs
 
 
-# TODO produce right composite crs for each DEM
 def lla_to_ecef(lat, lon, alt, composite_crs):
 
-    # TODO: use parameter instead
     # WGS84_crs = "EPSG:4326+5773"
     ECEF_crs = "EPSG:4978"
 
