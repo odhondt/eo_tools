@@ -163,6 +163,7 @@ class S1IWSwath:
         buffer_arc_sec=40,
         force_download=False,
         upscale_factor=1,
+        dem_name = "nasadem",
     ):
         """Downloads the DEM for a given burst range
 
@@ -172,6 +173,7 @@ class S1IWSwath:
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
+            dem_name (str, optional): Digital Elevation Model to download.
 
         Returns:
             str: path to the downloaded file
@@ -192,6 +194,8 @@ class S1IWSwath:
             )
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
+        if dem_name not in ["nasadem" , "cop-dem-glo-30" , "cop-dem-glo-90" , "alos-dem"]:
+            raise ValueError(f"Unkown DEM. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'")
 
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
@@ -205,16 +209,25 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        dem_name = "nasadem"  # will be a parameter in the future
+        # dem_name = "nasadem" 
         hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
         file_dem = f"{dir_dem}/{dem_prefix}"
 
         if not os.path.exists(file_dem) or force_download:
+            if dem_name in ["nasadem", "alos-dem"]:
+                composite_crs = "EPSG:4326+5773" 
+            elif dem_name in ["cop-dem-glo-30", "cop-dem-glo-90"]:
+                composite_crs = "EPSG:4326+3855" 
             retrieve_dem(
-                shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+                # shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+                shp, file_dem, dem_name=dem_name, upscale_factor=upscale_factor
             )
+            # wrrite custom tag for geocoding to use the proper vertical CRS
+            with rasterio.open(file_dem, "r+") as ds:
+                ds.update_tags(COMPOSITE_CRS=composite_crs)
+
         else:
             log.info("--DEM already on disk")
 
