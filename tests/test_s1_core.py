@@ -216,6 +216,11 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
         ].union_all()
 
+        dir_dem = "/tmp/test-fetch-dem"
+
+        if not os.path.exists(dir_dem):
+            os.mkdir(dir_dem)
+
         def expected_filename(min_burst, max_burst, buffer_arc_sec, upscale_factor, dem_name):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
@@ -226,7 +231,7 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
             # expected file name
-            file_dem_expected = f"/tmp/dem-{hash_str}.tif"
+            file_dem_expected = f"{dir_dem}/dem-{hash_str}.tif"
 
             # generate dummy file that will be opened in the function to test
             with rasterio.open(
@@ -252,19 +257,19 @@ def test_fetch_dem_filename_uniqueness(create_swath):
 
         # Generate DEM with different parameters and capture filenames
         file_dem_1 = swath.fetch_dem(
-            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=40
+            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=40
         )
         file_dem_2 = swath.fetch_dem(
-            min_burst=1, max_burst=2, upscale_factor=2.0, buffer_arc_sec=40
+            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=2.0, buffer_arc_sec=40
         )
 
         # Now change buffer_arc_sec to affect geometry and the resulting filename
         file_dem_3 = swath.fetch_dem(
-            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=50
+            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=50
         )
 
         file_dem_4 = swath.fetch_dem(
-            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=40, dem_name="alos-dem"
+            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=40, dem_name="alos-dem"
         )
 
 
