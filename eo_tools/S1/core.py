@@ -173,7 +173,7 @@ class S1IWSwath:
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
-            dem_name (str, optional): Digital Elevation Model to download.
+            dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
 
         Returns:
             str: path to the downloaded file
@@ -224,7 +224,7 @@ class S1IWSwath:
                 # shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
                 shp, file_dem, dem_name=dem_name, upscale_factor=upscale_factor
             )
-            # wrrite custom tag for geocoding to use the proper vertical CRS
+            # write custom tag for geocoding to use the proper vertical CRS
             with rasterio.open(file_dem, "r+") as ds:
                 ds.update_tags(COMPOSITE_CRS=composite_crs)
 
@@ -235,7 +235,9 @@ class S1IWSwath:
 
     # kept for backwards compatibility
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False,  
+        upscale_factor=1,
+        dem_name="nasadem",
     ):
         """Downloads the DEM for a given burst
 
@@ -244,13 +246,14 @@ class S1IWSwath:
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
+            dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
 
         Returns:
             str: path to the downloaded file
         """
 
         return self.fetch_dem(
-            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
+            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download, upscale_factor, dem_name
         )
 
     def geocode_burst(
@@ -972,15 +975,22 @@ def load_dem_coords(file_dem, upscale_factor=1):
             )[0]
             # scale image transform
             dem_prof = ds.profile.copy()
-            composite_crs = ds.tags()["COMPOSITE_CRS"]
             dem_trans = ds.transform * ds.transform.scale(
                 (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
             )
+            try:
+                composite_crs = ds.tags()["COMPOSITE_CRS"]
+            except:
+                RuntimeError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
+            try:
+                composite_crs = ds.tags()["COMPOSITE_CRS"]
+            except:
+                RuntimeError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
 
     # output lat-lon coordinates
