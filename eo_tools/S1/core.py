@@ -163,7 +163,7 @@ class S1IWSwath:
         buffer_arc_sec=40,
         force_download=False,
         upscale_factor=1,
-        dem_name = "nasadem",
+        dem_name="nasadem",
     ):
         """Downloads the DEM for a given burst range
 
@@ -194,8 +194,10 @@ class S1IWSwath:
             )
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
-        if dem_name not in ["nasadem" , "cop-dem-glo-30" , "cop-dem-glo-90" , "alos-dem"]:
-            raise ValueError(f"Unkown DEM. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'")
+        if dem_name not in ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]:
+            raise ValueError(
+                f"Unkown DEM. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'"
+            )
 
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
@@ -209,8 +211,12 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        # dem_name = "nasadem" 
-        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst_}".encode("utf-8")
+        # dem_name = "nasadem"
+        hash_input = (
+            f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst_}".encode(
+                "utf-8"
+            )
+        )
         # hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_".encode("utf-8")
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
@@ -218,12 +224,15 @@ class S1IWSwath:
 
         if not os.path.exists(file_dem) or force_download:
             if dem_name in ["nasadem", "alos-dem"]:
-                composite_crs = "EPSG:4326+5773" 
+                composite_crs = "EPSG:4326+5773"
             elif dem_name in ["cop-dem-glo-30", "cop-dem-glo-90"]:
-                composite_crs = "EPSG:4326+3855" 
+                composite_crs = "EPSG:4326+3855"
             retrieve_dem(
                 # shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
-                shp, file_dem, dem_name=dem_name, upscale_factor=upscale_factor
+                shp,
+                file_dem,
+                dem_name=dem_name,
+                upscale_factor=upscale_factor,
             )
             # write custom tag for geocoding to use the proper vertical CRS
             with rasterio.open(file_dem, "r+") as ds:
@@ -236,7 +245,11 @@ class S1IWSwath:
 
     # kept for backwards compatibility
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False,  
+        self,
+        burst_idx=1,
+        dir_dem="/tmp",
+        buffer_arc_sec=40,
+        force_download=False,
         upscale_factor=1,
         dem_name="nasadem",
     ):
@@ -254,7 +267,13 @@ class S1IWSwath:
         """
 
         return self.fetch_dem(
-            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download, upscale_factor, dem_name
+            burst_idx,
+            burst_idx,
+            dir_dem,
+            buffer_arc_sec,
+            force_download,
+            upscale_factor,
+            dem_name,
         )
 
     def geocode_burst(
@@ -304,7 +323,9 @@ class S1IWSwath:
             log.info("Resample DEM and extract coordinates")
         else:
             log.info("Extract DEM coordinates")
-        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(file_dem, dem_upsampling)
+        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
+            file_dem, dem_upsampling
+        )
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
         dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
@@ -390,7 +411,10 @@ class S1IWSwath:
             log.info("Shadow detection")
             # compute ero altitude coordinates (use DEM reference height)
             dem_xg, dem_yg, dem_zg = lla_to_ecef(
-                lat, lon, np.zeros_like(lat), composite_crs
+                lat,
+                lon,
+                np.zeros_like(lat),
+                composite_crs,
                 # lat, lon, np.zeros_like(lat), dem_prof["crs"]
             )
 
@@ -1350,7 +1374,6 @@ def _shadow_mask(theta, rg0, az):
 
     naz = int(np.ceil(az.max())) - int(np.floor(az.min())) + 1
     nrg0 = int(np.ceil(rg0.max())) - int(np.floor(rg0.min())) + 1
-    
 
     # coarse warping into zero altitude (ground) geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
