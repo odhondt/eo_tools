@@ -216,13 +216,14 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
         ].union_all()
 
-        def expected_filename(buffer_arc_sec, upscale_factor, dem_name):
+        def expected_filename(min_burst, max_burst, buffer_arc_sec, upscale_factor, dem_name):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
             shp = box(*geom_sub.bounds)
             shp_wkt = shp.wkt
             # dem_name = "nasadem"
-            hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
+            # hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
+            hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
             # expected file name
             file_dem_expected = f"/tmp/dem-{hash_str}.tif"
@@ -244,10 +245,10 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             return file_dem_expected
 
         # generate expected files and their names
-        file_dem_1_e = expected_filename(40, 1.0, "nasadem")
-        file_dem_2_e = expected_filename(40, 2.0, "nasadem")
-        file_dem_3_e = expected_filename(50, 1.0, "nasadem")
-        file_dem_4_e = expected_filename(40, 1.0, "alos-dem")
+        file_dem_1_e = expected_filename(1, 2, 40, 1.0, "nasadem")
+        file_dem_2_e = expected_filename(1, 2, 40, 2.0, "nasadem")
+        file_dem_3_e = expected_filename(1, 2, 50, 1.0, "nasadem")
+        file_dem_4_e = expected_filename(1, 2, 40, 1.0, "alos-dem")
 
         # Generate DEM with different parameters and capture filenames
         file_dem_1 = swath.fetch_dem(

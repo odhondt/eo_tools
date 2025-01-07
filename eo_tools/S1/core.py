@@ -210,7 +210,7 @@ class S1IWSwath:
 
         # here we define a unique string for DEM filename
         # dem_name = "nasadem" 
-        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode("utf-8")
+        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst_}".encode("utf-8")
         # hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_".encode("utf-8")
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
