@@ -218,16 +218,13 @@ def test_fetch_dem_filename_uniqueness(create_swath):
 
         dir_dem = "/tmp/test-fetch-dem"
 
-        if not os.path.exists(dir_dem):
+        if not os.path.isdir(dir_dem):
             os.mkdir(dir_dem)
 
         def expected_filename(min_burst, max_burst, buffer_arc_sec, upscale_factor, dem_name):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
             shp = box(*geom_sub.bounds)
-            shp_wkt = shp.wkt
-            # dem_name = "nasadem"
-            # hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
             hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
             # expected file name
