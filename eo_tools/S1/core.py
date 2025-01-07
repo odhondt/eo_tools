@@ -211,13 +211,11 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        # dem_name = "nasadem"
         hash_input = (
             f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst_}".encode(
                 "utf-8"
             )
         )
-        # hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_".encode("utf-8")
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
         file_dem = f"{dir_dem}/{dem_prefix}"
@@ -228,7 +226,6 @@ class S1IWSwath:
             elif dem_name in ["cop-dem-glo-30", "cop-dem-glo-90"]:
                 composite_crs = "EPSG:4326+3855"
             retrieve_dem(
-                # shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
                 shp,
                 file_dem,
                 dem_name=dem_name,
@@ -329,7 +326,6 @@ class S1IWSwath:
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
         dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
-        # dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, dem_prof["crs"])
 
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -415,7 +411,6 @@ class S1IWSwath:
                 lon,
                 np.zeros_like(lat),
                 composite_crs,
-                # lat, lon, np.zeros_like(lat), dem_prof["crs"]
             )
 
             shadow_mask = detect_active_shadow(
