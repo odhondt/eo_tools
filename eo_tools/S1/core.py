@@ -201,7 +201,7 @@ class S1IWSwath:
         geom_all = self.gdf_burst_geom
         geom_sub = (
             geom_all[
-                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst)
+                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst_)
             ]
             .union_all()
             .buffer(buffer_arc_sec / 3600)
