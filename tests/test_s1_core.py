@@ -1,4 +1,5 @@
 import pytest
+import os
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
@@ -7,6 +8,8 @@ from shapely.geometry import box
 from unittest.mock import patch
 import numpy as np
 import rioxarray as riox
+import rasterio
+from rasterio import MemoryFile
 
 
 @pytest.fixture
@@ -213,15 +216,38 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
         ].union_all()
 
-        def expected_filename(buffer_arc_sec, upscale_factor):
+        def expected_filename(buffer_arc_sec, upscale_factor, dem_name):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
             shp = box(*geom_sub.bounds)
             shp_wkt = shp.wkt
-            dem_name = "nasadem"
+            # dem_name = "nasadem"
             hash_input = f"{shp_wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
-            return f"/tmp/dem-{hash_str}.tif"
+            # expected file name
+            file_dem_expected = f"/tmp/dem-{hash_str}.tif"
+
+            # generate dummy file that will be opened in the function to test
+            with rasterio.open(
+                file_dem_expected,
+                "w",
+                driver="GTiff",
+                height=10,
+                width=10,
+                count=1,
+                dtype="float32",
+                crs="EPSG:4326",
+                transform=rasterio.transform.from_origin(0, 0, 1, 1),
+            ) as dataset:
+                dataset.write(np.zeros((10, 10), dtype="float32"), 1)
+
+            return file_dem_expected
+
+        # generate expected files and their names
+        file_dem_1_e = expected_filename(40, 1.0, "nasadem")
+        file_dem_2_e = expected_filename(40, 2.0, "nasadem")
+        file_dem_3_e = expected_filename(50, 1.0, "nasadem")
+        file_dem_4_e = expected_filename(40, 1.0, "alos-dem")
 
         # Generate DEM with different parameters and capture filenames
         file_dem_1 = swath.fetch_dem(
@@ -236,6 +262,11 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=50
         )
 
+        file_dem_4 = swath.fetch_dem(
+            min_burst=1, max_burst=2, upscale_factor=1.0, buffer_arc_sec=40, dem_name="alos-dem"
+        )
+
+
         # Ensure unique filenames are generated based on the parameters
         assert (
             file_dem_1 != file_dem_2
@@ -246,29 +277,39 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         assert (
             file_dem_2 != file_dem_3
         ), "DEM filenames should differ for different parameters"
+        assert (
+            file_dem_1 != file_dem_3
+        ), "DEM filenames should differ for different dem_name"
 
         # Verify that the filenames are as expected
-        assert file_dem_1 == expected_filename(
-            40, 1.0
+        assert (
+            file_dem_1 == file_dem_1_e
         ), "Generated DEM filename for upscale_factor=1.0, buffer=40 is incorrect"
-        assert file_dem_2 == expected_filename(
-            40, 2.0
+        assert (
+            file_dem_2 == file_dem_2_e
         ), "Generated DEM filename for upscale_factor=2.0 is incorrect"
-        assert file_dem_3 == expected_filename(
-            50, 1.0
+        assert (
+            file_dem_3 == file_dem_3_e
         ), "Generated DEM filename for buffer_arc_sec=50 is incorrect"
+        assert (
+            file_dem_4 == file_dem_4_e
+        ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
 def test_burst_geocoding(create_swath):
     swath = create_swath
-    file_dem = swath.fetch_dem_burst(burst_idx=3)
+    file_dem = swath.fetch_dem_burst(burst_idx=3, force_download=True)
     arr = riox.open_rasterio(file_dem)
     dem_shape = arr[0].shape
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    az, rg, gamma_t = swath.geocode_burst(file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True)
-    assert np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
-    assert (az.shape == dem_shape) and (rg.shape == dem_shape) 
-    assert (gamma_t.shape == raster_shape)
+    az, rg, gamma_t = swath.geocode_burst(
+        file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True
+    )
+    assert (
+        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
+    )
+    assert (az.shape == dem_shape) and (rg.shape == dem_shape)
+    assert gamma_t.shape == raster_shape
 
 
 if __name__ == "__main__":
