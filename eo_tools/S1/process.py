@@ -1718,16 +1718,24 @@ def _process_bursts_slc(
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+
+    list_auto_dem = ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]
+    if dem_name in list_auto_dem:
     # process individual bursts
-    file_dem = slc.fetch_dem(
-        min_burst,
-        max_burst,
-        dir_dem,
-        buffer_arc_sec=dem_buffer_arc_sec,
-        force_download=dem_force_download,
-        upscale_factor=dem_upsampling,
-        dem_name=dem_name,
-    )
+        file_dem = slc.fetch_dem(
+            min_burst,
+            max_burst,
+            dir_dem,
+            buffer_arc_sec=dem_buffer_arc_sec,
+            force_download=dem_force_download,
+            upscale_factor=dem_upsampling,
+            dem_name=dem_name,
+        )
+    elif os.path.exists(dem_name):
+        file_dem = dem_name
+    else:
+        raise ValueError(f"Cannot find DEM file or name not in {list_auto_dem}")
+
     file_lut = f"{dir_out}/lut.tif"
     with rio.open(file_dem) as ds_dem:
         width_lut = ds_dem.width
@@ -1805,8 +1813,15 @@ def _process_bursts_slc(
                     cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
                     log.info("Apply calibration factor and terrain flattening")
                     arr_p /= cal_p
-                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
-                    arr_p[np.isnan(gamma_t)] = np.nan
+                    ## DBG
+                    # arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
+                    # arr_p[np.isnan(gamma_t)] = np.nan
+                    arr_p = gamma_t
+                    import matplotlib.pyplot as plt
+                    plt.figure(figsize=(10, 10))
+                    plt.imshow(gamma_t, interpolation="none")
+                    plt.colorbar(fraction=0.046, pad=0.04)
+                    plt.title(f'gamma_t')
 
                 # read primary and secondary burst raster
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
