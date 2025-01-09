@@ -69,81 +69,102 @@ search_criteria = {
 # print(f"{len(to_dl)} products to download")
 # dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=True)
 
-# %%
+# %% 
 
-# out_dir_nasadem = process_slc(
-#     dir_slc=slc_dir,
-#     outputs_prefix=outputs_prefix_1,
-#     aoi_name=None,
-#     shp=shp,
-#     pol="vv",
-#     subswaths=["IW1", "IW2", "IW3"],
-#     dem_name="nasadem",
-#     dem_upsampling=1.8,
-#     dem_force_download=True,
-#     dem_buffer_arc_sec=40,
-#     multilook=[1, 4],
-#     warp_kernel="bicubic",
-#     cal_type="terrain",
-#     clip_to_shape=True,
-# )
-# %%
+# Preprocessing of extrenal DEM: filter and reproject
+# TODO: allow downloading the tiff file
 
-# out_dir_alos = process_slc(
-#     dir_slc=slc_dir,
-#     outputs_prefix=outputs_prefix_2,
-#     aoi_name=None,
-#     shp=shp,
-#     pol="vv",
-#     subswaths=["IW1", "IW2", "IW3"],
-#     dem_name="alos-dem",
-#     dem_upsampling=1.8,
-#     dem_force_download=True,
-#     dem_buffer_arc_sec=40,
-#     multilook=[1, 4],
-#     warp_kernel="bicubic",
-#     cal_type="terrain",
-#     clip_to_shape=True,
-# )
+# import rasterio
+# import rioxarray as riox
+# import numpy as np
+# import xarray as xr
+# from skimage.filters import median
+# from rasterio.enums import Resampling
+# ds_dem = riox.open_rasterio("/data/dem/dem_2015_4m.tiff")
+# ds_dem = xr.apply_ufunc(median, ds_dem, np.ones((1,3,3)))
+# ds_dem.rio.reproject("EPSG:4326", resampling=Resampling.average).rio.to_raster("/data/dem/dem_2015_4m_epsg4326.tiff")
+# with rasterio.open("/data/dem/dem_2015_4m_epsg4326.tiff", "r+") as ds:
+# with rasterio.open("/data/dem/dem_2015_4m.tiff", "r+") as ds:
+    # print(ds.profile)
+    # ds.update_tags(COMPOSITE_CRS="EPSG:4326")
+    # ds.nodata = np.nan
+
 
 # %%
 
-# out_dir_glo30 = process_slc(
-#     dir_slc=slc_dir,
-#     outputs_prefix=outputs_prefix_3,
-#     aoi_name=None,
-#     shp=shp,
-#     pol="vv",
-#     subswaths=["IW1", "IW2", "IW3"],
-#     dem_name="cop-dem-glo-30",
-#     dem_upsampling=1.8,
-#     dem_force_download=True,
-#     dem_buffer_arc_sec=40,
-#     multilook=[1, 4],
-#     warp_kernel="bicubic",
-#     cal_type="terrain",
-#     clip_to_shape=True,
-# )
+out_dir_nasadem = process_slc(
+    dir_slc=slc_dir,
+    outputs_prefix=outputs_prefix_1,
+    aoi_name=None,
+    shp=shp,
+    pol="vv",
+    subswaths=["IW1", "IW2", "IW3"],
+    dem_name="nasadem",
+    dem_upsampling=1.8,
+    dem_force_download=True,
+    dem_buffer_arc_sec=40,
+    multilook=[1, 4],
+    warp_kernel="bicubic",
+    cal_type="terrain",
+    clip_to_shape=True,
+)
+# %%
+
+out_dir_alos = process_slc(
+    dir_slc=slc_dir,
+    outputs_prefix=outputs_prefix_2,
+    aoi_name=None,
+    shp=shp,
+    pol="vv",
+    subswaths=["IW1", "IW2", "IW3"],
+    dem_name="alos-dem",
+    dem_upsampling=1.8,
+    dem_force_download=True,
+    dem_buffer_arc_sec=40,
+    multilook=[1, 4],
+    warp_kernel="bicubic",
+    cal_type="terrain",
+    clip_to_shape=True,
+)
 
 # %%
 
-# out_dir_glo90 = process_slc(
-#     dir_slc=slc_dir,
-#     outputs_prefix=outputs_prefix_4,
-#     aoi_name=None,
-#     shp=shp,
-#     pol="vv",
-#     subswaths=["IW1", "IW2", "IW3"],
-#     dem_name="cop-dem-glo-90",
-#     # adapted upsampling to resolution
-#     dem_upsampling=5.4,
-#     dem_force_download=True,
-#     dem_buffer_arc_sec=40,
-#     multilook=[1, 4],
-#     warp_kernel="bicubic",
-#     cal_type="terrain",
-#     clip_to_shape=True,
-# )
+out_dir_glo30 = process_slc(
+    dir_slc=slc_dir,
+    outputs_prefix=outputs_prefix_3,
+    aoi_name=None,
+    shp=shp,
+    pol="vv",
+    subswaths=["IW1", "IW2", "IW3"],
+    dem_name="cop-dem-glo-30",
+    dem_upsampling=1.8,
+    dem_force_download=True,
+    dem_buffer_arc_sec=40,
+    multilook=[1, 4],
+    warp_kernel="bicubic",
+    cal_type="terrain",
+    clip_to_shape=True,
+)
+
+# %%
+
+out_dir_glo90 = process_slc(
+    dir_slc=slc_dir,
+    outputs_prefix=outputs_prefix_4,
+    aoi_name=None,
+    shp=shp,
+    pol="vv",
+    subswaths=["IW1", "IW2", "IW3"],
+    dem_name="cop-dem-glo-90",
+    # adapted upsampling to resolution
+    dem_upsampling=5.4,
+    dem_force_download=True,
+    dem_buffer_arc_sec=40,
+    multilook=[1, 4],
+    warp_kernel="bicubic",
+    cal_type="terrain",
+    clip_to_shape=True,
+)
 
 # %%
 out_dir_external = process_slc(
@@ -153,7 +174,6 @@ out_dir_external = process_slc(
     shp=shp,
     pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
-    # dem_name="nasadem",
     dem_name="/data/dem/dem_2015_4m_epsg4326.tiff",
     # adapted upsampling to resolution
     dem_upsampling=1,
@@ -161,7 +181,6 @@ out_dir_external = process_slc(
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
-    # cal_type="beta",
     cal_type="terrain",
     clip_to_shape=True,
 )
@@ -169,12 +188,11 @@ out_dir_external = process_slc(
 # %%
 
 m = folium.Map()
-# _ = show_cog(f"{out_dir_nasadem}/amp_vv.tif", m, rescale=f"0, 1")
-# _ = show_cog(f"{out_dir_alos}/amp_vv.tif", m, rescale=f"0, 1")
-# _ = show_cog(f"{out_dir_glo30}/amp_vv.tif", m, rescale=f"0, 1")
-# _ = show_cog(f"{out_dir_glo90}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_nasadem}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_alos}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_glo30}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_glo90}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_external}/amp_vv.tif", m, rescale=f"0, 1")
-# _ = show_cog(f"{out_dir_external}/amp_vv.tif", m, rescale=f"0, 2", expression="log(b1)")
 LayerControl().add_to(m)
 
 # open in a browser
