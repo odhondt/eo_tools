@@ -1266,8 +1266,7 @@ def simulate_terrain_backscatter(
 
             # gamma convention: inverse of the tangent
             gamma1 = cos1p / (1e-12 + np.sqrt(1 - cos1p**2))
-            ##DBG
-            # gamma1 = gamma1 if gamma1 > 0 else 0
+            gamma1 = gamma1 if gamma1 > 0 else 0
 
             # Triangle 2
             # look vector
@@ -1298,8 +1297,7 @@ def simulate_terrain_backscatter(
 
             # gamma convention: inverse of the tangent
             gamma2 = cos2p / (1e-12 + np.sqrt(1 - cos2p**2))
-            ##DBG
-            # gamma2 = gamma2 if gamma2 >= 0 else 0
+            gamma2 = gamma2 if gamma2 >= 0 else 0
 
             # project into SAR geometry
             for a in range(amin, amax):
@@ -1339,16 +1337,6 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
         + (dz - dem_z + dem_zg) ** 2
     )
 
-    ## DBG
-    import matplotlib.pyplot as plt
-    # plt.figure(figsize=(10, 10))
-    # plt.imshow(dist0, interpolation="none")
-    # plt.colorbar(fraction=0.046, pad=0.04)
-    # plt.title(f'dist0')
-    # plt.figure(figsize=(10, 10))
-    # plt.imshow(az, interpolation="none")
-    # plt.colorbar(fraction=0.046, pad=0.04)
-    # plt.title(f'az')
     # look angle for DEM points
     px = dx - dem_x
     py = dy - dem_y
@@ -1369,31 +1357,8 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
     # convert to index
     rg0 = (dist0 - np.nanmin(dist0)) / delta_d0
 
-
     # compute mask by projecting the angle in a ground geometry
-    plt.figure(figsize=(10, 10))
-    plt.imshow(cos_theta, interpolation="none")
-    plt.colorbar(fraction=0.046, pad=0.04)
-    plt.title(f'cos_theta')
-    plt.figure(figsize=(10, 10))
-    plt.imshow(theta, interpolation="none")
-    plt.colorbar(fraction=0.046, pad=0.04)
-    plt.title(f'theta before')
-    ## DBG
-    mask, t = _shadow_mask(theta, rg0, az)
-    # plt.imshow(rg0, interpolation="none")
-    # plt.colorbar(fraction=0.046, pad=0.04)
-    # plt.title(f'rg0')
-    # plt.figure(figsize=(10, 10))
-    # plt.imshow(t, interpolation="none")
-    # plt.colorbar(fraction=0.046, pad=0.04)
-    # plt.title(f'theta0')
-    plt.figure(figsize=(10, 10))
-    plt.imshow(theta, interpolation="none")
-    plt.colorbar(fraction=0.046, pad=0.04)
-    plt.title(f'theta')
-
-    mask = np.full_like(rg0, fill_value=np.nan) 
+    mask = _shadow_mask(theta, rg0, az)
 
     return mask
 
@@ -1401,18 +1366,17 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
 @njit(parallel=True)
 def _shadow_mask(theta, rg0, az):
 
-    # naz = int(np.ceil(az.max())) - int(np.floor(az.min())) + 1
-    naz = int(np.ceil(np.nanmax(az))) - int(np.floor(np.nanmin(az))) + 1
-    # nrg0 = int(np.ceil(rg0.max())) - int(np.floor(rg0.min())) + 1
-    nrg0 = int(np.ceil(np.nanmax(rg0))) - int(np.floor(np.nanmin(rg0))) + 1
+    az_min, az_max = int(np.ceil(np.nanmin(az))), int(np.floor(np.nanmax(az)))
+    rg0_min, rg0_max = int(np.ceil(np.nanmin(rg0))), int(np.floor(np.nanmax(rg0)))
+    naz = az_max - az_min + 1
+    nrg0 = rg0_max - rg0_min + 1
 
     # coarse warping into zero altitude (ground) geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
     for i in prange(theta.shape[0]):
         for j in range(theta.shape[1]):
-            if not np.isnan(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
-                # pass
-                theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
+            if np.isfinite(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
+                theta0[int(az[i, j]) - az_min, int(rg0[i, j]) - rg0_min] = theta[i, j]
 
     # scanning lines in ground geometry
     mask0 = np.full_like(theta0, fill_value=np.nan)
@@ -1429,11 +1393,7 @@ def _shadow_mask(theta, rg0, az):
     mask = np.full_like(theta, fill_value=np.nan)
     for i in prange(mask.shape[0]):
         for j in range(mask.shape[1]):
-            # if not np.isnan(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
-                # pass
-            if not np.isnan(az[i, j])  and az[i, j] > 0 and rg0[i, j] > 0:
-                mask[i, j] = mask0[int(az[i, j]), int(rg0[i, j])]
+            if not np.isfinite(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
+                mask[i, j] = mask0[int(az[i, j] - az_min), int(rg0[i, j] - rg0_min)]
 
-    ## DBG
-    # return mask
-    return mask, theta0
+    return mask
