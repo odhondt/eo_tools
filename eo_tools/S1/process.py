@@ -551,7 +551,7 @@ def process_slc(
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -656,7 +656,7 @@ def prepare_slc(
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -786,7 +786,7 @@ def preprocess_slc_iw(
     max_burst: int = None,
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
@@ -1721,7 +1721,7 @@ def _process_bursts_slc(
 
     list_auto_dem = ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]
     if dem_name in list_auto_dem:
-    # process individual bursts
+        # process individual bursts
         file_dem = slc.fetch_dem(
             min_burst,
             max_burst,
@@ -1765,9 +1765,15 @@ def _process_bursts_slc(
 
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
                 file_dem_burst = f"{dir_out}/dem_burst.tif"
-                burst_geoms = slc.gdf_burst_geom
-                burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
-                shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
+                warnings.filterwarnings(
+                    "ignore", message="Geometry is in a geographic CRS"
+                )
+                # apply arcsec buffer to lat-lon then adjust to DEM CRS
+                burst_geoms = slc.gdf_burst_geom.buffer(
+                    dem_buffer_arc_sec / 3600
+                ).to_crs(ds_dem.crs)
+                burst_geom = burst_geoms[slc.gdf_burst_geom["burst"] == burst_idx]
+                shp = burst_geom.iloc[0]
 
                 w = geometry_window(ds_dem, shapes=[shp])
                 # window to read in the DEM
@@ -1815,7 +1821,6 @@ def _process_bursts_slc(
                     arr_p /= cal_p
                     arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
                     arr_p[np.isnan(gamma_t)] = np.nan
-
 
                 # read primary and secondary burst raster
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
