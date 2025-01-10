@@ -320,12 +320,12 @@ class S1IWSwath:
             log.info("Resample DEM and extract coordinates")
         else:
             log.info("Extract DEM coordinates")
-        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
+        lat, lon, alt, dem_prof, dem_crs = load_dem_coords(
             file_dem, dem_upsampling
         )
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
-        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, dem_crs)
 
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -410,7 +410,7 @@ class S1IWSwath:
                 lat,
                 lon,
                 np.zeros_like(lat),
-                composite_crs,
+                dem_crs,
             )
 
             shadow_mask = detect_active_shadow(
@@ -997,19 +997,29 @@ def load_dem_coords(file_dem, upscale_factor=1):
             dem_trans = ds.transform * ds.transform.scale(
                 (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
             )
-            try:
-                composite_crs = ds.tags()["COMPOSITE_CRS"]
-            except KeyError as e:
-                raise KeyError(f"DEM file needs a tag named {e}") from e
+            # try:
+            #     composite_crs = ds.tags()["COMPOSITE_CRS"]
+            # except KeyError as e:
+            #     raise KeyError(f"DEM file needs a tag named {e}") from e
+            
+            if "COMPOSITE_CRS" in ds.tags().keys():
+                dem_crs = ds.tags()["COMPOSITE_CRS"]
+            else:
+                dem_crs = ds.crs
+
             nodata = ds.nodata
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
-            try:
-                composite_crs = ds.tags()["COMPOSITE_CRS"]
-            except KeyError as e:
-                raise KeyError(f"DEM file needs a tag named {e}") from e
+            # try:
+            #     composite_crs = ds.tags()["COMPOSITE_CRS"]
+            # except KeyError as e:
+            #     raise KeyError(f"DEM file needs a tag named {e}") from e
+            if "COMPOSITE_CRS" in ds.tags().keys():
+                dem_crs = ds.tags()["COMPOSITE_CRS"]
+            else:
+                dem_crs = ds.crs
             nodata = ds.nodata
 
     # output lat-lon coordinates
@@ -1035,17 +1045,17 @@ def load_dem_coords(file_dem, upscale_factor=1):
         alt[msk] = np.nan
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt, dem_prof, composite_crs
+    return lat, lon, alt, dem_prof, dem_crs
 
 
-def lla_to_ecef(lat, lon, alt, composite_crs):
+def lla_to_ecef(lat, lon, alt, dem_crs):
 
     # WGS84_crs = "EPSG:4326+5773"
     ECEF_crs = "EPSG:4978"
 
     # much faster than rasterio transform
     # tf = Transformer.from_crs(WGS84_crs, ECEF_crs)
-    tf = Transformer.from_crs(composite_crs, ECEF_crs)
+    tf = Transformer.from_crs(dem_crs, ECEF_crs)
 
     # single-threaded
     # !! pyproj uses lon, lat whereas rasterio uses lat, lon
