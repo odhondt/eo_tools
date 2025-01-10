@@ -1,3 +1,11 @@
+# 2025.1.0-build2
+
+**Bug Fix**:
+- Fixed a bug in the shadow detector: an offset needed to be added to indices when projecting in the ground geometry to avoid kernel crash. 
+
+**Details**:
+- This is the second build of version `2025.1.0`. The first build (`2025.1.0-1`) involved an update to the Conda recipe without code changes.
+
 # 2025.1.0
 
 ## New features
