@@ -101,7 +101,7 @@ out_dir_nasadem = process_slc(
     subswaths=["IW1", "IW2", "IW3"],
     dem_name="nasadem",
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -119,7 +119,7 @@ out_dir_alos = process_slc(
     subswaths=["IW1", "IW2", "IW3"],
     dem_name="alos-dem",
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -138,7 +138,7 @@ out_dir_glo30 = process_slc(
     subswaths=["IW1", "IW2", "IW3"],
     dem_name="cop-dem-glo-30",
     dem_upsampling=1.8,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -158,7 +158,7 @@ out_dir_glo90 = process_slc(
     dem_name="cop-dem-glo-90",
     # adapted upsampling to resolution
     dem_upsampling=5.4,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -177,9 +177,9 @@ out_dir_external = process_slc(
     dem_name="/data/dem/dem_2015_4m_epsg4326.tiff",
     # adapted upsampling to resolution
     dem_upsampling=1,
-    dem_force_download=True,
+    dem_force_download=False,
     dem_buffer_arc_sec=40,
-    multilook=[1, 4],
+    multilook=[1, 1],
     warp_kernel="bicubic",
     cal_type="terrain",
     clip_to_shape=True,
@@ -192,7 +192,7 @@ _ = show_cog(f"{out_dir_nasadem}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_alos}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_glo30}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_glo90}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_external}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_external}/amp_vv.tif", m, rescale=f"0, 1", resampling="cubic")
 LayerControl().add_to(m)
 
 # open in a browser
