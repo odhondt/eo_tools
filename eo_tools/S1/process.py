@@ -413,6 +413,11 @@ def preprocess_insar_iw(
     if pol not in ["vv", "vh"]:
         raise ValueError("pol must be 'vv' or 'vh'")
 
+    if cal_type not in ["beta", "sigma"]:
+        raise ValueError(
+            "Invalid calibration factor. Possible values are 'beta', 'sigma'."
+        )
+
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
 
