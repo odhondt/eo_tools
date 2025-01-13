@@ -1720,6 +1720,9 @@ def _process_bursts_slc(
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
 
     list_auto_dem = ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]
+
+    # only used if resampling external DEM
+    file_dem_tmp = None
     if dem_name in list_auto_dem:
         # process individual bursts
         file_dem = slc.fetch_dem(
@@ -1732,7 +1735,26 @@ def _process_bursts_slc(
             dem_name=dem_name,
         )
     elif os.path.exists(dem_name):
-        file_dem = dem_name
+        # create a temporary file if resampling
+        if dem_upsampling == 1:
+            file_dem = dem_name
+        elif dem_upsampling > 0:
+            file_dem_tmp = f"{dir_out}/dem_tmp.tif"
+            log.info(f"Resampling external DEM & create temporary file {file_dem_tmp} ----")
+            dem = riox.open_rasterio(dem_name)
+            new_width = int(dem.rio.width * dem_upsampling)
+            new_height = int(dem.rio.height * dem_upsampling)
+            dem_upsampled = dem.rio.reproject(
+                dem.rio.crs,
+                shape=(new_height, new_width),
+                resampling=rio.enums.Resampling.bilinear,
+            )
+            dem_upsampled.rio.to_raster(
+                file_dem_tmp, tiled=True, blockxsize=512, blockysize=512
+            )
+            file_dem = file_dem_tmp
+        else:
+            raise ValueError("Upsampling factor must be positive.")
     else:
         raise ValueError(f"Cannot find DEM file or name not in {list_auto_dem}")
 
@@ -1840,7 +1862,9 @@ def _process_bursts_slc(
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
                 off_az += slc.lines_per_burst - 2 * H
 
-    remove(file_dem_burst)
+    remove(file_dem_burst, verb=False)
+    if file_dem_tmp:
+        remove(file_dem_tmp)
 
     with rio.Env(GDAL_CACHEMAX=512) as env:
         with rio.open(file_lut, "w", **prof_lut) as ds_lut:
