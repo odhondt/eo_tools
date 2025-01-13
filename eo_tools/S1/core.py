@@ -998,19 +998,19 @@ def load_dem_coords(file_dem, upscale_factor=1):
             dem_trans = ds.transform * ds.transform.scale(
                 (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
             )
-            try:
+            if "COMPOSITE_CRS" in ds.tags():
                 composite_crs = ds.tags()["COMPOSITE_CRS"]
-            except:
-                RuntimeError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
+            else:
+                raise KeyError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
-            try:
+            if "COMPOSITE_CRS" in ds.tags():
                 composite_crs = ds.tags()["COMPOSITE_CRS"]
-            except:
-                RuntimeError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
+            else:
+                raise KeyError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
 
     # output lat-lon coordinates
