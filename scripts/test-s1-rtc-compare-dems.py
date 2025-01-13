@@ -108,6 +108,7 @@ out_dir_nasadem = process_slc(
     cal_type="terrain",
     clip_to_shape=True,
 )
+
 # %%
 
 out_dir_alos = process_slc(
@@ -138,7 +139,7 @@ out_dir_glo30 = process_slc(
     subswaths=["IW1", "IW2", "IW3"],
     dem_name="cop-dem-glo-30",
     dem_upsampling=1.8,
-    dem_force_download=False,
+    dem_force_download=True,
     dem_buffer_arc_sec=40,
     multilook=[1, 4],
     warp_kernel="bicubic",
@@ -176,10 +177,10 @@ out_dir_external = process_slc(
     subswaths=["IW1", "IW2", "IW3"],
     dem_name="/data/dem/dem_2015_4m_epsg4326.tiff",
     # adapted upsampling to resolution
-    dem_upsampling=1,
+    dem_upsampling=0.25,
     dem_force_download=False,
     dem_buffer_arc_sec=40,
-    multilook=[1, 1],
+    multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="terrain",
     clip_to_shape=True,
