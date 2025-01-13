@@ -1367,15 +1367,17 @@ def detect_active_shadow(az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy
 @njit(parallel=True)
 def _shadow_mask(theta, rg0, az):
 
-    naz = int(np.ceil(az.max())) - int(np.floor(az.min())) + 1
-    nrg0 = int(np.ceil(rg0.max())) - int(np.floor(rg0.min())) + 1
+    az_min, az_max = int(np.ceil(np.nanmin(az))), int(np.floor(np.nanmax(az)))
+    rg0_min, rg0_max = int(np.ceil(np.nanmin(rg0))), int(np.floor(np.nanmax(rg0)))
+    naz = az_max - az_min + 1
+    nrg0 = rg0_max - rg0_min + 1
 
     # coarse warping into zero altitude (ground) geometry
     theta0 = np.full((naz, nrg0), fill_value=np.nan)
     for i in prange(theta.shape[0]):
         for j in range(theta.shape[1]):
-            if not np.isnan(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
-                theta0[int(az[i, j]), int(rg0[i, j])] = theta[i, j]
+            if np.isfinite(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
+                theta0[int(az[i, j]) - az_min, int(rg0[i, j]) - rg0_min] = theta[i, j]
 
     # scanning lines in ground geometry
     mask0 = np.full_like(theta0, fill_value=np.nan)
@@ -1392,7 +1394,7 @@ def _shadow_mask(theta, rg0, az):
     mask = np.full_like(theta, fill_value=np.nan)
     for i in prange(mask.shape[0]):
         for j in range(mask.shape[1]):
-            if not np.isnan(az[i, j]):
-                mask[i, j] = mask0[int(az[i, j]), int(rg0[i, j])]
+            if not np.isfinite(az[i, j]) and az[i, j] > 0 and rg0[i, j] > 0:
+                mask[i, j] = mask0[int(az[i, j] - az_min), int(rg0[i, j] - rg0_min)]
 
     return mask
