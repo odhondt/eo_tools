@@ -2,6 +2,7 @@
 
 ## New feature
 - New `dem_name` parameter for SLC and InSAR processors which allows to choose from a list of publicly available DEMs (`nasadem`: SRTM, `alos-dem`: ALOS World 3D, `cop-dem-glo-30` Copernicus DEM 30m and  `cop-dem-glo-90` Copernicus DEM 90m)
+- Important note: because of changes in DEM metadata, it is recommended to clean all auto-downloaded DEM files or use `dem_force_download=True` before reprocessing any data after upgrading to this version.
 
 ## Bug fixes and improvements
 - Add some more tests for S1.core functions (deramping, burst overlap, phi topo,)
