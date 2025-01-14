@@ -50,6 +50,7 @@ def process_insar(
     write_secondary_amplitude: bool = False,
     apply_fast_esd: bool = False,
     dir_dem: str = "/tmp",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -77,6 +78,8 @@ def process_insar(
         write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
         write_secondary_amplitude (bool, optional): Write the amplitude of the secondary image. Defaults to False.
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to False.
+        dir_dem (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -110,6 +113,7 @@ def process_insar(
         warp_kernel=warp_kernel,
         cal_type=cal_type,
         dir_dem=dir_dem,
+        dem_name=dem_name,
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
@@ -212,6 +216,7 @@ def prepare_insar(
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -230,6 +235,8 @@ def prepare_insar(
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
+        dir_dem (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -336,6 +343,7 @@ def prepare_insar(
                     warp_kernel=warp_kernel,
                     cal_type=cal_type,
                     dir_dem=dir_dem,
+                    dem_name=dem_name,
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
@@ -366,6 +374,7 @@ def preprocess_insar_iw(
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
@@ -385,6 +394,8 @@ def preprocess_insar_iw(
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
+        dir_dem (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -401,6 +412,11 @@ def preprocess_insar_iw(
 
     if pol not in ["vv", "vh"]:
         raise ValueError("pol must be 'vv' or 'vh'")
+
+    if cal_type not in ["beta", "sigma"]:
+        raise ValueError(
+            "Invalid calibration factor. Possible values are 'beta', 'sigma'."
+        )
 
     prm = S1IWSwath(dir_primary, iw=iw, pol=pol)
     sec = S1IWSwath(dir_secondary, iw=iw, pol=pol)
@@ -477,6 +493,7 @@ def preprocess_insar_iw(
             min_burst,
             max_burst_,
             burst_offset,
+            dem_name,
             dem_upsampling,
             dem_buffer_arc_sec,
             dem_force_download,
@@ -539,6 +556,7 @@ def process_slc(
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dir_dem: str = "/tmp",
+    dem_name: str="nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -558,6 +576,8 @@ def process_slc(
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dir_dem (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -586,6 +606,7 @@ def process_slc(
         subswaths=subswaths,
         cal_type=cal_type,
         dir_dem=dir_dem,
+        dem_name=dem_name,
         dem_upsampling=dem_upsampling,
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
@@ -640,6 +661,7 @@ def prepare_slc(
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
+    dem_name: str="nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -655,6 +677,8 @@ def prepare_slc(
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
+        dir_dem (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
@@ -743,6 +767,7 @@ def prepare_slc(
                     max_burst=burst_prm_max,
                     cal_type=cal_type,
                     dir_dem=dir_dem,
+                    dem_name=dem_name,
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
@@ -766,6 +791,7 @@ def preprocess_slc_iw(
     max_burst: int = None,
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
+    dem_name: str="nasadem",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
@@ -781,8 +807,9 @@ def preprocess_slc_iw(
         min_burst (int, optional): first burst to process. Defaults to 1.
         max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
-        dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        dir_dem (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
@@ -801,7 +828,9 @@ def preprocess_slc_iw(
         raise ValueError("pol must be 'vv' or 'vh'")
 
     if cal_type not in ["beta", "sigma", "terrain"]:
-        raise ValueError("Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain.")
+        raise ValueError(
+            "Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain."
+        )
 
     slc = S1IWSwath(dir_slc, iw=iw, pol=pol)
 
@@ -846,6 +875,7 @@ def preprocess_slc_iw(
             nrg,
             min_burst,
             max_burst_,
+            dem_name,
             dem_upsampling,
             dem_buffer_arc_sec,
             dem_force_download,
@@ -1493,6 +1523,7 @@ def _process_bursts_insar(
     min_burst,
     max_burst,
     burst_offset,
+    dem_name,
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
@@ -1524,6 +1555,7 @@ def _process_bursts_insar(
         buffer_arc_sec=dem_buffer_arc_sec,
         force_download=dem_force_download,
         upscale_factor=dem_upsampling,
+        dem_name=dem_name,
     )
     file_lut = f"{dir_out}/lut.tif"
     with rio.open(file_dem) as ds_dem:
@@ -1582,12 +1614,12 @@ def _process_bursts_insar(
                 )
 
                 # this implementation upsamples DEM at download, not during geocoding
-                az_p2g, rg_p2g, _ = prm.geocode_burst(
+                az_p2g, rg_p2g = prm.geocode_burst(
                     file_dem_burst,
                     burst_idx=burst_idx,
                     dem_upsampling=1,
                 )
-                az_s2g, rg_s2g, _ = sec.geocode_burst(
+                az_s2g, rg_s2g = sec.geocode_burst(
                     file_dem_burst,
                     burst_idx=burst_idx + burst_offset,
                     dem_upsampling=1,
@@ -1668,6 +1700,7 @@ def _process_bursts_slc(
     nrg,
     min_burst,
     max_burst,
+    dem_name,
     dem_upsampling,
     dem_buffer_arc_sec,
     dem_force_download,
@@ -1698,6 +1731,7 @@ def _process_bursts_slc(
         buffer_arc_sec=dem_buffer_arc_sec,
         force_download=dem_force_download,
         upscale_factor=dem_upsampling,
+        dem_name=dem_name,
     )
     file_lut = f"{dir_out}/lut.tif"
     with rio.open(file_dem) as ds_dem:
@@ -1721,9 +1755,8 @@ def _process_bursts_slc(
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
     with rio.Env(GDAL_CACHEMAX=512) as env:
-        with (rio.open(tmp_slc, "w", **prof_tmp) as ds_prm,
-              rio.open(file_dem) as ds_dem):
-            off_az =0
+        with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm, rio.open(file_dem) as ds_dem:
+            off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
 
@@ -1751,13 +1784,13 @@ def _process_bursts_slc(
 
                 # this implementation upsamples DEM at download, not during geocoding
                 if cal_type != "terrain":
-                    az_p2g, rg_p2g, _ = slc.geocode_burst(
+                    az_p2g, rg_p2g = slc.geocode_burst(
                         file_dem_burst,
                         burst_idx=burst_idx,
                         dem_upsampling=1,
                     )
                 else:
-                    az_p2g, rg_p2g, _, gamma_t = slc.geocode_burst(
+                    az_p2g, rg_p2g, gamma_t = slc.geocode_burst(
                         file_dem_burst,
                         burst_idx=burst_idx,
                         dem_upsampling=1,
@@ -1777,9 +1810,7 @@ def _process_bursts_slc(
                     cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
                     log.info("Apply calibration factor and terrain flattening")
                     arr_p /= cal_p
-                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(
-                        gamma_t[~np.isnan(gamma_t)]
-                    )
+                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
                     arr_p[np.isnan(gamma_t)] = np.nan
 
                 # read primary and secondary burst raster

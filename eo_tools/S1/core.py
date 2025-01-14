@@ -163,6 +163,7 @@ class S1IWSwath:
         buffer_arc_sec=40,
         force_download=False,
         upscale_factor=1,
+        dem_name="nasadem",
     ):
         """Downloads the DEM for a given burst range
 
@@ -172,6 +173,7 @@ class S1IWSwath:
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
+            dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
 
         Returns:
             str: path to the downloaded file
@@ -192,12 +194,16 @@ class S1IWSwath:
             )
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
+        if dem_name not in ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]:
+            raise ValueError(
+                f"Unkown DEM. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'"
+            )
 
         # use buffer bounds around union of burst geometries
         geom_all = self.gdf_burst_geom
         geom_sub = (
             geom_all[
-                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst)
+                (geom_all["burst"] >= min_burst) & (geom_all["burst"] <= max_burst_)
             ]
             .union_all()
             .buffer(buffer_arc_sec / 3600)
@@ -205,16 +211,30 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        dem_name = "nasadem"  # will be a parameter in the future
-        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
+        hash_input = (
+            f"{shp.wkt}_{upscale_factor}_{dem_name}".encode(
+                "utf-8"
+            )
+        )
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
         file_dem = f"{dir_dem}/{dem_prefix}"
 
         if not os.path.exists(file_dem) or force_download:
+            if dem_name in ["nasadem", "alos-dem"]:
+                composite_crs = "EPSG:4326+5773"
+            elif dem_name in ["cop-dem-glo-30", "cop-dem-glo-90"]:
+                composite_crs = "EPSG:4326+3855"
             retrieve_dem(
-                shp, file_dem, dem_name="nasadem", upscale_factor=upscale_factor
+                shp,
+                file_dem,
+                dem_name=dem_name,
+                upscale_factor=upscale_factor,
             )
+            # write custom tag for geocoding to use the proper vertical CRS
+            with rasterio.open(file_dem, "r+") as ds:
+                ds.update_tags(COMPOSITE_CRS=composite_crs)
+
         else:
             log.info("--DEM already on disk")
 
@@ -222,7 +242,13 @@ class S1IWSwath:
 
     # kept for backwards compatibility
     def fetch_dem_burst(
-        self, burst_idx=1, dir_dem="/tmp", buffer_arc_sec=40, force_download=False
+        self,
+        burst_idx=1,
+        dir_dem="/tmp",
+        buffer_arc_sec=40,
+        force_download=False,
+        upscale_factor=1,
+        dem_name="nasadem",
     ):
         """Downloads the DEM for a given burst
 
@@ -231,13 +257,20 @@ class S1IWSwath:
             dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
+            dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
 
         Returns:
             str: path to the downloaded file
         """
 
         return self.fetch_dem(
-            burst_idx, burst_idx, dir_dem, buffer_arc_sec, force_download
+            burst_idx,
+            burst_idx,
+            dir_dem,
+            buffer_arc_sec,
+            force_download,
+            upscale_factor,
+            dem_name,
         )
 
     def geocode_burst(
@@ -287,10 +320,12 @@ class S1IWSwath:
             log.info("Resample DEM and extract coordinates")
         else:
             log.info("Extract DEM coordinates")
-        lat, lon, alt, dem_prof = load_dem_coords(file_dem, dem_upsampling)
+        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
+            file_dem, dem_upsampling
+        )
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
-        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, dem_prof["crs"])
+        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
 
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -372,7 +407,10 @@ class S1IWSwath:
             log.info("Shadow detection")
             # compute ero altitude coordinates (use DEM reference height)
             dem_xg, dem_yg, dem_zg = lla_to_ecef(
-                lat, lon, np.zeros_like(lat), dem_prof["crs"]
+                lat,
+                lon,
+                np.zeros_like(lat),
+                composite_crs,
             )
 
             shadow_mask = detect_active_shadow(
@@ -385,9 +423,9 @@ class S1IWSwath:
                 naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
             )
 
-            return az_geo, rg_geo, dem_prof, gamma_t
+            return az_geo, rg_geo, gamma_t
         else:
-            return az_geo, rg_geo, dem_prof
+            return az_geo, rg_geo
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -960,11 +998,19 @@ def load_dem_coords(file_dem, upscale_factor=1):
             dem_trans = ds.transform * ds.transform.scale(
                 (ds.width / alt.shape[-1]), (ds.height / alt.shape[-2])
             )
+            if "COMPOSITE_CRS" in ds.tags():
+                composite_crs = ds.tags()["COMPOSITE_CRS"]
+            else:
+                raise KeyError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
         else:
             alt = ds.read(1)
             dem_prof = ds.profile.copy()
             dem_trans = ds.transform
+            if "COMPOSITE_CRS" in ds.tags():
+                composite_crs = ds.tags()["COMPOSITE_CRS"]
+            else:
+                raise KeyError("DEM file needs to have a tag named 'COMPOSITE_CRS'.")
             nodata = ds.nodata
 
     # output lat-lon coordinates
@@ -990,18 +1036,17 @@ def load_dem_coords(file_dem, upscale_factor=1):
         alt[msk] = np.nan
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
-    return lat, lon, alt, dem_prof
+    return lat, lon, alt, dem_prof, composite_crs
 
 
-# TODO produce right composite crs for each DEM
-def lla_to_ecef(lat, lon, alt, dem_crs):
+def lla_to_ecef(lat, lon, alt, composite_crs):
 
-    # TODO: use parameter instead
-    WGS84_crs = "EPSG:4326+5773"
+    # WGS84_crs = "EPSG:4326+5773"
     ECEF_crs = "EPSG:4978"
 
     # much faster than rasterio transform
-    tf = Transformer.from_crs(WGS84_crs, ECEF_crs)
+    # tf = Transformer.from_crs(WGS84_crs, ECEF_crs)
+    tf = Transformer.from_crs(composite_crs, ECEF_crs)
 
     # single-threaded
     # !! pyproj uses lon, lat whereas rasterio uses lat, lon
