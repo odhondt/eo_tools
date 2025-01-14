@@ -221,11 +221,17 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         if not os.path.isdir(dir_dem):
             os.mkdir(dir_dem)
 
-        def expected_filename(min_burst, max_burst, buffer_arc_sec, upscale_factor, dem_name):
+        def expected_filename(
+            min_burst, max_burst, buffer_arc_sec, upscale_factor, dem_name
+        ):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
             shp = box(*geom_sub.bounds)
-            hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode("utf-8")
+            hash_input = (
+                f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst}".encode(
+                    "utf-8"
+                )
+            )
             hash_str = hashlib.md5(hash_input).hexdigest()
             # expected file name
             file_dem_expected = f"{dir_dem}/dem-{hash_str}.tif"
@@ -254,21 +260,37 @@ def test_fetch_dem_filename_uniqueness(create_swath):
 
         # Generate DEM with different parameters and capture filenames
         file_dem_1 = swath.fetch_dem(
-            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=40
+            min_burst=1,
+            max_burst=2,
+            dir_dem=dir_dem,
+            upscale_factor=1.0,
+            buffer_arc_sec=40,
         )
         file_dem_2 = swath.fetch_dem(
-            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=2.0, buffer_arc_sec=40
+            min_burst=1,
+            max_burst=2,
+            dir_dem=dir_dem,
+            upscale_factor=2.0,
+            buffer_arc_sec=40,
         )
 
         # Now change buffer_arc_sec to affect geometry and the resulting filename
         file_dem_3 = swath.fetch_dem(
-            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=50
+            min_burst=1,
+            max_burst=2,
+            dir_dem=dir_dem,
+            upscale_factor=1.0,
+            buffer_arc_sec=50,
         )
 
         file_dem_4 = swath.fetch_dem(
-            min_burst=1, max_burst=2, dir_dem=dir_dem, upscale_factor=1.0, buffer_arc_sec=40, dem_name="alos-dem"
+            min_burst=1,
+            max_burst=2,
+            dir_dem=dir_dem,
+            upscale_factor=1.0,
+            buffer_arc_sec=40,
+            dem_name="alos-dem",
         )
-
 
         # Ensure unique filenames are generated based on the parameters
         assert (
@@ -310,7 +332,10 @@ def test_burst_geocoding_and_deramping(create_swath):
         file_dem, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
     )
 
-    out_shape=(int(dem_shape[0] * dem_upsampling), int(dem_shape[1] * dem_upsampling),)
+    out_shape = (
+        int(dem_shape[0] * dem_upsampling),
+        int(dem_shape[1] * dem_upsampling),
+    )
 
     assert (
         np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
@@ -318,12 +343,14 @@ def test_burst_geocoding_and_deramping(create_swath):
     assert (az.shape == out_shape) and (rg.shape == out_shape)
     assert gamma_t.shape == raster_shape
 
+
 def test_burst_deramping(create_swath):
     swath = create_swath
     arr = swath.deramp_burst(burst_idx=3)
     assert isinstance(arr, np.ndarray)
     assert np.isfinite(arr).any()
     assert arr.ndim == 2
+
 
 def test_phi_topo(create_swath):
     swath = create_swath
@@ -333,6 +360,7 @@ def test_phi_topo(create_swath):
     assert np.isfinite(arr).any()
     assert arr.shape == rg.shape
 
+
 def test_burst_overlap(create_swath):
     swath = create_swath
     with pytest.raises(ValueError, match=r"Invalid burst index.*"):
@@ -340,6 +368,7 @@ def test_burst_overlap(create_swath):
     olap = swath.compute_burst_overlap(burst_idx=3)
     assert isinstance(olap, float)
     assert olap > 0
+
 
 if __name__ == "__main__":
     pytest.main()
