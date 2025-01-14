@@ -7,7 +7,6 @@
 - Add some more tests for S1.core functions (deramping, burst overlap, phi topo,)
 - Test script for `cop-dem-glo-30` DEM based insar processing
 - Test script comparing SLC processing for all available DEMs
-- Avoid possible collision by encoding minimum and maximum burst indices in the DEM filename hash  (`fetch_dem` function)
 - Fix: use `max_burst_` instead of `max_burst` in burst geometry filtering (`fetch_dem` function)
 - Remove unused `dem_profile` output from `geocode_burst`
 - DEM files now have a special tag `COMPOSITE_CRS` encoding both lat-lon and vertical reference coordinate system. This tag is added by `fetch_dem`, extracted by `load_dem_coords` and used by `lla_to_ecef` to convert the DEM to ECEF coordinates. 

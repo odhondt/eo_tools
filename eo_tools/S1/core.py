@@ -212,7 +212,7 @@ class S1IWSwath:
 
         # here we define a unique string for DEM filename
         hash_input = (
-            f"{shp.wkt}_{upscale_factor}_{dem_name}_{min_burst}_{max_burst_}".encode(
+            f"{shp.wkt}_{upscale_factor}_{dem_name}".encode(
                 "utf-8"
             )
         )
