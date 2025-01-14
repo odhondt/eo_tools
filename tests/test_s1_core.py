@@ -12,7 +12,7 @@ import rasterio
 from rasterio import MemoryFile
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def create_swath():
     safe_dir = "./data/S1/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
     iw = 1
@@ -299,21 +299,47 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
-def test_burst_geocoding(create_swath):
+def test_burst_geocoding_and_deramping(create_swath):
     swath = create_swath
     file_dem = swath.fetch_dem_burst(burst_idx=3, force_download=True)
     arr = riox.open_rasterio(file_dem)
     dem_shape = arr[0].shape
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
+    dem_upsampling = 0.1
     az, rg, gamma_t = swath.geocode_burst(
-        file_dem, burst_idx=3, dem_upsampling=1, simulate_terrain=True
+        file_dem, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
     )
+
+    out_shape=(int(dem_shape[0] * dem_upsampling), int(dem_shape[1] * dem_upsampling),)
+
     assert (
         np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
     )
-    assert (az.shape == dem_shape) and (rg.shape == dem_shape)
+    assert (az.shape == out_shape) and (rg.shape == out_shape)
     assert gamma_t.shape == raster_shape
 
+def test_burst_deramping(create_swath):
+    swath = create_swath
+    arr = swath.deramp_burst(burst_idx=3)
+    assert isinstance(arr, np.ndarray)
+    assert np.isfinite(arr).any()
+    assert arr.ndim == 2
+
+def test_phi_topo(create_swath):
+    swath = create_swath
+    rg = np.full((20, 10), fill_value=10000)
+    arr = swath.phi_topo(rg)
+    assert isinstance(arr, np.ndarray)
+    assert np.isfinite(arr).any()
+    assert arr.shape == rg.shape
+
+def test_burst_overlap(create_swath):
+    swath = create_swath
+    with pytest.raises(ValueError, match=r"Invalid burst index.*"):
+        _ = swath.compute_burst_overlap(burst_idx=1)
+    olap = swath.compute_burst_overlap(burst_idx=3)
+    assert isinstance(olap, float)
+    assert olap > 0
 
 if __name__ == "__main__":
     pytest.main()
