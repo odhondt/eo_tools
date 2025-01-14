@@ -321,7 +321,7 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
-def test_burst_geocoding_and_deramping(create_swath):
+def test_burst_geocoding(create_swath):
     swath = create_swath
     file_dem = swath.fetch_dem_burst(burst_idx=3, force_download=True)
     arr = riox.open_rasterio(file_dem)
