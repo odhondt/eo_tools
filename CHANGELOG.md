@@ -1,3 +1,17 @@
+# 2025.1.1
+
+## New feature
+- New `dem_name` parameter for SLC and InSAR processors which allows to choose from a list of publicly available DEMs (`nasadem`: SRTM, `alos-dem`: ALOS World 3D, `cop-dem-glo-30` Copernicus DEM 30m and  `cop-dem-glo-90` Copernicus DEM 90m)
+
+## Bug fixes and improvements
+- Add some more tests for S1.core functions (deramping, burst overlap, phi topo,)
+- Test script for `cop-dem-glo-30` DEM based insar processing
+- Test script comparing SLC processing for all available DEMs
+- Avoid possible collision by encoding minimum and maximum burst indices in the DEM filename hash  (`fetch_dem` function)
+- Fix: use `max_burst_` instead of `max_burst` in burst geometry filtering (`fetch_dem` function)
+- Remove unused `dem_profile` output from `geocode_burst`
+- DEM files now have a special tag `COMPOSITE_CRS` encoding both lat-lon and vertical reference coordinate system. This tag is added by `fetch_dem`, extracted by `load_dem_coords` and used by `lla_to_ecef` to convert the DEM to ECEF coordinates. 
+
 # 2025.1.0-build2
 
 ## Bug Fix
