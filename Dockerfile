@@ -11,7 +11,7 @@ RUN apt-get install -y git python3-pip wget libpq-dev procps gdal-bin
 
 SHELL [ "/bin/bash", "--login", "-c" ]
 
-RUN micromamba shell init --shell=bash --prefix=~/micromamba
+RUN micromamba shell init --shell=bash --root-prefix=~/micromamba
 RUN source ~/.bashrc
 COPY environment.yaml environment.yaml
 RUN micromamba create -f  environment.yaml
