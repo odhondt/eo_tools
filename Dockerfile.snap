@@ -21,7 +21,7 @@ RUN /tmp/update_snap.sh
 
 SHELL [ "/bin/bash", "--login", "-c" ]
 
-RUN micromamba shell init --shell=bash --prefix=~/micromamba
+RUN micromamba shell init --shell=bash --root-prefix=~/micromamba
 RUN source ~/.bashrc
 COPY environment.yaml environment.yaml
 RUN micromamba create -f  environment.yaml
