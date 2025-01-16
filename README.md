@@ -20,10 +20,10 @@ a comparison between Sentinel-1 amplitude, coherence, change map and Sentinel-2 
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" width="350">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" width="350">
 </p>
-and the comparison between Beta nought calibration and terrain flattening on the Etna volcano.
+and the comparison between Beta nought calibration and terrain flattening using Copernicus DEM on Etna.
 <p float="left">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0.png" width="350">
-    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" width="350">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0.png" width="300">
+    <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" width="300">
 </p>
 
 ## Overview
