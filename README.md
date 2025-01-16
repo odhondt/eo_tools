@@ -13,7 +13,7 @@ Here are examples of EO-Tools outputs showing amplitude, coherence and inteferom
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" width="220">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" width="220">
 </p>
-a comparison between Sentinel-1 amplitude, coherence, change map and Sentinel-2 RGB image over the city of Berlin in Germany,
+a comparison between Sentinel-1 amplitude, coherence, change map using two dates in 2021 and Sentinel-2 RGB image over the city of Berlin in Germany,
 <p float="left">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" width="350">
     <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" width="350">
