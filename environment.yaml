@@ -28,7 +28,7 @@ dependencies:
   - httpx
   - xarray
   - netcdf4
-  - rioxarray
+  - rioxarray=0.17.0
   - numba
   - dask
   - bottleneck
