@@ -43,7 +43,7 @@ ids = [
     # Etna
     "S1A_IW_SLC__1SDV_20181228T050448_20181228T050515_025221_02C9BE_1E22",
 ]
-slc_dir = f"{data_dir}/{ids[0]}.zip"
+slc_path = f"{data_dir}/{ids[0]}.zip"
 output_dir_1 = "/data/res/test-slc-processor-rtc-nasadem"
 output_dir_2 = "/data/res/test-slc-processor-rtc-alos"
 output_dir_3 = "/data/res/test-slc-processor-rtc-glo30"
@@ -51,11 +51,11 @@ output_dir_4 = "/data/res/test-slc-processor-rtc-glo90"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-file_aoi = "/eo_tools/data/Etna.geojson"
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_small.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+aoi_file = "/eo_tools/data/Etna.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_small.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 search_criteria = {
     "productType": "S1_SAR_SLC",
@@ -64,7 +64,7 @@ search_criteria = {
     "geom": shp,
 }
 
-# results, _ = dag.search(**search_criteria)
+# results = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 # print(f"{len(to_dl)} products to download")
 # dag.download_all(to_dl, output_dir="/data/S1/", extract=True)
@@ -72,7 +72,7 @@ search_criteria = {
 # %%
 
 out_dir_nasadem = process_slc(
-    dir_slc=slc_dir,
+    slc_path=slc_path,
     output_dir=output_dir_1,
     aoi_name=None,
     shp=shp,
@@ -90,7 +90,7 @@ out_dir_nasadem = process_slc(
 # %%
 
 out_dir_alos = process_slc(
-    dir_slc=slc_dir,
+    slc_path=slc_path,
     output_dir=output_dir_2,
     aoi_name=None,
     shp=shp,
@@ -109,7 +109,7 @@ out_dir_alos = process_slc(
 # %%
 
 out_dir_glo30 = process_slc(
-    dir_slc=slc_dir,
+    slc_path=slc_path,
     output_dir=output_dir_3,
     aoi_name=None,
     shp=shp,
@@ -128,7 +128,7 @@ out_dir_glo30 = process_slc(
 # %%
 
 out_dir_glo90 = process_slc(
-    dir_slc=slc_dir,
+    slc_path=slc_path,
     output_dir=output_dir_4,
     aoi_name=None,
     shp=shp,

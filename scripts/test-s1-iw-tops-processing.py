@@ -37,8 +37,8 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.zip"
-secondary_dir = f"{data_dir}/{ids[1]}.zip"
+primary_path = f"{data_dir}/{ids[0]}.zip"
+secondary_path = f"{data_dir}/{ids[1]}.zip"
 
 iw = 1  # subswath
 pol = "vv"  # polarization ("vv"or "vh")
@@ -48,8 +48,8 @@ max_burst = 6  # Set to None to process all (warning: memory hungry)
 
 # %%
 # load a geometry
-file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 # search_criteria = {
 #     "productType": "S1_SAR_SLC",
@@ -58,7 +58,7 @@ shp = gpd.read_file(file_aoi).geometry[0]
 #     "geom": shp
 # }
 
-# results, _ = dag.search(**search_criteria)
+# results = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 # print(f"{len(to_dl)} products to download")
 # dag.download_all(to_dl, output_dir="/data/S1/", extract=False)
@@ -68,8 +68,8 @@ from eo_tools.S1.process import preprocess_insar_iw
 
 # TODO: use downloaded products
 preprocess_insar_iw(
-    primary_dir,
-    secondary_dir,
+    primary_path,
+    secondary_path,
     out_dir,
     iw=iw,
     pol=pol,
@@ -83,26 +83,26 @@ preprocess_insar_iw(
 # %%
 from eo_tools.S1.process import sar2geo, coherence, amplitude
 
-file_prm = f"{out_dir}/primary.tif"
-file_sec = f"{out_dir}/secondary.tif"
-file_amp = f"{out_dir}/amp.tif"
-file_coh = f"{out_dir}/coh.tif"
-file_phi_geo = f"{out_dir}/phi_geo.tif"
-file_amp_geo = f"{out_dir}/amp_geo.tif"
-file_coh_geo = f"{out_dir}/coh_geo.tif"
-file_lut = f"{out_dir}/lut.tif"
+prm_file = f"{out_dir}/primary.tif"
+sec_file = f"{out_dir}/secondary.tif"
+amp_file = f"{out_dir}/amp.tif"
+coh_file = f"{out_dir}/coh.tif"
+phi_geo_file = f"{out_dir}/phi_geo.tif"
+amp_geo_file = f"{out_dir}/amp_geo.tif"
+coh_geo_file = f"{out_dir}/coh_geo.tif"
+lut_file = f"{out_dir}/lut.tif"
 # computing amplitude and complex coherence  in the radar geometry
 coherence(
-    file_prm, file_sec, file_coh, box_size=[3, 3], multilook=[1, 4], magnitude=False
+    prm_file, sec_file, coh_file, box_size=[3, 3], multilook=[1, 4], magnitude=False
 )
-amplitude(file_prm, file_amp, multilook=[2, 8])
+amplitude(prm_file, amp_file, multilook=[2, 8])
 
 # combined multilooking and geocoding
 # interferometric coherence
 sar2geo(
-    file_coh,
-    file_lut,
-    file_coh_geo,
+    coh_file,
+    lut_file,
+    coh_geo_file,
     kernel="bicubic",
     write_phase=False,
     magnitude_only=True,
@@ -110,9 +110,9 @@ sar2geo(
 
 # interferometric phase
 sar2geo(
-    file_coh,
-    file_lut,
-    file_phi_geo,
+    coh_file,
+    lut_file,
+    phi_geo_file,
     kernel="bicubic",
     write_phase=True,
     magnitude_only=False,
@@ -120,9 +120,9 @@ sar2geo(
 
 # amplitude of the primary image
 sar2geo(
-    file_amp,
-    file_lut,
-    file_amp_geo,
+    amp_file,
+    lut_file,
+    amp_geo_file,
     kernel="bicubic",
     write_phase=False,
     magnitude_only=False,

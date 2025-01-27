@@ -36,8 +36,8 @@ if not os.path.isdir(out_dir):
     os.mkdir(out_dir)
 
 # replace with already downloaded and unzipped products (see the other notebooks to download such products)
-primary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.zip"
-secondary_dir = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.zip"
+primary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.zip"
+secondary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.zip"
 
 # subswath to process
 iw = 1
@@ -54,27 +54,23 @@ ifgs = []
 lut = []
 dems = []
 
-prm = S1IWSwath(primary_dir, iw=iw, pol=pol)
-sec = S1IWSwath(secondary_dir, iw=iw, pol=pol)
+prm = S1IWSwath(primary_path, iw=iw, pol=pol)
+sec = S1IWSwath(secondary_path, iw=iw, pol=pol)
 overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
 for burst_idx in range(min_burst, max_burst + 1):
     log.info(f"---- Processing burst {burst_idx} ----")
 
     # compute geocoding LUTs for master and slave bursts
-    file_dem = prm.fetch_dem_burst(burst_idx, dir_dem="/data/tmp", force_download=False)
-    az_p2g, rg_p2g = prm.geocode_burst(
-        file_dem, burst_idx=burst_idx, dem_upsampling=up
-    )
-    az_s2g, rg_s2g = sec.geocode_burst(
-        file_dem, burst_idx=burst_idx, dem_upsampling=up
-    )
+    dem_file = prm.fetch_dem_burst(burst_idx, dem_dir="/data/tmp", force_download=False)
+    az_p2g, rg_p2g = prm.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
+    az_s2g, rg_s2g = sec.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
 
     # read primary and secondary burst raster
     arr_p = prm.read_burst(burst_idx, True)
     arr_s = sec.read_burst(burst_idx, True)
 
-    # radiometric calibration 
+    # radiometric calibration
     cal_p = prm.calibration_factor(burst_idx, cal_type="beta")
     arr_p /= cal_p
     cal_s = sec.calibration_factor(burst_idx, cal_type="beta")
@@ -106,7 +102,7 @@ for burst_idx in range(min_burst, max_burst + 1):
     # normalize complex coherences
     ifgs.append(ifg)
     lut.append((az_p2g, rg_p2g))
-    dems.append(file_dem)
+    dems.append(dem_file)
 
 # %%
 from eo_tools.S1.core import fast_esd
@@ -137,15 +133,15 @@ files_to_remove = []
 for i in range(min_burst, max_burst + 1):
     log.info(f"Resample burst {i}")
     az_mst, rg_mst = lut[i - min_burst]
-    file_dem = dems[i - min_burst]
+    dem_file = dems[i - min_burst]
     cnd = (az_mst >= H - 4) & (az_mst < naz - H + 4)
     az_mst2 = az_mst.copy()
     rg_mst2 = rg_mst.copy()
     az_mst2[~cnd] = np.nan
     rg_mst2[~cnd] = np.nan
 
-    file_ifg = f"{out_dir}/remap_burst_{i}_ifg.tif"
-    files_to_remove.append(file_ifg)
+    ifg_file = f"{out_dir}/remap_burst_{i}_ifg.tif"
+    files_to_remove.append(ifg_file)
 
     # does the job but not very elegant
     if i == min_burst:
@@ -154,8 +150,8 @@ for i in range(min_burst, max_burst + 1):
         off2 = off - H
     resample(
         phi_out,
-        file_dem,
-        file_ifg,
+        dem_file,
+        ifg_file,
         (az_mst2 + off2) / mlt_az,
         (rg_mst2) / mlt_rg,
         kernel="bicubic",
@@ -165,7 +161,7 @@ for i in range(min_burst, max_burst + 1):
     else:
         off += naz - 2 * H
 
-    list_ifg.append(riox.open_rasterio(file_ifg))
+    list_ifg.append(riox.open_rasterio(ifg_file))
 
 merged_ifg = merge_arrays(list_ifg)
 merged_ifg.rio.to_raster(f"{out_dir}/merged_ifg.tif")
@@ -190,7 +186,9 @@ phi.rio.to_raster(f"{out_dir}/merged_phi.tif", nodata=nodata)
 ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
 m = folium.Map()
 _ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
-_ = show_cog(f"{out_dir}/merged_phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+_ = show_cog(
+    f"{out_dir}/merged_phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi()
+)
 LayerControl().add_to(m)
 
 # open in a browser

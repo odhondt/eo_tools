@@ -38,16 +38,16 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.zip"
-secondary_dir = f"{data_dir}/{ids[1]}.zip"
+primary_path = f"{data_dir}/{ids[0]}.zip"
+secondary_path = f"{data_dir}/{ids[1]}.zip"
 output_dir = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_small.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+# aoi_file = "/eo_tools/data/Morocco_small.geojson"
+aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 # search_criteria = {
 #     "productType": "S1_SAR_SLC",
@@ -57,7 +57,7 @@ shp = gpd.read_file(file_aoi).geometry[0]
 # }
 
 # uncomment if files are not already on disk
-# results, _ = dag.search(**search_criteria)
+# results = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 # dag.download_all(to_dl, output_dir="/data/S1/", extract=True)
 
@@ -69,8 +69,8 @@ if os.path.isdir(out_dir_prev):
     remove(out_dir_prev)
 
 process_args = dict(
-    dir_prm=primary_dir,
-    dir_sec=secondary_dir,
+    prm_path=primary_path,
+    sec_path=secondary_path,
     output_dir=output_dir,
     aoi_name=None,
     shp=shp,

@@ -39,17 +39,17 @@ ids = [
     "S1A_IW_SLC__1SDV_20241229T030940_20241229T031008_057201_0708EF_00A3.SAFE",
     "S1A_IW_SLC__1SDV_20250110T030939_20250110T031007_057376_070FDB_456B.SAFE",
 ]
-# primary_dir = f"{data_dir}/{ids[0]}.zip"
-primary_dir = f"{data_dir}/{ids[0]}"
-# secondary_dir = f"{data_dir}/{ids[1]}.zip"
-secondary_dir = f"{data_dir}/{ids[1]}"
+# primary_path = f"{data_dir}/{ids[0]}.zip"
+primary_path = f"{data_dir}/{ids[0]}"
+# secondary_path = f"{data_dir}/{ids[1]}.zip"
+secondary_path = f"{data_dir}/{ids[1]}"
 output_dir = "/data/res/volcano-fentale-ethiopia"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_small.geojson"
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
+# aoi_file = "/eo_tools/data/Morocco_small.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 import shapely.wkt
 
 shp = shapely.wkt.loads(
@@ -66,7 +66,7 @@ search_criteria = {
 
 # uncomment if files are not already on disk
 # results = dag.search(**search_criteria)
-# results, _ = dag.search(**search_criteria)
+# results = dag.search(**search_criteria)
 # print(results)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 
@@ -83,8 +83,8 @@ if os.path.isdir(out_dir_prev):
     remove(out_dir_prev)
 
 process_args = dict(
-    dir_prm=primary_dir,
-    dir_sec=secondary_dir,
+    prm_path=primary_path,
+    sec_path=secondary_path,
     output_dir=output_dir,
     aoi_name=None,
     # shp=shp,
@@ -122,8 +122,8 @@ from eo_tools.S1.process import (
 # apply_to_patterns_for_single(
 #     goldstein,
 #     out_dir=f"{out_dir}/sar",
-#     file_in_prefix="ifg",
-#     file_out_prefix="ifggold",
+#     in_file_prefix="ifg",
+#     out_file_prefix="ifggold",
 #     alpha=0.5,
 #     overlap=14,
 # )

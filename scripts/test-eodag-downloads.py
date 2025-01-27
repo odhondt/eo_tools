@@ -12,6 +12,7 @@
 from eodag import EODataAccessGateway
 import geopandas as gpd
 import datetime
+import os
 
 # credentials need to be stored in the following file (see EODAG docs)
 confpath = "/data/eodag_config.yml"
@@ -31,8 +32,8 @@ log = logging.getLogger(__name__)
 # change to your custom locations
 data_dir = "/data/S1"
 
-file_aoi = "/eo_tools/data/Bretagne_AOI.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+aoi_file = "/eo_tools/data/Bretagne_AOI.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 # set dates between today and 1 month
 end_date = datetime.datetime.today()
@@ -46,6 +47,10 @@ search_criteria = {
 }
 
 results = dag.search(**search_criteria)
+
+out_dir = "/tmp"
+out_path = f"{out_dir}/test_preview.png"
+if os.path.exists(out_path):
+    os.remove(out_path)
+
 dl = results[0].get_quicklook(filename="test_preview.png", output_dir="/tmp")
-print(dl)
-# %%
