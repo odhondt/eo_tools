@@ -40,7 +40,7 @@ ids = [
 ]
 primary_dir = f"{data_dir}/{ids[0]}.zip"
 secondary_dir = f"{data_dir}/{ids[1]}.zip"
-outputs_prefix = "/data/res/test-full-processor"
+output_dir = "/data/res/test-full-processor"
 
 # %%
 # load a geometry
@@ -59,11 +59,11 @@ shp = gpd.read_file(file_aoi).geometry[0]
 # uncomment if files are not already on disk
 # results, _ = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
-# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=True)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=True)
 
 # %%
 
-out_dir_prev = f"{outputs_prefix}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+out_dir_prev = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 
 if os.path.isdir(out_dir_prev):
     remove(out_dir_prev)
@@ -71,7 +71,7 @@ if os.path.isdir(out_dir_prev):
 process_args = dict(
     dir_prm=primary_dir,
     dir_sec=secondary_dir,
-    outputs_prefix=outputs_prefix,
+    output_dir=output_dir,
     aoi_name=None,
     shp=shp,
     pol="vv",

@@ -66,7 +66,7 @@ def test_coherence(create_test_data):
 #     process_args = dict(
 #         dir_prm=primary_dir,
 #         dir_sec=secondary_dir,
-#         outputs_prefix=tmp_path,
+#         output_dir=tmp_path,
 #         aoi_name=None,
 #         shp=shp,
 #         pol="vv",

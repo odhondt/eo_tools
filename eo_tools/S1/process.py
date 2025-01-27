@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 def process_insar(
     dir_prm: str,
     dir_sec: str,
-    outputs_prefix: str,
+    output_dir: str,
     aoi_name: str = None,
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
@@ -68,7 +68,7 @@ def process_insar(
     Args:
         dir_prm (str): primary image (SLC Sentinel-1 product directory or zip file).
         dir_sec (str): secondary image (SLC Sentinel-1 product directory or zip file).
-        outputs_prefix (str): location in which the product subdirectory will be created
+        output_dir (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
@@ -104,7 +104,7 @@ def process_insar(
     out_dir = prepare_insar(
         dir_prm=dir_prm,
         dir_sec=dir_sec,
-        outputs_prefix=outputs_prefix,
+        output_dir=output_dir,
         aoi_name=aoi_name,
         shp=shp,
         pol=pol,
@@ -207,7 +207,7 @@ def process_insar(
 def prepare_insar(
     dir_prm: str,
     dir_sec: str,
-    outputs_prefix: str,
+    output_dir: str,
     aoi_name: str = None,
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
@@ -227,7 +227,7 @@ def prepare_insar(
     Args:
         dir_prm (str): Primary image (SLC Sentinel-1 product directory or zip file).
         dir_sec (str): Secondary image (SLC Sentinel-1 product directory or zip file).
-        outputs_prefix (str): location in which the product subdirectory will be created.
+        output_dir (str): location in which the product subdirectory will be created.
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
@@ -312,7 +312,7 @@ def prepare_insar(
     id_prm = date_prm.strftime("%Y-%m-%d-%H%M%S")
     id_sec = date_sec.strftime("%Y-%m-%d-%H%M%S")
 
-    out_dir = f"{outputs_prefix}/S1_InSAR_{id_prm}__{id_sec}{aoi_substr}/sar"
+    out_dir = f"{output_dir}/S1_InSAR_{id_prm}__{id_sec}{aoi_substr}/sar"
     if not os.path.isdir(out_dir):
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
@@ -550,13 +550,13 @@ def preprocess_insar_iw(
 
 def process_slc(
     dir_slc: str,
-    outputs_prefix: str,
+    output_dir: str,
     aoi_name: str = None,
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -571,7 +571,7 @@ def process_slc(
 
     Args:
         dir_slc (str): input image (SLC Sentinel-1 product directory or zip file).
-        outputs_prefix (str): location in which the product subdirectory will be created
+        output_dir (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
@@ -599,7 +599,7 @@ def process_slc(
     # prepare pair for interferogram computation
     out_dir = prepare_slc(
         dir_slc=dir_slc,
-        outputs_prefix=outputs_prefix,
+        output_dir=output_dir,
         aoi_name=aoi_name,
         shp=shp,
         pol=pol,
@@ -654,14 +654,14 @@ def process_slc(
 
 def prepare_slc(
     dir_slc: str,
-    outputs_prefix: str,
+    output_dir: str,
     aoi_name: str = None,
     shp: shape = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
@@ -671,7 +671,7 @@ def prepare_slc(
 
     Args:
         dir_slc (str): Input image (SLC Sentinel-1 product directory or zip file).
-        outputs_prefix (str): location in which the product subdirectory will be created.
+        output_dir (str): location in which the product subdirectory will be created.
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
@@ -739,7 +739,7 @@ def prepare_slc(
 
     id_prm = date_prm.strftime("%Y-%m-%d-%H%M%S")
 
-    out_dir = f"{outputs_prefix}/S1_{id_prm}{aoi_substr}/sar"
+    out_dir = f"{output_dir}/S1_{id_prm}{aoi_substr}/sar"
     if not os.path.isdir(out_dir):
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
@@ -791,7 +791,7 @@ def preprocess_slc_iw(
     max_burst: int = None,
     cal_type: str = "beta",
     dir_dem: str = "/tmp",
-    dem_name: str="nasadem",
+    dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,

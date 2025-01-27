@@ -24,7 +24,7 @@ def process_s2_tiles(
     bands=["B4", "B3", "B2"],
     shp=None,
     aoi_name=None,
-    outputs_prefix="/tmp",
+    output_dir="/tmp",
     force_create=False,
 ):
     """Merge Sentinel-2 tiles by grouping them by data take ID. Writes bands as individual COG (Cloud Optimized GeoTIFF) files in a sub-folder.
@@ -34,7 +34,7 @@ def process_s2_tiles(
         bands (list, optional): list of bands to process. A single string (e.g. "B11") is also valid, as well as "all" to merge all bands.  Defaults to ["B4", "B3", "B2"].
         shp (shapely geometry, optional): If shp is provided, the outputs will be cropped to the geometry. Defaults to None.
         aoi_name (str, optional): adds a suffix to the subfolder name. Useful when the same products are cropped with different geometries, or simply to add a short description of the subfolder content. Defaults to None.
-        outputs_prefix (str, optional): path where the subfolder will be created. Defaults to "/tmp".
+        output_dir (str, optional): path where the subfolder will be created. Defaults to "/tmp".
         force_create (bool, optional): force creating bands that already exist on disk. Defaults to False.
     """
     df_bands = s2_band_info()
@@ -99,9 +99,9 @@ def process_s2_tiles(
         date_str = dict_pid["date_str"]
         QV = dict_pid["qv"]
         if aoi_name is None:
-            out_dir = f"{outputs_prefix}/{sensor_str}_{level_str}_{date_str}"
+            out_dir = f"{output_dir}/{sensor_str}_{level_str}_{date_str}"
         else:
-            out_dir = f"{outputs_prefix}/{sensor_str}_{level_str}_{date_str}_{aoi_name}"
+            out_dir = f"{output_dir}/{sensor_str}_{level_str}_{date_str}_{aoi_name}"
         out_dirs.append(out_dir)
         log.info(f"---- Processing data take {pid}")
         if not os.path.exists(out_dir):

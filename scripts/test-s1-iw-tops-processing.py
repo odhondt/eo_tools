@@ -61,7 +61,7 @@ shp = gpd.read_file(file_aoi).geometry[0]
 # results, _ = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 # print(f"{len(to_dl)} products to download")
-# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=False)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=False)
 
 # %%
 from eo_tools.S1.process import preprocess_insar_iw

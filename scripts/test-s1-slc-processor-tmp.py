@@ -67,21 +67,21 @@ search_criteria = {
 
 # %%
 
-out_dir_sigma = process_slc(
-    dir_slc=slc_dir,
-    output_dir=output_dir,
-    aoi_name=None,
-    shp=shp,
-    pol="full",
-    subswaths=["IW1", "IW2", "IW3"],
-    dem_upsampling=1.8,
-    dem_force_download=False,
-    dem_buffer_arc_sec=40,
-    multilook=[1, 4],
-    warp_kernel="bicubic",
-    cal_type="sigma",
-    clip_to_shape=True,
-)
+# out_dir_sigma = process_slc(
+#     dir_slc=slc_dir,
+#     output_dir=output_dir,
+#     aoi_name=None,
+#     shp=shp,
+#     pol="full",
+#     subswaths=["IW1", "IW2", "IW3"],
+#     dem_upsampling=1.8,
+#     dem_force_download=False,
+#     dem_buffer_arc_sec=40,
+#     multilook=[1, 4],
+#     warp_kernel="bicubic",
+#     cal_type="sigma",
+#     clip_to_shape=True,
+# )
 
 # %%
 
@@ -90,7 +90,7 @@ out_dir_beta = process_slc(
     output_dir=output_dir_2,
     aoi_name=None,
     shp=shp,
-    pol="full",
+    pol="vv",
     subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
@@ -103,31 +103,31 @@ out_dir_beta = process_slc(
 
 # %%
 
-out_dir_rtc = process_slc(
-    dir_slc=slc_dir,
-    output_dir=output_dir_3,
-    aoi_name=None,
-    shp=shp,
-    pol="full",
-    subswaths=["IW1", "IW2", "IW3"],
-    dem_upsampling=1.8,
-    dem_force_download=False,
-    dem_buffer_arc_sec=40,
-    multilook=[1, 4],
-    warp_kernel="bicubic",
-    cal_type="terrain",
-    clip_to_shape=True,
-)
+# out_dir_rtc = process_slc(
+#     dir_slc=slc_dir,
+#     output_dir=output_dir_3,
+#     aoi_name=None,
+#     shp=shp,
+#     pol="full",
+#     subswaths=["IW1", "IW2", "IW3"],
+#     dem_upsampling=1.8,
+#     dem_force_download=False,
+#     dem_buffer_arc_sec=40,
+#     multilook=[1, 4],
+#     warp_kernel="bicubic",
+#     cal_type="terrain",
+#     clip_to_shape=True,
+# )
 
 # %%
 
 m = folium.Map()
 _ = show_cog(f"{out_dir_beta}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_sigma}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_rtc}/amp_vv.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_rtc}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_sigma}/amp_vv.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_rtc}/amp_vv.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
+# _ = show_cog(f"{out_dir_rtc}/amp_vh.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
 # open in a browser

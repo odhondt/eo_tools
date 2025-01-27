@@ -30,39 +30,53 @@ from folium import LayerControl
 # dag = EODataAccessGateway(user_conf_file_path=confpath)
 # make sure cop_dataspace will be used
 # dag.set_preferred_provider("cop_dataspace")
+# dag.set_preferred_provider("geodes")
 
 # %%
 data_dir = "/data/S1"
 
 ids = [
-    "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
-    "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
+    "S1A_IW_SLC__1SDV_20241229T030940_20241229T031008_057201_0708EF_00A3.SAFE",
+    "S1A_IW_SLC__1SDV_20250110T030939_20250110T031007_057376_070FDB_456B.SAFE",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.zip"
-secondary_dir = f"{data_dir}/{ids[1]}.zip"
-output_dir = "/data/res/test-full-processor"
+# primary_dir = f"{data_dir}/{ids[0]}.zip"
+primary_dir = f"{data_dir}/{ids[0]}"
+# secondary_dir = f"{data_dir}/{ids[1]}.zip"
+secondary_dir = f"{data_dir}/{ids[1]}"
+output_dir = "/data/res/volcano-fentale-ethiopia"
 
 # %%
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_small.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
+# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
 # file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+import shapely.wkt
 
-# search_criteria = {
-#     "productType": "S1_SAR_SLC",
-#     "start": "2023-09-03",
-#     "end": "2023-09-17",
-#     "geom": shp,
-# }
+shp = shapely.wkt.loads(
+    "POLYGON ((40.112 9.154999999999999, 39.748 9.154999999999999, 39.748 8.795, 40.112 8.795, 40.112 9.154999999999999))"
+)
+search_criteria = {
+    "productType": "S1_SAR_SLC",
+    "start": "2024-12-01",
+    "end": "2025-01-15",
+    "geom": shp,
+    "provider": "geodes",
+    # "provider": "cop_dataspace"
+}
 
 # uncomment if files are not already on disk
+# results = dag.search(**search_criteria)
 # results, _ = dag.search(**search_criteria)
+# print(results)
 # to_dl = [it for it in results if it.properties["id"] in ids]
-# dag.download_all(to_dl, output_dir="/data/S1/", extract=True)
+
+# print(to_dl)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=False)
 
 # %%
+import time
 
+start_time = time.time()
 out_dir_prev = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 
 if os.path.isdir(out_dir_prev):
@@ -73,9 +87,8 @@ process_args = dict(
     dir_sec=secondary_dir,
     output_dir=output_dir,
     aoi_name=None,
-    shp=shp,
+    # shp=shp,
     pol="vv",
-    # subswaths=["IW1", "IW2"],
     subswaths=["IW1", "IW2", "IW3"],
     write_coherence=True,
     write_interferogram=True,
@@ -96,20 +109,44 @@ process_args = dict(
 
 out_dir = process_insar(**process_args)
 
+print("Process finished --- %s seconds ---" % (time.time() - start_time))
 
 # %%
-# compare with reference data processed with SNAP
-out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
-ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
+from eo_tools.S1.process import (
+    apply_to_patterns_for_single,
+    goldstein,
+    geocode_and_merge_iw,
+)
+
+# apply Goldstein filter
+# apply_to_patterns_for_single(
+#     goldstein,
+#     out_dir=f"{out_dir}/sar",
+#     file_in_prefix="ifg",
+#     file_out_prefix="ifggold",
+#     alpha=0.5,
+#     overlap=14,
+# )
+
+# from eo_tools.S1.process import geocode_and_merge_iw
+# from pathlib import Path
+# geo_dir = Path(out_dir).parent
+geocode_and_merge_iw(out_dir, shp=None, var_names=["ifggold"], clip_to_shape=False)
+
+
+# %%
+# display result
+out_dir = f"{output_dir}/S1_InSAR_2024-12-29-030940__2025-01-10-030939"
 
 m = folium.Map()
-_ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+_ = show_cog(
+    f"{out_dir}/phigold_vv.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi()
+)
 _ = show_cog(f"{out_dir}/phi_vv.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
-_ = show_cog(f"{ref_dir}/coh.tif", m, rescale=f"0,1")
 _ = show_cog(f"{out_dir}/coh_vv.tif", m, rescale=f"0,1")
 LayerControl().add_to(m)
 
 # open in a browser
-# serve_map(m)
-m
+serve_map(m)
+# m
 # %%

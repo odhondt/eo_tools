@@ -39,7 +39,7 @@ ids = [
 ]
 primary_dir = f"{data_dir}/{ids[0]}.zip"
 secondary_dir = f"{data_dir}/{ids[1]}.zip"
-outputs_prefix = "/data/res/test-change-detection-pipeline"
+output_dir = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
 # file_aoi = "/eo_tools/data/Morocco_small.geojson"
@@ -57,14 +57,14 @@ search_criteria = {
 results, _ = dag.search(**search_criteria)
 to_dl = [it for it in results if it.properties["id"] in ids]
 print(f"{len(to_dl)} products to download")
-# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=False)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=False)
 # %%
 from eo_tools.S1.process import prepare_insar
 
 out_dir = prepare_insar(
     dir_prm=primary_dir,
     dir_sec=secondary_dir,
-    outputs_prefix=outputs_prefix,
+    output_dir=output_dir,
     aoi_name=None,
     shp=shp,
     pol="full",
@@ -93,7 +93,7 @@ from eo_tools.S1.process import coherence, amplitude
 from eo_tools.S1.process import apply_to_patterns_for_pair, apply_to_patterns_for_single
 from pathlib import Path
 
-out_dir = f"{outputs_prefix}/S1_InSAR_2023-09-04-063730__2023-09-16-063730/sar"
+out_dir = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730/sar"
 geo_dir = Path(out_dir).parent
 
 # compute interferometric coherence

@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 def process_InSAR(
     file_mst,
     file_slv,
-    outputs_prefix,
+    output_dir,
     tmp_dir,
     aoi_name=None,
     shp=None,
@@ -35,7 +35,7 @@ def process_InSAR(
     erosion_width=15,
     resume=False,
     apply_ESD=False,
-    subswaths=["IW1", "IW2", "IW3"]
+    subswaths=["IW1", "IW2", "IW3"],
 ):
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -180,7 +180,7 @@ def process_InSAR(
                     burst_mst_max=burst_mst_max,
                     burst_slv_min=burst_slv_min,
                     burst_slv_max=burst_slv_max,
-                    apply_ESD=apply_ESD
+                    apply_ESD=apply_ESD,
                 )
 
             name_insar = f"{tmp_dir}/{tmp_name}_{substr}"
@@ -317,7 +317,7 @@ def process_InSAR(
         else:
             arr_out = arr_merge
 
-        out_dir = f"{outputs_prefix}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
+        out_dir = f"{output_dir}/S1_InSAR_{p}_{id_mst}__{id_slv}{aoi_substr}"
         out_dirs.append(out_dir)
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
@@ -380,7 +380,7 @@ def TOPS_coregistration(
     burst_mst_max=9,
     burst_slv_min=1,
     burst_slv_max=9,
-    apply_ESD=False
+    apply_ESD=False,
 ):
     """Helper function to compute TOPS coregistration"""
     if not apply_ESD:
