@@ -38,17 +38,16 @@ class S1IWSwath:
     - Computing the topographic phase from slant range values
     """
 
-    def __init__(self, safe_dir, iw=1, pol="vv", dir_orb="/tmp"):
+    def __init__(self, safe_path, iw=1, pol="vv", dir_orb="/tmp"):
         """Object intialization
 
         Args:
-            safe_dir (str): Directory or zip file containing the product.
+            safe_path (str): Directory or zip file containing the product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
             dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
-        # if not os.path.isdir(safe_dir):
-        if not os.path.exists(safe_dir):
+        if not os.path.exists(safe_path):
             raise ValueError("Product not found.")
 
         if not isinstance(iw, int) or iw < 1 or iw > 3:
@@ -57,8 +56,8 @@ class S1IWSwath:
         if pol not in ["vv", "vh"]:
             raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
-        self.is_zip = Path(safe_dir).suffix == ".zip"
-        self.product = zipfile.Path(safe_dir) if self.is_zip else Path(safe_dir)
+        self.is_zip = Path(safe_path).suffix == ".zip"
+        self.product = zipfile.Path(safe_path) if self.is_zip else Path(safe_path)
 
         # check product type using dir name
         parts = self.product.stem.split("_")
@@ -107,7 +106,7 @@ class S1IWSwath:
 
         # read burst geometries
         self.gdf_burst_geom = get_burst_geometry(
-            path=safe_dir, target_subswaths=f"IW{iw}", polarization=pol.upper()
+            path=safe_path, target_subswaths=f"IW{iw}", polarization=pol.upper()
         )
         if self.gdf_burst_geom.empty:
             raise RuntimeError("Invalid product: no burst geometry was found.")
@@ -119,7 +118,7 @@ class S1IWSwath:
         log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors (orbit)
-        product = identify(safe_dir)
+        product = identify(safe_path)
         zip_orb = product.getOSV(dir_orb, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
             raise RuntimeError("No orbit file available for this product")
