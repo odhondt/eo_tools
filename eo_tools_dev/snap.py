@@ -22,8 +22,8 @@ log = logging.getLogger(__name__)
 
 
 def process_InSAR(
-    file_mst,
-    file_slv,
+    mst_file,
+    slv_file,
     output_dir,
     tmp_dir,
     aoi_name=None,
@@ -41,8 +41,8 @@ def process_InSAR(
     AOI crop is optional.
 
     Args:
-        file_mst (str): Master image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
-        file_slv (str): Slave image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        mst_file (str): Master image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
+        slv_file (str): Slave image (SLC Sentinel-1 product). Can be a zip file or a folder containing the product.
         out_dir (str): Output directory
         tmp_dir (str): Temporary directory to store intermediate files
         aoi_name (str): Optional suffix to describe AOI / experiment
@@ -70,10 +70,10 @@ def process_InSAR(
 
     # retrieve burst geometries
     gdf_burst_mst = get_burst_geometry(
-        file_mst, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+        mst_file, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
     gdf_burst_slv = get_burst_geometry(
-        file_slv, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
+        slv_file, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
 
     # find what subswaths and bursts intersect AOI
@@ -88,7 +88,7 @@ def process_InSAR(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_mst = identify(file_mst)
+    info_mst = identify(mst_file)
     if isinstance(pol, str):
         if pol == "full":
             pol = info_mst.polarizations
@@ -105,7 +105,7 @@ def process_InSAR(
         raise RuntimeError("polarizations must be of type str or list")
 
     # do a check on orbits
-    info_slv = identify(file_slv)
+    info_slv = identify(slv_file)
     meta_mst = info_mst.scanMetadata()
     meta_slv = info_slv.scanMetadata()
     orbnum = meta_mst["orbitNumber_rel"]
@@ -169,9 +169,9 @@ def process_InSAR(
             if not (os.path.exists(path_coreg) and resume):
                 log.info("-- TOPS coregistration")
                 TOPS_coregistration(
-                    file_mst=file_mst,
-                    file_slv=file_slv,
-                    file_out=path_coreg,
+                    mst_file=mst_file,
+                    slv_file=slv_file,
+                    out_file=path_coreg,
                     tmp_dir=tmp_dir,
                     subswath=subswath,
                     pol=p,
@@ -188,8 +188,8 @@ def process_InSAR(
             if not (os.path.exists(path_insar) and resume):
                 log.info("-- InSAR processing")
                 insar_processing(
-                    file_in=path_coreg,
-                    file_out=path_insar,
+                    in_file=path_coreg,
+                    out_file=path_insar,
                     tmp_dir=tmp_dir,
                     coh_only=coh_only,
                 )
@@ -207,9 +207,9 @@ def process_InSAR(
                     else:
                         raise ValueError("Intensity: exactly 2 bands needed.")
                     _merge_intensity(
-                        file_coreg=path_coreg,
-                        file_insar=path_insar,
-                        file_out=path_int,
+                        coreg_file=path_coreg,
+                        insar_file=path_insar,
+                        out_file=path_int,
                         tmp_dir=tmp_dir,
                         coh_only=coh_only,
                         coreg_name1=name1,
@@ -227,12 +227,12 @@ def process_InSAR(
                 log.info("-- Terrain correction (geocoding)")
                 output_complex = not coh_only
                 if intensity:
-                    file_in_tc = path_int  # f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
+                    in_file_tc = path_int  # f"{tmp_dir}/{tmp_name}_{substr}_int.dim"
                 else:
-                    file_in_tc = path_insar  # f"{tmp_dir}/{tmp_name}_{substr}.dim"
+                    in_file_tc = path_insar  # f"{tmp_dir}/{tmp_name}_{substr}.dim"
                 geocoding(
-                    file_in=file_in_tc,
-                    file_out=path_tc,
+                    in_file=in_file_tc,
+                    out_file=path_tc,
                     tmp_dir=tmp_dir,
                     output_complex=output_complex,
                 )
@@ -369,9 +369,9 @@ def process_InSAR(
 
 
 def TOPS_coregistration(
-    file_mst,
-    file_slv,
-    file_out,
+    mst_file,
+    slv_file,
+    out_file,
     tmp_dir,
     subswath,
     pol,
@@ -388,8 +388,8 @@ def TOPS_coregistration(
     else:
         graph_coreg_path = "../graph/S1-TOPSAR-Coregistration-ESD.xml"
     wfl_coreg = Workflow(graph_coreg_path)
-    wfl_coreg["Read"].parameters["file"] = file_mst
-    wfl_coreg["Read(2)"].parameters["file"] = file_slv
+    wfl_coreg["Read"].parameters["file"] = mst_file
+    wfl_coreg["Read(2)"].parameters["file"] = slv_file
 
     wfl_coreg["TOPSAR-Split"].parameters["subswath"] = subswath
     wfl_coreg["TOPSAR-Split(2)"].parameters["subswath"] = subswath
@@ -408,13 +408,13 @@ def TOPS_coregistration(
 
     wfl_coreg["TOPSAR-Deburst"].parameters["selectedPolarisations"] = pol
 
-    wfl_coreg["Write"].parameters["file"] = file_out
+    wfl_coreg["Write"].parameters["file"] = out_file
     wfl_coreg.write(f"{tmp_dir}/graph_coreg.xml")
     grp = groupbyWorkers(f"{tmp_dir}/graph_coreg.xml", n=1)
     gpt(f"{tmp_dir}/graph_coreg.xml", groups=grp, tmpdir=tmp_dir)
 
 
-def insar_processing(file_in, file_out, tmp_dir, coh_only=False):
+def insar_processing(in_file, out_file, tmp_dir, coh_only=False):
     """Helper function to compute InSAR phase and / or coherence"""
     graph_coh_path = "../graph/S1-TOPSAR-Coherence.xml"
     graph_ifg_path = "../graph/S1-TOPSAR-Interferogram.xml"
@@ -422,17 +422,17 @@ def insar_processing(file_in, file_out, tmp_dir, coh_only=False):
         wfl_insar = Workflow(graph_coh_path)
     else:
         wfl_insar = Workflow(graph_ifg_path)
-    wfl_insar["Read"].parameters["file"] = file_in
-    wfl_insar["Write"].parameters["file"] = file_out
+    wfl_insar["Read"].parameters["file"] = in_file
+    wfl_insar["Write"].parameters["file"] = out_file
     wfl_insar.write(f"{tmp_dir}/graph_insar.xml")
     gpt(f"{tmp_dir}/graph_insar.xml", tmpdir=tmp_dir)
 
 
 # convenience function
 def _merge_intensity(
-    file_coreg,
-    file_insar,
-    file_out,
+    coreg_file,
+    insar_file,
+    out_file,
     tmp_dir,
     coh_only,
     coreg_name1,
@@ -446,8 +446,8 @@ def _merge_intensity(
     """Helper function to compute intensities of coregistered master and slave and merge it with InSAR outputs"""
     graph_int_path = "../graph/S1-MasterSlaveIntensity.xml"
     wfl_int = Workflow(graph_int_path)
-    wfl_int["Read"].parameters["file"] = file_coreg
-    wfl_int["Read(2)"].parameters["file"] = file_insar
+    wfl_int["Read"].parameters["file"] = coreg_file
+    wfl_int["Read(2)"].parameters["file"] = insar_file
 
     # required to avoid merging virtual bands
     if coh_only:
@@ -469,18 +469,18 @@ def _merge_intensity(
     exp2 = math2.parameters["targetBands"][0]
     exp2["name"] = f"Intensity_{coreg_name2}"
     exp2["expression"] = f"sq(i_{coreg_name2}) + sq(q_{coreg_name2})"
-    wfl_int["Write"].parameters["file"] = file_out
+    wfl_int["Write"].parameters["file"] = out_file
     wfl_int.write(f"{tmp_dir}/graph_int.xml")
     gpt(f"{tmp_dir}/graph_int.xml", tmpdir=tmp_dir)
 
 
-def geocoding(file_in, file_out, tmp_dir, output_complex=False):
+def geocoding(in_file, out_file, tmp_dir, output_complex=False):
     """Helper function to geocode the outputs (performs Range Doppler Terrain Correction)"""
     graph_tc_path = "../graph/S1-TOPSAR-RD-TerrainCorrection.xml"
     wfl_tc = Workflow(graph_tc_path)
 
-    wfl_tc["Read"].parameters["file"] = file_in
-    wfl_tc["Write"].parameters["file"] = file_out
+    wfl_tc["Read"].parameters["file"] = in_file
+    wfl_tc["Write"].parameters["file"] = out_file
     if output_complex:
         wfl_tc["Terrain-Correction"].parameters["outputComplex"] = "true"
     else:
