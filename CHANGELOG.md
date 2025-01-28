@@ -1,9 +1,9 @@
 # 2025.1.2
 
-This version does not introduce new features but adds fixes and improvements.
+This version does not introduce any new features but adds fixes and improvements.
 
 ## Breaking changes
-- Improved parameter name consistency. All variable and parameters that had `file`, `dir` and `path` have been renamed following the model `xxx_{file|dir|path}`. This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
+- Improved parameter name consistency. All variable and parameters that had `file`, `dir` and `path` in them have been renamed following the model `xxx_{file|dir|path}`. This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
 
 ## Other
 - Use EODAG latest version, changed `outputs_prefix` parameter to `output_dir` and remove unpacking from search return.
