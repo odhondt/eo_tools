@@ -2,6 +2,7 @@
 # It imposes dependencies from conda-forge and excludes pip packages
 # Versions extracted will be based on the current build of the docker image. Pinned versions can be forced in environment.yaml
 # DO NOT USE FOR ANOTHER PURPOSE
+# This file is not currently used
 name: eo_tools
 channels:
   - conda-forge

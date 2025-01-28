@@ -82,6 +82,7 @@ def generate_deps_list(conda_packages, pip_packages):
     print(f"Dependency files {file_toml} and {file_recipe} have been generated.")
 
 if __name__ == "__main__":
-    original_env_file = 'environment-cf.yaml'
+    original_env_file = 'environment.yaml'
+    # original_env_file = 'environment-cf.yaml'
     conda_packages, pip_packages = parse_environment_file(original_env_file)
     generate_deps_list(conda_packages, pip_packages)
