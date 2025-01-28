@@ -3,11 +3,13 @@
 This version does not introduce new features but add some bug fixes and improvements.
 
 ## Breaking changes
-- Renamed all variable and parameters that had file, dir and path following the model xxx_{file|dir|path} (suffix). This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
+- Improved parameter name consistency. All variable and parameters that had `file`, `dir` and `path` have been renamed following the model `xxx_{file|dir|path}`. This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
+
 ## Other
 - Use EODAG latest version, changed `outputs_prefix` parameter to `output_dir` and remove unpacking from search return.
 - Force using `rioxarray 0.17.0` until the bug with `>=0.18.0` is fixed.
 - Docker only: functions using TiTiler now show the error message returned by the endpoint request instead of a `KeyError` exception. This makes debugging easier.
+- Test script that checks if EODAG search and download requests work.
 
 # 2025.1.1
 
