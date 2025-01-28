@@ -24,8 +24,10 @@ def ttcog_get_stats(url, **kwargs):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
@@ -40,8 +42,10 @@ def ttcog_get_info(url, port=8085):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
@@ -58,8 +62,10 @@ def ttcog_get_tilejson(url, **kwargs):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
