@@ -223,7 +223,7 @@ def load_metadata(zip_path, subswath, polarization):
         archive_files = archive.namelist()
     else:
         archive_files = glob(f"{zip_path}/**", recursive=True)
-    regex_filter = r"s1(?:a|b)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
+    regex_filter = r"s1(?:a|b|c)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
     metadata_file_list = []
     for item in archive_files:
         if "calibration" in item or "rfi" in item:
