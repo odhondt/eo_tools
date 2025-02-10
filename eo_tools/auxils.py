@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 def remove(path, verb=True):
-    """param <path> could either be relative or absolute."""
+    """Remove file or directory."""
     if os.path.isfile(path) or os.path.islink(path):
         if verb:
             log.info(f"Removing {path}")
