@@ -1,4 +1,4 @@
-# 2025.1.2
+# 2025.2.0
 
 This version does not introduce any new features but adds fixes and improvements.
 
@@ -10,6 +10,7 @@ This version does not introduce any new features but adds fixes and improvements
 - Force using `rioxarray 0.17.0` until the bug with `>=0.18.0` is fixed.
 - Docker only: functions using TiTiler now show the error message returned by the endpoint request instead of a `KeyError` exception. This makes debugging easier.
 - Test script that checks if EODAG search and download requests work.
+- Preparing Sentinel1-C support by changing regex in burst processor (although for now S1C processing is not working due to pyrosar `identify` not recognizing the products).
 
 # 2025.1.1
 
