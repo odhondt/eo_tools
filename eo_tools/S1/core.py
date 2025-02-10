@@ -38,17 +38,16 @@ class S1IWSwath:
     - Computing the topographic phase from slant range values
     """
 
-    def __init__(self, safe_dir, iw=1, pol="vv", dir_orb="/tmp"):
+    def __init__(self, safe_path, iw=1, pol="vv", orb_dir="/tmp"):
         """Object intialization
 
         Args:
-            safe_dir (str): Directory or zip file containing the product.
+            safe_path (str): Directory or zip file containing the product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
-            dir_orb (str, optional): Directory containing orbits. Defaults to "/tmp".
+            orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
         """
-        # if not os.path.isdir(safe_dir):
-        if not os.path.exists(safe_dir):
+        if not os.path.exists(safe_path):
             raise ValueError("Product not found.")
 
         if not isinstance(iw, int) or iw < 1 or iw > 3:
@@ -57,8 +56,8 @@ class S1IWSwath:
         if pol not in ["vv", "vh"]:
             raise ValueError("Parameter 'pol' must be either 'vv' or 'vh'.")
 
-        self.is_zip = Path(safe_dir).suffix == ".zip"
-        self.product = zipfile.Path(safe_dir) if self.is_zip else Path(safe_dir)
+        self.is_zip = Path(safe_path).suffix == ".zip"
+        self.product = zipfile.Path(safe_path) if self.is_zip else Path(safe_path)
 
         # check product type using dir name
         parts = self.product.stem.split("_")
@@ -107,7 +106,7 @@ class S1IWSwath:
 
         # read burst geometries
         self.gdf_burst_geom = get_burst_geometry(
-            path=safe_dir, target_subswaths=f"IW{iw}", polarization=pol.upper()
+            path=safe_path, target_subswaths=f"IW{iw}", polarization=pol.upper()
         )
         if self.gdf_burst_geom.empty:
             raise RuntimeError("Invalid product: no burst geometry was found.")
@@ -119,8 +118,8 @@ class S1IWSwath:
         log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors (orbit)
-        product = identify(safe_dir)
-        zip_orb = product.getOSV(dir_orb, osvType=["POE", "RES"], returnMatch=True)
+        product = identify(safe_path)
+        zip_orb = product.getOSV(orb_dir, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
             raise RuntimeError("No orbit file available for this product")
 
@@ -132,8 +131,8 @@ class S1IWSwath:
             raise RuntimeError("Unknown orbit file")
 
         with zipfile.ZipFile(zip_orb) as zf:
-            file_orb = zf.namelist()[0]
-            with zf.open(file_orb) as f:
+            orb_file = zf.namelist()[0]
+            with zf.open(orb_file) as f:
                 orbdict = parse(f.read())
         orbdata = orbdict["Earth_Explorer_File"]["Data_Block"]["List_of_OSVs"]["OSV"]
         self.state_vectors = {}
@@ -159,7 +158,7 @@ class S1IWSwath:
         self,
         min_burst=1,
         max_burst=None,
-        dir_dem="/tmp",
+        dem_dir="/tmp",
         buffer_arc_sec=40,
         force_download=False,
         upscale_factor=1,
@@ -170,7 +169,7 @@ class S1IWSwath:
         Args:
             min_burst (int, optional): Minimum burst index. Defaults to 1.
             max_burst (int, optional): Maximum burst index. If None, set to last burst. Defaults to None.
-            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            dem_dir (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using burst geometries by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to True.
             dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
@@ -211,40 +210,36 @@ class S1IWSwath:
         shp = box(*geom_sub.bounds)
 
         # here we define a unique string for DEM filename
-        hash_input = (
-            f"{shp.wkt}_{upscale_factor}_{dem_name}".encode(
-                "utf-8"
-            )
-        )
+        hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
         hash_str = hashlib.md5(hash_input).hexdigest()
         dem_prefix = f"dem-{hash_str}.tif"
-        file_dem = f"{dir_dem}/{dem_prefix}"
+        dem_file = f"{dem_dir}/{dem_prefix}"
 
-        if not os.path.exists(file_dem) or force_download:
+        if not os.path.exists(dem_file) or force_download:
             if dem_name in ["nasadem", "alos-dem"]:
                 composite_crs = "EPSG:4326+5773"
             elif dem_name in ["cop-dem-glo-30", "cop-dem-glo-90"]:
                 composite_crs = "EPSG:4326+3855"
             retrieve_dem(
                 shp,
-                file_dem,
+                dem_file,
                 dem_name=dem_name,
                 upscale_factor=upscale_factor,
             )
             # write custom tag for geocoding to use the proper vertical CRS
-            with rasterio.open(file_dem, "r+") as ds:
+            with rasterio.open(dem_file, "r+") as ds:
                 ds.update_tags(COMPOSITE_CRS=composite_crs)
 
         else:
             log.info("--DEM already on disk")
 
-        return file_dem
+        return dem_file
 
     # kept for backwards compatibility
     def fetch_dem_burst(
         self,
         burst_idx=1,
-        dir_dem="/tmp",
+        dem_dir="/tmp",
         buffer_arc_sec=40,
         force_download=False,
         upscale_factor=1,
@@ -254,7 +249,7 @@ class S1IWSwath:
 
         Args:
             burst_idx (int, optional): Burst index. Defaults to 1.
-            dir_dem (str, optional): Directory to store DEM files. Defaults to "/tmp".
+            dem_dir (str, optional): Directory to store DEM files. Defaults to "/tmp".
             buffer_arc_sec (int, optional): Enlarges the bounding box computed using GPCS by a number of arc seconds. Defaults to 40.
             force_download (bool, optional): Force downloading the file to even if a DEM is already present on disk. Defaults to False.
             dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
@@ -266,7 +261,7 @@ class S1IWSwath:
         return self.fetch_dem(
             burst_idx,
             burst_idx,
-            dir_dem,
+            dem_dir,
             buffer_arc_sec,
             force_download,
             upscale_factor,
@@ -274,12 +269,12 @@ class S1IWSwath:
         )
 
     def geocode_burst(
-        self, file_dem, burst_idx=1, dem_upsampling=1, simulate_terrain=False
+        self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False
     ):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
         Args:
-            file_dem (str): path to the DEM
+            dem_file (str): path to the DEM
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
             simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
@@ -321,7 +316,7 @@ class S1IWSwath:
         else:
             log.info("Extract DEM coordinates")
         lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
-            file_dem, dem_upsampling
+            dem_file, dem_upsampling
         )
 
         log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
@@ -780,14 +775,14 @@ def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
 
 
 def resample(
-    arr, file_dem, file_out, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
+    arr, dem_file, out_file, az_p2g, rg_p2g, kernel="bicubic", write_phase=False
 ):
     """Reproject array to using a lookup table.
 
     Args:
         arr (array): image in the SAR geometry
-        file_dem (str): file of the original DEM used to compute the lookup table
-        file_out (str): output file
+        dem_file (str): file of the original DEM used to compute the lookup table
+        out_file (str): output file
         az_p2g (array): azimuth coordinates of the lookup table
         rg_p2g (array): range coordinates of the lookup table
         kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
@@ -797,7 +792,7 @@ def resample(
 
     dst_height, dst_width = az_p2g.shape
 
-    with rasterio.open(file_dem) as ds_dem:
+    with rasterio.open(dem_file) as ds_dem:
         out_prof = ds_dem.profile.copy()
 
         # account for DEM resampling
@@ -817,19 +812,19 @@ def resample(
         nodata = -9999
         phi[np.isnan(wped)] = nodata
         out_prof.update({"dtype": phi.dtype, "count": 1, "nodata": nodata})
-        with rasterio.open(file_out, "w", **out_prof) as dst:
+        with rasterio.open(out_file, "w", **out_prof) as dst:
             dst.write(phi, 1)
     else:
         if np.iscomplexobj(arr):
             out_prof.update({"dtype": arr.real.dtype, "count": 2, "nodata": np.nan})
-            with rasterio.open(file_out, "w", **out_prof) as dst:
+            with rasterio.open(out_file, "w", **out_prof) as dst:
                 # real outputs to avoid complex cast warnings in rasterio
                 dst.write(wped.real, 1)
                 dst.write(wped.imag, 2)
         else:
             wped[np.isnan(wped)] = 0
             out_prof.update({"dtype": arr.dtype, "count": 1, "nodata": 0})
-            with rasterio.open(file_out, "w", **out_prof) as dst:
+            with rasterio.open(out_file, "w", **out_prof) as dst:
                 dst.write(wped, 1)
 
 
@@ -979,9 +974,9 @@ def sv_interpolator_poly(state_vectors):
 
 
 # TODO add resampling type option
-def load_dem_coords(file_dem, upscale_factor=1):
+def load_dem_coords(dem_file, upscale_factor=1):
 
-    with rasterio.open(file_dem) as ds:
+    with rasterio.open(dem_file) as ds:
         if upscale_factor != 1:
             # on-read resampling
             alt = ds.read(

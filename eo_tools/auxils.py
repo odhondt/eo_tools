@@ -16,11 +16,9 @@ import logging
 
 log = logging.getLogger(__name__)
 
-##function to clean up temporary elements
-
 
 def remove(path, verb=True):
-    """param <path> could either be relative or absolute."""
+    """Remove file or directory."""
     if os.path.isfile(path) or os.path.islink(path):
         if verb:
             log.info(f"Removing {path}")
@@ -30,200 +28,15 @@ def remove(path, verb=True):
             log.info(f"Removing {path}")
         shutil.rmtree(path)  # remove dir and all contains
 
-
-## return dictonary from config file
-def get_config(config_file, proc_section):
-    if not os.path.isfile(config_file):
-        raise FileNotFoundError("Config file {} does not exist.".format(config_file))
-
-    parser = configparser.ConfigParser(
-        allow_no_value=True, converters={"_datetime": _parse_datetime}
-    )
-    parser.read(config_file)
-    out_dict = {}
-
-    try:
-        proc_sec = parser[proc_section]
-    except KeyError:
-        raise KeyError(
-            "Section '{}' does not exist in config file {}".format(
-                proc_section, config_file
-            )
-        )
-
-    for k, v in proc_sec.items():
-        if k == "download":
-            if v.lower() == "true":
-                v = True
-        if k == "processes":
-            v = int(v)
-        if k.endswith("date"):
-            v = proc_sec.get_datetime(k)
-        if k == "int_proc":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "coh_proc":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "ha_proc":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "ext_dem_egm":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "clean_tmpdir":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "osvfail":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "msk_nodatval":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "ext_dem":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "subset":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "l2db_arg":
-            if v.lower() == "true":
-                v = True
-            elif v.lower() == "false":
-                v = False
-        if k == "t_crs":
-            v = int(v)
-        if k == "cohwinrg":
-            v = int(v)
-        if k == "cohwinaz":
-            v = int(v)
-        if k == "filtersizex":
-            v = int(v)
-        if k == "filtersizey":
-            v = int(v)
-        if k == "ml_rglook":
-            v = int(v)
-        if k == "ml_azlook":
-            v = int(v)
-        if k == "decomp_win_size":
-            v = int(v)
-        if k == "ext_dem_nodatval":
-            v = int(v)
-        if k == "res_int":
-            v = int(v)
-        if k == "res_coh":
-            v = int(v)
-        if k == "res_ha":
-            v = int(v)
-        if k == "ext_dem_file":
-            if v == "None":
-                v = None
-            else:
-                v = v
-        if k == "osvpath":
-            if v == "None":
-                v = None
-            else:
-                v = v
-        if k == "iws":
-            v = v.split(",")
-        out_dict[k] = v
-        if k == "decompfeats":
-            v = v.split(",")
-        out_dict[k] = v
-        if k == "gpt_paras":
-            if v == "None":
-                v = None
-            else:
-                v = v.split(",")
-    return out_dict
-
-
-##get datetime from strings such as filenames
-def _parse_datetime(s):
-    """Custom converter for configparser:
-    https://docs.python.org/3/library/configparser.html#customizing-parser-behaviour"""
-    if "T" in s:
-        try:
-            return dt.strptime(s, "%Y-%m-%dT%H:%M:%S")
-        except ValueError as e:
-            raise Exception(
-                "Parameters 'mindate/maxdate': Could not parse '{}' with datetime format "
-                "'%Y-%m-%dT%H:%M:%S'".format(s)
-            ) from e
-    else:
-        try:
-            return dt.strptime(s, "%Y-%m-%d")
-        except ValueError as e:
-            raise Exception(
-                "Parameters 'mindate/maxdate': Could not parse '{}' with datetime format "
-                "'%Y-%m-%d'".format(s)
-            ) from e
-
-
-## group files in nested lists based on common parameter
-def group_by_info(infiles, group=None):
-    ##sort files by characteristic of S-1 data (e.g. orbit number, platform, ...)
-    info = identify_many(infiles, sortkey=group)
-    ##extract file paths of sorted files
-    fps_lst = [fp.scene for fp in info]
-
-    ##extract and identify unique keys
-    groups = []
-    for o in info:
-        orb = eval("o." + group)
-        groups.append(orb)
-
-    query_group = groups.count(groups[0]) == len(groups)
-    unique_groups = list(set(groups))
-
-    out_files = []
-    if query_group == True:
-        out_files = infiles
-    else:
-        group_idx = []
-        # index files of key
-        for a in unique_groups:
-            tmp_groups = []
-            for idx, elem in enumerate(groups):
-                if a == elem:
-                    tmp_groups.append(idx)
-
-            group_idx.append(tmp_groups)
-        ###group by same keyword
-        for i in range(0, len(group_idx)):
-            fpsN = list(map(fps_lst.__getitem__, group_idx[i]))
-            out_files.append(fpsN)
-
-    return out_files
-
-
-## get metadata from zip file for specific polarization and subswaths
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def load_metadata(zip_path, subswath, polarization):
     if zip_path.endswith(".zip"):
         archive = ZipFile(zip_path)
         archive_files = archive.namelist()
     else:
         archive_files = glob(f"{zip_path}/**", recursive=True)
-    regex_filter = r"s1(?:a|b)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
+    regex_filter = r"s1(?:a|b|c)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
     metadata_file_list = []
     for item in archive_files:
         if "calibration" in item or "rfi" in item:
@@ -241,7 +54,8 @@ def load_metadata(zip_path, subswath, polarization):
         return open(target_file)
 
 
-## get total number of bursts and their coordinates from metadata
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def parse_location_grid(metadata):
     tree = ET.parse(metadata)
     root = tree.getroot()
@@ -260,7 +74,8 @@ def parse_location_grid(metadata):
     return total_num_bursts, coord_list
 
 
-## get subswath geometry from each burst
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def parse_subswath_geometry(coord_list, total_num_bursts):
     def get_coords(index, coord_list):
         coord = coord_list[index]
@@ -306,7 +121,8 @@ def parse_subswath_geometry(coord_list, total_num_bursts):
     return bursts_dict
 
 
-## get geometry of individual bursts
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def get_burst_geometry(path, target_subswaths, polarization):
     df_all = gpd.GeoDataFrame(
         columns=["subswath", "burst", "geometry"], crs="EPSG:4326"
@@ -399,12 +215,10 @@ def block_process(img, block_size, overlap_size, fun, *fun_args, **kwargs):
             np.pad(x, ((pad_top, pad_bottom), (pad_left, pad_right))) for x in img
         )
     )
-    
+
     # Preallocate output image with the same shape as the input image
     imgout = (
-        np.zeros_like(img_)
-        if not isinstance(img_, tuple)
-        else np.zeros_like(img_[0])
+        np.zeros_like(img_) if not isinstance(img_, tuple) else np.zeros_like(img_[0])
     )
 
     for i in range(pad_top, img_.shape[0], block_height):

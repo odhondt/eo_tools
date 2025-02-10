@@ -16,7 +16,7 @@ dependencies:
   - pystac-client
   - geopandas
   - pandas
-  - eodag=2.12.1
+  - eodag
   - ipykernel
   - ipywidgets
   - black
@@ -32,15 +32,6 @@ dependencies:
   - numba
   - dask
   - bottleneck
-  # these are required to avoid eodag to break
-  - websockets 
-  - watchfiles 
-  - uvloop 
-  - python-dotenv 
-  - httptools
   - planetary-computer
-  # - numexpr
-  # - pip:
-    # - titiler.application
-    # - eodag
   # - memory_profiler
+  # - numexpr

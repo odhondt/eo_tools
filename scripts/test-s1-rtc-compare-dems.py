@@ -1,5 +1,6 @@
 # %%
 import logging
+
 logging.basicConfig(level=logging.INFO)
 import logging
 
@@ -28,7 +29,7 @@ from eodag import EODataAccessGateway
 # credentials need to be stored in the following file (see EODAG docs)
 confpath = "/data/eodag_config.yml"
 dag = EODataAccessGateway(user_conf_file_path=confpath)
-# make sure cop_dataspace will be used 
+# make sure cop_dataspace will be used
 dag.set_preferred_provider("cop_dataspace")
 logging.basicConfig(level=logging.INFO)
 
@@ -38,41 +39,41 @@ data_dir = "/data/S1"
 
 ids = [
     # Morocco
-#  "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1", 
+    #  "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     # Etna
- 'S1A_IW_SLC__1SDV_20181228T050448_20181228T050515_025221_02C9BE_1E22',
+    "S1A_IW_SLC__1SDV_20181228T050448_20181228T050515_025221_02C9BE_1E22",
 ]
-slc_dir = f"{data_dir}/{ids[0]}.zip"
-outputs_prefix_1="/data/res/test-slc-processor-rtc-nasadem"
-outputs_prefix_2="/data/res/test-slc-processor-rtc-alos"
-outputs_prefix_3="/data/res/test-slc-processor-rtc-glo30"
-outputs_prefix_4="/data/res/test-slc-processor-rtc-glo90"
+slc_path = f"{data_dir}/{ids[0]}.zip"
+output_dir_1 = "/data/res/test-slc-processor-rtc-nasadem"
+output_dir_2 = "/data/res/test-slc-processor-rtc-alos"
+output_dir_3 = "/data/res/test-slc-processor-rtc-glo30"
+output_dir_4 = "/data/res/test-slc-processor-rtc-glo90"
 
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-file_aoi = "/eo_tools/data/Etna.geojson"
-# file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_small.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+aoi_file = "/eo_tools/data/Etna.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_small.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 search_criteria = {
     "productType": "S1_SAR_SLC",
     "start": "2023-09-03",
     "end": "2023-09-17",
-    "geom": shp
+    "geom": shp,
 }
 
-# results, _ = dag.search(**search_criteria)
+# results = dag.search(**search_criteria)
 # to_dl = [it for it in results if it.properties["id"] in ids]
 # print(f"{len(to_dl)} products to download")
-# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=True)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=True)
 
 # %%
 
 out_dir_nasadem = process_slc(
-    dir_slc=slc_dir,
-    outputs_prefix=outputs_prefix_1,
+    slc_path=slc_path,
+    output_dir=output_dir_1,
     aoi_name=None,
     shp=shp,
     pol="vv",
@@ -89,8 +90,8 @@ out_dir_nasadem = process_slc(
 # %%
 
 out_dir_alos = process_slc(
-    dir_slc=slc_dir,
-    outputs_prefix=outputs_prefix_2,
+    slc_path=slc_path,
+    output_dir=output_dir_2,
     aoi_name=None,
     shp=shp,
     pol="vv",
@@ -108,8 +109,8 @@ out_dir_alos = process_slc(
 # %%
 
 out_dir_glo30 = process_slc(
-    dir_slc=slc_dir,
-    outputs_prefix=outputs_prefix_3,
+    slc_path=slc_path,
+    output_dir=output_dir_3,
     aoi_name=None,
     shp=shp,
     pol="vv",
@@ -127,8 +128,8 @@ out_dir_glo30 = process_slc(
 # %%
 
 out_dir_glo90 = process_slc(
-    dir_slc=slc_dir,
-    outputs_prefix=outputs_prefix_4,
+    slc_path=slc_path,
+    output_dir=output_dir_4,
     aoi_name=None,
     shp=shp,
     pol="vv",

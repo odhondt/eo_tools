@@ -54,19 +54,19 @@ def test_coherence(create_test_data):
 # def test_process_insar(tmp_path):
 
 #     data_dir = "./data/S1"
-#     file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-#     shp = gpd.read_file(file_aoi).geometry[0]
+#     aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+#     shp = gpd.read_file(aoi_file).geometry[0]
 #     ids = [
 #         "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
 #         "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 #     ]
-#     primary_dir = f"{data_dir}/{ids[0]}.SAFE"
-#     secondary_dir = f"{data_dir}/{ids[1]}.SAFE"
+#     primary_path = f"{data_dir}/{ids[0]}.SAFE"
+#     secondary_path = f"{data_dir}/{ids[1]}.SAFE"
 
 #     process_args = dict(
-#         dir_prm=primary_dir,
-#         dir_sec=secondary_dir,
-#         outputs_prefix=tmp_path,
+#         prm_path=primary_path,
+#         sec_path=secondary_path,
+#         output_dir=tmp_path,
 #         aoi_name=None,
 #         shp=shp,
 #         pol="vv",
@@ -76,7 +76,7 @@ def test_coherence(create_test_data):
 #         write_primary_amplitude=True,
 #         write_secondary_amplitude=False,
 #         apply_fast_esd=True,
-#         dir_dem="./data/dem/",
+#         dem_dir="./data/dem/",
 #         dem_upsampling=0.5,
 #         dem_force_download=False,
 #         dem_buffer_arc_sec=20,

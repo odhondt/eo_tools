@@ -216,29 +216,23 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             (geom_all["burst"] >= 1) & (geom_all["burst"] <= 2)
         ].union_all()
 
-        dir_dem = "/tmp/test-fetch-dem"
+        dem_dir = "/tmp/test-fetch-dem"
 
-        if not os.path.isdir(dir_dem):
-            os.mkdir(dir_dem)
+        if not os.path.isdir(dem_dir):
+            os.mkdir(dem_dir)
 
-        def expected_filename(
-            buffer_arc_sec, upscale_factor, dem_name
-        ):
+        def expected_filename(buffer_arc_sec, upscale_factor, dem_name):
             # Apply the buffer in degrees
             geom_sub = geom_sub_nobuf.buffer(buffer_arc_sec / 3600)
             shp = box(*geom_sub.bounds)
-            hash_input = (
-                f"{shp.wkt}_{upscale_factor}_{dem_name}".encode(
-                    "utf-8"
-                )
-            )
+            hash_input = f"{shp.wkt}_{upscale_factor}_{dem_name}".encode("utf-8")
             hash_str = hashlib.md5(hash_input).hexdigest()
             # expected file name
-            file_dem_expected = f"{dir_dem}/dem-{hash_str}.tif"
+            dem_file_expected = f"{dem_dir}/dem-{hash_str}.tif"
 
             # generate dummy file that will be opened in the function to test
             with rasterio.open(
-                file_dem_expected,
+                dem_file_expected,
                 "w",
                 driver="GTiff",
                 height=10,
@@ -250,43 +244,43 @@ def test_fetch_dem_filename_uniqueness(create_swath):
             ) as dataset:
                 dataset.write(np.zeros((10, 10), dtype="float32"), 1)
 
-            return file_dem_expected
+            return dem_file_expected
 
         # generate expected files and their names
-        file_dem_1_e = expected_filename(40, 1.0, "nasadem")
-        file_dem_2_e = expected_filename(40, 2.0, "nasadem")
-        file_dem_3_e = expected_filename(50, 1.0, "nasadem")
-        file_dem_4_e = expected_filename(40, 1.0, "alos-dem")
+        dem_file_1_e = expected_filename(40, 1.0, "nasadem")
+        dem_file_2_e = expected_filename(40, 2.0, "nasadem")
+        dem_file_3_e = expected_filename(50, 1.0, "nasadem")
+        dem_file_4_e = expected_filename(40, 1.0, "alos-dem")
 
         # Generate DEM with different parameters and capture filenames
-        file_dem_1 = swath.fetch_dem(
+        dem_file_1 = swath.fetch_dem(
             min_burst=1,
             max_burst=2,
-            dir_dem=dir_dem,
+            dem_dir=dem_dir,
             upscale_factor=1.0,
             buffer_arc_sec=40,
         )
-        file_dem_2 = swath.fetch_dem(
+        dem_file_2 = swath.fetch_dem(
             min_burst=1,
             max_burst=2,
-            dir_dem=dir_dem,
+            dem_dir=dem_dir,
             upscale_factor=2.0,
             buffer_arc_sec=40,
         )
 
         # Now change buffer_arc_sec to affect geometry and the resulting filename
-        file_dem_3 = swath.fetch_dem(
+        dem_file_3 = swath.fetch_dem(
             min_burst=1,
             max_burst=2,
-            dir_dem=dir_dem,
+            dem_dir=dem_dir,
             upscale_factor=1.0,
             buffer_arc_sec=50,
         )
 
-        file_dem_4 = swath.fetch_dem(
+        dem_file_4 = swath.fetch_dem(
             min_burst=1,
             max_burst=2,
-            dir_dem=dir_dem,
+            dem_dir=dem_dir,
             upscale_factor=1.0,
             buffer_arc_sec=40,
             dem_name="alos-dem",
@@ -294,42 +288,42 @@ def test_fetch_dem_filename_uniqueness(create_swath):
 
         # Ensure unique filenames are generated based on the parameters
         assert (
-            file_dem_1 != file_dem_2
+            dem_file_1 != dem_file_2
         ), "DEM filenames should differ for different upscale factors"
         assert (
-            file_dem_1 != file_dem_3
+            dem_file_1 != dem_file_3
         ), "DEM filenames should differ for different buffer_arc_sec values"
         assert (
-            file_dem_2 != file_dem_3
+            dem_file_2 != dem_file_3
         ), "DEM filenames should differ for different parameters"
         assert (
-            file_dem_1 != file_dem_3
+            dem_file_1 != dem_file_3
         ), "DEM filenames should differ for different dem_name"
 
         # Verify that the filenames are as expected
         assert (
-            file_dem_1 == file_dem_1_e
+            dem_file_1 == dem_file_1_e
         ), "Generated DEM filename for upscale_factor=1.0, buffer=40 is incorrect"
         assert (
-            file_dem_2 == file_dem_2_e
+            dem_file_2 == dem_file_2_e
         ), "Generated DEM filename for upscale_factor=2.0 is incorrect"
         assert (
-            file_dem_3 == file_dem_3_e
+            dem_file_3 == dem_file_3_e
         ), "Generated DEM filename for buffer_arc_sec=50 is incorrect"
         assert (
-            file_dem_4 == file_dem_4_e
+            dem_file_4 == dem_file_4_e
         ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
 def test_burst_geocoding(create_swath):
     swath = create_swath
-    file_dem = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(file_dem)
+    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
+    arr = riox.open_rasterio(dem_file)
     dem_shape = arr[0].shape
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
     dem_upsampling = 0.1
     az, rg, gamma_t = swath.geocode_burst(
-        file_dem, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
+        dem_file, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
     )
 
     out_shape = (

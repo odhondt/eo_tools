@@ -37,15 +37,15 @@ ids = [
     "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
     "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
 ]
-primary_dir = f"{data_dir}/{ids[0]}.zip"
-secondary_dir = f"{data_dir}/{ids[1]}.zip"
-outputs_prefix = "/data/res/test-change-detection-pipeline"
+primary_path = f"{data_dir}/{ids[0]}.zip"
+secondary_path = f"{data_dir}/{ids[1]}.zip"
+output_dir = "/data/res/test-change-detection-pipeline"
 # %%
 # load a geometry
-# file_aoi = "/eo_tools/data/Morocco_small.geojson"
-file_aoi = "/eo_tools/data/Morocco_tiny.geojson"
-# file_aoi = "/eo_tools/data/Morocco_AOI.geojson"
-shp = gpd.read_file(file_aoi).geometry[0]
+# aoi_file = "/eo_tools/data/Morocco_small.geojson"
+aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+shp = gpd.read_file(aoi_file).geometry[0]
 
 search_criteria = {
     "productType": "S1_SAR_SLC",
@@ -54,17 +54,17 @@ search_criteria = {
     "geom": shp,
 }
 
-results, _ = dag.search(**search_criteria)
+results = dag.search(**search_criteria)
 to_dl = [it for it in results if it.properties["id"] in ids]
 print(f"{len(to_dl)} products to download")
-# dag.download_all(to_dl, outputs_prefix="/data/S1/", extract=False)
+# dag.download_all(to_dl, output_dir="/data/S1/", extract=False)
 # %%
 from eo_tools.S1.process import prepare_insar
 
 out_dir = prepare_insar(
-    dir_prm=primary_dir,
-    dir_sec=secondary_dir,
-    outputs_prefix=outputs_prefix,
+    prm_path=primary_path,
+    sec_path=secondary_path,
+    output_dir=output_dir,
     aoi_name=None,
     shp=shp,
     pol="full",
@@ -79,13 +79,13 @@ out_dir = prepare_insar(
 
 
 # %%
-def change_detection(file_amp_prm, file_amp_sec, file_out):
+def change_detection(amp_prm_file, amp_sec_file, out_file):
     log.info("Smoothing amplitudes")
-    amp_prm = riox.open_rasterio(file_amp_prm)[0].rolling(x=7, y=7, center=True).mean()
-    amp_sec = riox.open_rasterio(file_amp_sec)[0].rolling(x=7, y=7, center=True).mean()
+    amp_prm = riox.open_rasterio(amp_prm_file)[0].rolling(x=7, y=7, center=True).mean()
+    amp_sec = riox.open_rasterio(amp_sec_file)[0].rolling(x=7, y=7, center=True).mean()
     log.info("Incoherent changes")
     ch = np.log(amp_prm + 1e-10) - np.log(amp_sec + 1e-10)
-    ch.rio.to_raster(file_out)
+    ch.rio.to_raster(out_file)
 
 
 # %%
@@ -93,16 +93,16 @@ from eo_tools.S1.process import coherence, amplitude
 from eo_tools.S1.process import apply_to_patterns_for_pair, apply_to_patterns_for_single
 from pathlib import Path
 
-out_dir = f"{outputs_prefix}/S1_InSAR_2023-09-04-063730__2023-09-16-063730/sar"
+out_dir = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730/sar"
 geo_dir = Path(out_dir).parent
 
 # compute interferometric coherence
 apply_to_patterns_for_pair(
     coherence,
     out_dir=out_dir,
-    file_prm_prefix="slc_prm",
-    file_sec_prefix="slc_sec",
-    file_out_prefix="coh",
+    prm_file_prefix="slc_prm",
+    sec_file_prefix="slc_sec",
+    out_file_prefix="coh",
     box_size=[3, 3],
     multilook=[1, 4],
 )
@@ -111,8 +111,8 @@ apply_to_patterns_for_pair(
 apply_to_patterns_for_single(
     amplitude,
     out_dir=out_dir,
-    file_in_prefix="slc_prm",
-    file_out_prefix="amp_prm",
+    in_file_prefix="slc_prm",
+    out_file_prefix="amp_prm",
     multilook=[2, 8],
 )
 
@@ -120,8 +120,8 @@ apply_to_patterns_for_single(
 apply_to_patterns_for_single(
     amplitude,
     out_dir=out_dir,
-    file_in_prefix="slc_sec",
-    file_out_prefix="amp_sec",
+    in_file_prefix="slc_sec",
+    out_file_prefix="amp_sec",
     multilook=[2, 8],
 )
 
@@ -129,9 +129,9 @@ apply_to_patterns_for_single(
 apply_to_patterns_for_pair(
     change_detection,
     out_dir=out_dir,
-    file_prm_prefix="amp_prm",
-    file_sec_prefix="amp_sec",
-    file_out_prefix="change",
+    prm_file_prefix="amp_prm",
+    sec_file_prefix="amp_sec",
+    out_file_prefix="change",
 )
 
 # %%

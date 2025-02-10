@@ -24,8 +24,10 @@ def ttcog_get_stats(url, **kwargs):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
@@ -40,8 +42,10 @@ def ttcog_get_info(url, port=8085):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
@@ -58,8 +62,10 @@ def ttcog_get_tilejson(url, **kwargs):
         ).json()
     except:
         raise RuntimeError(
-            "Server not running. Please run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
+            "Server not running.\nPlease run `uvicorn titiler.application.main:app --host 127.0.0.1 --port=8085` in a terminal to use this function."
         )
+    if "detail" in r.keys():
+        raise Exception(r["detail"])
     return r
 
 
@@ -92,13 +98,13 @@ def show_insar_phi(input_path, port=8085):
         folium.Map: raster visualization on an interactive map
     """
     if os.path.isdir(input_path):
-        file_in = f"{input_path}/phi.tif"
+        in_file = f"{input_path}/phi.tif"
     elif os.path.isfile(input_path):
-        file_in = input_path
+        in_file = input_path
     else:
         raise FileExistsError(f"Problem reading file.")
 
-    if not os.path.isfile(file_in):
+    if not os.path.isfile(in_file):
         raise FileExistsError("Problem reading file or file does not exist.")
 
     # palette used by SNAP for insar phase
@@ -117,12 +123,12 @@ def show_insar_phi(input_path, port=8085):
     interp_cmap = LinearSegmentedColormap.from_list("cubehelix_cycle", palette_norm)
     cmap_hex = list(map(to_hex, interp_cmap(np.linspace(0, 1, 256))))
 
-    info = ttcog_get_info(file_in, port=port)
+    info = ttcog_get_info(in_file, port=port)
     bounds = info["bounds"]
 
     eps = np.random.uniform(1e-8, 1e-9)
     tjson = ttcog_get_tilejson(
-        file_in,
+        in_file,
         port=port,
         rescale=f"{-np.pi+eps},{np.pi}",
         resampling="nearest",  # make sure COG has been made with 'nearest'
@@ -151,18 +157,18 @@ def show_insar_coh(input_path, port=8085):
     """
 
     if os.path.isdir(input_path):
-        file_in = f"{input_path}/coh.tif"
+        in_file = f"{input_path}/coh.tif"
     elif os.path.isfile(input_path):
-        file_in = input_path
+        in_file = input_path
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
-    if not os.path.isfile(file_in):
+    if not os.path.isfile(in_file):
         raise FileExistsError("Problem reading file or file does not exist.")
-    info = ttcog_get_info(file_in, port)
+    info = ttcog_get_info(in_file, port)
     bounds = info["bounds"]
     eps = np.random.uniform(1e-8, 1e-9)
-    tjson = ttcog_get_tilejson(file_in, port=port, rescale=f"{0+eps},1")
+    tjson = ttcog_get_tilejson(in_file, port=port, rescale=f"{0+eps},1")
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),
@@ -188,21 +194,21 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False, port=8
     """
     if os.path.isdir(input_path):
         if master:
-            file_in = f"{input_path}/int_mst.tif"
+            in_file = f"{input_path}/int_mst.tif"
         else:
-            file_in = f"{input_path}/int_slv.tif"
+            in_file = f"{input_path}/int_slv.tif"
     elif os.path.isfile(input_path):
-        file_in = input_path
+        in_file = input_path
     else:
         raise FileExistsError("Problem reading file or file does not exist.")
 
-    if not os.path.isfile(file_in):
+    if not os.path.isfile(in_file):
         raise FileExistsError("Problem reading file or file does not exist.")
 
     if not dB:
-        stats = ttcog_get_stats(file_in, port=port)["b1"]
+        stats = ttcog_get_stats(in_file, port=port)["b1"]
     else:
-        stats = ttcog_get_stats(file_in, port=port, expression="10*log10(b1)")[
+        stats = ttcog_get_stats(in_file, port=port, expression="10*log10(b1)")[
             "10*log10(b1)"
         ]
 
@@ -215,18 +221,18 @@ def show_sar_int(input_path, master=True, vmin=None, vmax=None, dB=False, port=8
         vmax_ = float(stats["percentile_98"])
     else:
         vmax_ = vmax
-    info = ttcog_get_info(file_in, port=port)
+    info = ttcog_get_info(in_file, port=port)
     bounds = info["bounds"]
     eps = np.random.uniform(1e-8, 1e-9)
     if dB:
         tjson = ttcog_get_tilejson(
-            file_in,
+            in_file,
             port=port,
             rescale=f"{vmin_+eps},{vmax_}",
             expression="10*log10(b1)",
         )
     else:
-        tjson = ttcog_get_tilejson(file_in, port=port, rescale=f"{vmin_+eps},{vmax_}")
+        tjson = ttcog_get_tilejson(in_file, port=port, rescale=f"{vmin_+eps},{vmax_}")
 
     m = folium.Map(
         location=((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2),

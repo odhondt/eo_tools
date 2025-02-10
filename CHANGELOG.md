@@ -1,3 +1,17 @@
+# 2025.2.0
+
+This version does not introduce any new features but adds fixes and improvements.
+
+## Breaking change
+- Improved parameter name consistency. All variable and parameters that had `file`, `dir` and `path` in them have been renamed following the model `xxx_{file|dir|path}`. This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
+
+## Other
+- Use EODAG latest version, changed `outputs_prefix` parameter to `output_dir` and remove unpacking from search return.
+- Force using `rioxarray 0.17.0` until the bug with `>=0.18.0` is fixed.
+- Docker only: functions using TiTiler now show the error message returned by the endpoint request instead of a `KeyError` exception. This makes debugging easier.
+- Test script that checks if EODAG search and download requests work.
+- Preparing Sentinel1-C support by changing regex in burst processor (although for now S1C processing is not working due to pyrosar `identify` not recognizing the products).
+
 # 2025.1.1
 
 ## New feature
