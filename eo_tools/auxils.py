@@ -28,7 +28,8 @@ def remove(path, verb=True):
             log.info(f"Removing {path}")
         shutil.rmtree(path)  # remove dir and all contains
 
-## get metadata from zip file for specific polarization and subswaths
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def load_metadata(zip_path, subswath, polarization):
     if zip_path.endswith(".zip"):
         archive = ZipFile(zip_path)
@@ -53,7 +54,8 @@ def load_metadata(zip_path, subswath, polarization):
         return open(target_file)
 
 
-## get total number of bursts and their coordinates from metadata
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def parse_location_grid(metadata):
     tree = ET.parse(metadata)
     root = tree.getroot()
@@ -72,7 +74,8 @@ def parse_location_grid(metadata):
     return total_num_bursts, coord_list
 
 
-## get subswath geometry from each burst
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def parse_subswath_geometry(coord_list, total_num_bursts):
     def get_coords(index, coord_list):
         coord = coord_list[index]
@@ -118,7 +121,8 @@ def parse_subswath_geometry(coord_list, total_num_bursts):
     return bursts_dict
 
 
-## get geometry of individual bursts
+# Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
+# Original license: Apache-2.0
 def get_burst_geometry(path, target_subswaths, polarization):
     df_all = gpd.GeoDataFrame(
         columns=["subswath", "burst", "geometry"], crs="EPSG:4326"
