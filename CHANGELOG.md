@@ -2,7 +2,7 @@
 
 This version does not introduce any new features but adds fixes and improvements.
 
-## Breaking changes
+## Breaking change
 - Improved parameter name consistency. All variable and parameters that had `file`, `dir` and `path` in them have been renamed following the model `xxx_{file|dir|path}`. This means some function calls have changed. Please refer to the API reference page in the docs to see the updated parameters.
 
 ## Other
