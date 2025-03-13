@@ -1546,8 +1546,8 @@ def h_alpha_dual(
     # Entropy
     H = pp1 * np.log2(pp1 + eps) + pp2 * np.log2(pp2 + eps)
 
-    alpha1 = np.acos((v11 * v11.conj()).real + (v12 * v12.conj()).real) * 180 / np.pi
-    alpha2 = np.acos((v21 * v21.conj()).real + (v22 * v22.conj()).real) * 180 / np.pi
+    alpha1 = np.acos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real)) * 180 / np.pi
+    alpha2 = np.acos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real)) * 180 / np.pi
 
     # Mean alpha
     alpha = pp1 * alpha1 + pp2 * alpha2
