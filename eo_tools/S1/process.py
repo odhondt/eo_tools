@@ -650,7 +650,7 @@ def process_slc(
     return Path(out_dir).parent
 
 
-def process_polsar(
+def process_h_alpha_dual(
     slc_path: str,
     output_dir: str,
     aoi_name: str = None,
@@ -661,6 +661,7 @@ def process_polsar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
+    boxcar_size: Union[int, List[int]] = [5, 5],
     multilook: List[int] = [1, 4],
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
@@ -714,19 +715,27 @@ def process_polsar(
 
     var_names = ["amp"]
 
-    pol_ = ["vv", "vh"]
     iw_idx = [iw[2] for iw in subswaths]
-    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
+    patterns = [f"iw{iw}" for iw in iw_idx]
     for pattern in patterns:
-        slc_file = f"{out_dir}/slc_{pattern}.tif"
+        vv_file = f"{out_dir}/slc_{pattern}_vv.tif"
+        vh_file = f"{out_dir}/slc_{pattern}_vh.tif"
 
-        if os.path.isfile(slc_file):
+        if os.path.isfile(vv_file) and os.path.isfile(vh_file):
             log.info(
-                f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+                f"---- H-alpha for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
             )
 
-            ampl_file = f"{out_dir}/amp_{pattern}.tif"
-            # H, alpha = halpha_dual(...)
+            h_file = f"{out_dir}/H_{pattern}.tif"
+            alpha_file = f"{out_dir}/alpha_{pattern}.tif"
+            h_alpha_dual(
+                vv_file=vv_file,
+                vh_file=vh_file,
+                h_file=h_file,
+                alpha_file=alpha_file,
+                box_size=boxcar_size,
+                multilook=multilook,
+            )
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -1465,10 +1474,10 @@ def eigh_2x2(c11, c22, c12_conj):
     return l1, l2, v11, v12, v21, v22
 
 
-def H_alpha_dual(
+def h_alpha_dual(
     vv_file: str,
     vh_file: str,
-    H_file: str,
+    h_file: str,
     alpha_file: str,
     box_size: Union[int, List[int]] = 5,
     multilook: List = [1, 1],
@@ -1561,7 +1570,7 @@ def H_alpha_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_H.rio.write_nodata(nodataval, inplace=True)
-    da_H.rio.to_raster(H_file)
+    da_H.rio.to_raster(h_file)
 
     alpha = da.where(msk_out, alpha, np.nan)
 
