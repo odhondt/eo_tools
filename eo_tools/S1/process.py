@@ -1468,7 +1468,8 @@ def eigh_2x2(c11, c22, c12_conj):
 def H_alpha_dual(
     vv_file: str,
     vh_file: str,
-    out_file: str,
+    H_file: str,
+    alpha_file: str,
     box_size: Union[int, List[int]] = 5,
     multilook: List = [1, 1],
 ) -> None:
@@ -1477,6 +1478,8 @@ def H_alpha_dual(
     Args:
         vv_file (str): GeoTiff file of the VV SLC image
         vh_file (str): GeoTiff file of the VH SLC image
+        H_file (str): GeoTiff file of output entropy
+        alpha_file (str): GeoTiff file of output alpha angle
         out_file (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
@@ -1558,7 +1561,7 @@ def H_alpha_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_H.rio.write_nodata(nodataval, inplace=True)
-    da_H.rio.to_raster(out_file)
+    da_H.rio.to_raster(H_file)
 
     alpha = da.where(msk_out, alpha, np.nan)
 
@@ -1571,7 +1574,7 @@ def H_alpha_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_alpha.rio.write_nodata(nodataval, inplace=True)
-    da_alpha.rio.to_raster(out_file)
+    da_alpha.rio.to_raster(alpha_file)
 
 
 def goldstein(
