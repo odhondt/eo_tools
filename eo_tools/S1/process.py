@@ -1544,20 +1544,34 @@ def H_alpha_dual(
     nodataval = np.nan
 
     # Post-processing to adapt to polSAR params
-    # struct = np.ones((box_az, box_rg))
-    # msk_out = da.map_blocks(binary_erosion, msk, struct)
-    # coh = da.where(msk_out, coh, np.nan)
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(binary_erosion, msk, struct)
 
-    # da_coh = xr.DataArray(
-    #     name="coh",
-    #     data=coh[None],
-    #     dims=("band", "y", "x"),
-    # )
-    # da_coh.rio.write_transform(
-    #     ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
-    # )
-    # da_coh.rio.write_nodata(nodataval, inplace=True)
-    # da_coh.rio.to_raster(out_file)
+    H = da.where(msk_out, H, np.nan)
+
+    da_H = xr.DataArray(
+        name="coh",
+        data=H[None],
+        dims=("band", "y", "x"),
+    )
+    da_H.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_H.rio.write_nodata(nodataval, inplace=True)
+    da_H.rio.to_raster(out_file)
+
+    alpha = da.where(msk_out, alpha, np.nan)
+
+    da_alpha = xr.DataArray(
+        name="coh",
+        data=alpha[None],
+        dims=("band", "y", "x"),
+    )
+    da_alpha.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_alpha.rio.write_nodata(nodataval, inplace=True)
+    da_alpha.rio.to_raster(out_file)
 
 
 def goldstein(
