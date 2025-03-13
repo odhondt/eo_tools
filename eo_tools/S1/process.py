@@ -650,6 +650,100 @@ def process_slc(
     return Path(out_dir).parent
 
 
+def process_polsar(
+    slc_path: str,
+    output_dir: str,
+    aoi_name: str = None,
+    shp: shape = None,
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    dem_dir: str = "/tmp",
+    dem_name: str = "nasadem",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
+    multilook: List[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+) -> str:
+    """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
+
+    Args:
+        slc_path (str): input image (SLC Sentinel-1 product directory or zip file).
+        output_dir (str): location in which the product subdirectory will be created
+        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
+        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+
+    Returns:
+        str: output directory
+    """
+
+    if not np.any([coherence, interferogram]):
+        raise ValueError(
+            "At least one of `write_coherence` and `write_interferogram` must be True."
+        )
+
+    # prepare pair for interferogram computation
+    out_dir = prepare_slc(
+        slc_path=slc_path,
+        output_dir=output_dir,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol="full",
+        subswaths=subswaths,
+        cal_type=cal_type,
+        dem_dir=dem_dir,
+        dem_name=dem_name,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+    )
+
+    var_names = ["amp"]
+
+    pol_ = ["vv", "vh"]
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"{p}_iw{iw}" for p in pol_ for iw in iw_idx]
+    for pattern in patterns:
+        slc_file = f"{out_dir}/slc_{pattern}.tif"
+
+        if os.path.isfile(slc_file):
+            log.info(
+                f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+
+            ampl_file = f"{out_dir}/amp_{pattern}.tif"
+            # H, alpha = halpha_dual(...)
+
+    # by default, we use iw and pol which exist
+    _child_process(
+        geocode_and_merge_iw,
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
+    )
+    return Path(out_dir).parent
+
+
 def prepare_slc(
     slc_path: str,
     output_dir: str,
@@ -1354,6 +1448,116 @@ def coherence(
         da_ifg.rio.to_raster(
             complex_ifg_file, driver="GTiff", tiled=True, blockxsize=512, blockysize=512
         )
+
+
+# fast eigenvalue decomposition: https://hal.science/hal-01501221v1
+def eigh_2x2(c11, c22, c12_conj):
+    delta = np.sqrt(4 * np.abs(c12_conj) ** 2 + (c11 - c22) ** 2)
+    l1 = 0.5 * (c11 + c22 - delta)
+    l2 = 0.5 * (c11 + c22 + delta)
+
+    v11 = (l2 - c22) / c12_conj
+    v12 = 1
+
+    v21 = (l1 - c22) / c12_conj
+    v22 = 1
+
+    return l1, l2, v11, v12, v21, v22
+
+
+def H_alpha_dual(
+    vv_file: str,
+    vh_file: str,
+    out_file: str,
+    box_size: Union[int, List[int]] = 5,
+    multilook: List = [1, 1],
+) -> None:
+    """Compute the complex coherence from two SLC image files.
+
+    Args:
+        vv_file (str): GeoTiff file of the VV SLC image
+        vh_file (str): GeoTiff file of the VH SLC image
+        out_file (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
+    """
+
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size
+        box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_vv = riox.open_rasterio(vv_file, **open_args)
+    ds_vh = riox.open_rasterio(vh_file, **open_args)
+
+    # accessing dask arrays
+    vv = ds_vv[0].data
+    vh = ds_vh[0].data
+
+    process_args = dict(
+        dimaz=box_az,
+        dimrg=box_rg,
+        depth=(box_az, box_rg),
+    )
+
+    # multilooking
+    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
+    c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
+    c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+
+    # additional boxcar
+    c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
+    c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
+    c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
+
+    # fast eigenvalue decomposition
+    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12.conj())
+
+    eps = 1e-10
+    span = l1 + l2
+
+    # Pseudo-probabilities
+    pp1 = l1 / (span + eps)
+    pp2 = l2 / (span + eps)
+
+    # Entropy
+    H = pp1 * np.log2(pp1 + eps) + pp2 * np.log2(pp2 + eps)
+
+    alpha1 = np.acos((v11 * v11.conj()).real + (v12 * v12.conj()).real) * 180 / np.pi
+    alpha2 = np.acos((v21 * v21.conj()).real + (v22 * v22.conj()).real) * 180 / np.pi
+
+    # Mean alpha
+    alpha = pp1 * alpha1 + pp2 * alpha2
+
+    msk = ~np.isnan(c12)
+    nodataval = np.nan
+
+    # Post-processing to adapt to polSAR params
+    # struct = np.ones((box_az, box_rg))
+    # msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # coh = da.where(msk_out, coh, np.nan)
+
+    # da_coh = xr.DataArray(
+    #     name="coh",
+    #     data=coh[None],
+    #     dims=("band", "y", "x"),
+    # )
+    # da_coh.rio.write_transform(
+    #     ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    # )
+    # da_coh.rio.write_nodata(nodataval, inplace=True)
+    # da_coh.rio.to_raster(out_file)
 
 
 def goldstein(
