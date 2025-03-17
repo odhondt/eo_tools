@@ -1064,7 +1064,7 @@ def geocode_and_merge_iw(
             else:
                 raise ValueError(f"File name {name} does not match expected pattern")
             log.info(f"Geocode file {name}.tif.")
-            postfix = "_".join([it for it in [var, p, iw] if it])
+            postfix = "_".join([it for it in [p, iw] if it])
             var_file = Path(sar_dir) / f"{var}_{postfix}.tif"
             out_file = Path(sar_dir) / f"{var}_{postfix}_geo.tif"
             if p:
