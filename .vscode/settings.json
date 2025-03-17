@@ -9,5 +9,15 @@
         "tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#474F7A",
+        "titleBar.border": "#474F7A",
+        "titleBar.activeForeground": "#FFD0EC",
+        "titleBar.inactiveBackground": "#63698e",
+        "titleBar.inactiveForeground": "#ffd7ef",
+        "activityBar.background": "#474F7A",
+        "activityBar.foreground": "#FFD0EC",
+        "activityBar.inactiveForeground": "#cca6bd"
+    }
 }
