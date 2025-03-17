@@ -27,6 +27,7 @@ from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
 from skimage.morphology import binary_erosion
+import re
 
 # use child processes
 # USE_CP = True
@@ -1038,90 +1039,105 @@ def geocode_and_merge_iw(
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
 
+    sar_dir = f"{input_dir}/sar"
     for var in var_names:
         no_file_found = True
-        for p in pol_:
-            patterns = [f"{input_dir}/sar/{var}_{p}_iw{iw}.tif" for iw in iw_idx]
 
-            matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
+        # filenames patterns with and without polarization information
+        # patterns = [f"{sar_dir}/{var}_iw{iw}.tif" for iw in iw_idx]
+        # patterns += [f"{sar_dir}/{var}_{p}_iw{iw}.tif" for iw in iw_idx for p in pol_]
+        names = [f"{var}_iw{iw}" for iw in iw_idx]
+        names += [f"{var}_{p}_iw{iw}" for iw in iw_idx for p in pol_]
 
-            tmp_files = []
-            if matched_files:
-                no_file_found = False
-            for var_file in matched_files:
-                log.info(f"Geocode file {Path(var_file).name}.")
-                base_name = Path(var_file).stem
-                parts = base_name.split("_")
-                postfix = "_".join(parts[-2:])
-                lut_file = f"{input_dir}/sar/lut_{postfix}.tif"
-                out_file = f"{input_dir}/sar/{var}_{postfix}_geo.tif"
+        matched_names = [
+            name for name in names if os.path.isfile(f"{sar_dir}/{name}.tif")
+        ]
 
-                if not os.path.exists(lut_file):
-                    raise FileNotFoundError(
-                        f"Corresponding LUT file {lut_file} not found for {var_file}"
-                    )
+        tmp_files = []
+        if matched_names:
+            no_file_found = False
+        for name in matched_names:
+            pattern = r"^(.*?)_(vv|vh)?_?(iw[1-3])$"
+            match = re.match(pattern, name)
+            if match:
+                var, p, iw = match.groups()
+            else:
+                raise ValueError(f"File name {name} does not match expected pattern")
+            log.info(f"Geocode file {name}.tif.")
+            postfix = "_".join([it for it in [var, p, iw] if it])
+            var_file = Path(sar_dir) / f"{var}_{postfix}.tif"
+            out_file = Path(sar_dir) / f"{var}_{postfix}_geo.tif"
+            if p:
+                lut_file = Path(sar_dir) / f"lut_{postfix}.tif"
+            else:
+                try:
+                    lut_file = list(Path(sar_dir).glob("lut_*.tif"))[0]
+                except:
+                    raise FileNotFoundError(f"No LUT found for {name}.tif")
 
-                # handling phase as a special case
-                if var == "phi":
-                    darr = riox.open_rasterio(var_file)
-                    if not np.iscomplexobj(darr[0]):
-                        warnings.warn(
-                            "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
-                        )
-                # if var == "ifg":
-                if var.startswith("ifg"):
-                    out_file = (
-                        f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
-                    )
-                    sar2geo(
-                        var_file,
-                        lut_file,
-                        out_file,
-                        warp_kernel,
-                        write_phase=True,
-                        magnitude_only=False,
-                    )
-                else:
-                    sar2geo(
-                        var_file,
-                        lut_file,
-                        out_file,
-                        warp_kernel,
-                        write_phase=False,
-                        magnitude_only=False,
-                    )
-                tmp_files.append(out_file)
-            if tmp_files:
-                # if var != "ifg":
-                if not var.startswith("ifg"):
-                    out_file = f"{input_dir}/{var}_{p}.tif"
-                else:
-                    out_file = f"{input_dir}/{var.replace("ifg", "phi")}_{p}.tif"
-                log.info(f"Merge file {Path(out_file).name}")
-                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
-
-                if any(np.iscomplexobj(it) for it in da_to_merge):
-                    raise NotImplementedError(
-                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
-                    )
-
-                if shp and clip_to_shape:
-                    merged = merge_arrays(
-                        da_to_merge, parse_coordinates=False
-                    ).rio.clip([shp], all_touched=True)
-                else:
-                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(
-                    out_file,
-                    driver="COG",
-                    compress="zstd",
-                    num_threads="all_cpus",
-                    resampling="nearest",
-                    overview_resampling="nearest",
+            if not os.path.exists(lut_file):
+                raise FileNotFoundError(
+                    f"Corresponding LUT file {lut_file} not found for {name}.tif"
                 )
-                # clean tmp files
-                for file in tmp_files:
-                    remove(file)
+
+            # handling phase as a special case
+            if var == "phi":
+                darr = riox.open_rasterio(Path(sar_dir) / f"{name}.tif")
+                if not np.iscomplexobj(darr[0]):
+                    warnings.warn(
+                        "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
+                    )
+            if var.startswith("ifg"):
+                out_file = (
+                    Path(sar_dir) / f"{var.replace("ifg", "phi")}_{postfix}_geo.tif"
+                )
+                sar2geo(
+                    var_file,
+                    lut_file,
+                    out_file,
+                    warp_kernel,
+                    write_phase=True,
+                    magnitude_only=False,
+                )
+            else:
+                sar2geo(
+                    var_file,
+                    lut_file,
+                    out_file,
+                    warp_kernel,
+                    write_phase=False,
+                    magnitude_only=False,
+                )
+            tmp_files.append(out_file)
+        if tmp_files:
+            out_file = f"{input_dir}/{"_".join(it for it in [var, p] if it)}.tif"
+            if var.startswith("ifg"):
+                out_file = out_file.replace("ifg", "phi")
+            log.info(f"Merge file {Path(out_file).name}")
+            da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
+
+            if any(np.iscomplexobj(it) for it in da_to_merge):
+                raise NotImplementedError(
+                    f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+                )
+
+            if shp and clip_to_shape:
+                merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
+                    [shp], all_touched=True
+                )
+            else:
+                merged = merge_arrays(da_to_merge, parse_coordinates=False)
+            merged.rio.to_raster(
+                out_file,
+                driver="COG",
+                compress="zstd",
+                num_threads="all_cpus",
+                resampling="nearest",
+                overview_resampling="nearest",
+            )
+            # clean tmp files
+            for file in tmp_files:
+                remove(file)
         if no_file_found:
             raise FileNotFoundError(f"No file was found for variable {var}")
 
@@ -1546,8 +1562,16 @@ def h_alpha_dual(
     # Entropy
     H = pp1 * np.log2(pp1 + eps) + pp2 * np.log2(pp2 + eps)
 
-    alpha1 = np.acos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real)) * 180 / np.pi
-    alpha2 = np.acos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real)) * 180 / np.pi
+    alpha1 = (
+        np.acos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real))
+        * 180
+        / np.pi
+    )
+    alpha2 = (
+        np.acos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real))
+        * 180
+        / np.pi
+    )
 
     # Mean alpha
     alpha = pp1 * alpha1 + pp2 * alpha2
