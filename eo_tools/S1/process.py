@@ -1039,18 +1039,16 @@ def geocode_and_merge_iw(
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
 
-    sar_dir = f"{input_dir}/sar"
+    sar_dir = Path(input_dir) / "sar"
     for var in var_names:
         no_file_found = True
 
         # filenames patterns with and without polarization information
-        # patterns = [f"{sar_dir}/{var}_iw{iw}.tif" for iw in iw_idx]
-        # patterns += [f"{sar_dir}/{var}_{p}_iw{iw}.tif" for iw in iw_idx for p in pol_]
         names = [f"{var}_iw{iw}" for iw in iw_idx]
         names += [f"{var}_{p}_iw{iw}" for iw in iw_idx for p in pol_]
 
         matched_names = [
-            name for name in names if os.path.isfile(f"{sar_dir}/{name}.tif")
+            name for name in names if os.path.isfile(sar_dir / f"{name}.tif")
         ]
 
         tmp_files = []
@@ -1065,13 +1063,13 @@ def geocode_and_merge_iw(
                 raise ValueError(f"File name {name} does not match expected pattern")
             log.info(f"Geocode file {name}.tif.")
             postfix = "_".join([it for it in [p, iw] if it])
-            var_file = Path(sar_dir) / f"{var}_{postfix}.tif"
-            out_file = Path(sar_dir) / f"{var}_{postfix}_geo.tif"
+            var_file = sar_dir / f"{var}_{postfix}.tif"
+            out_file = sar_dir / f"{var}_{postfix}_geo.tif"
             if p:
-                lut_file = Path(sar_dir) / f"lut_{postfix}.tif"
+                lut_file = sar_dir / f"lut_{postfix}.tif"
             else:
                 try:
-                    lut_file = list(Path(sar_dir).glob("lut_*.tif"))[0]
+                    lut_file = list(sar_dir.glob("lut_*.tif"))[0]
                 except:
                     raise FileNotFoundError(f"No LUT found for {name}.tif")
 
@@ -1082,15 +1080,13 @@ def geocode_and_merge_iw(
 
             # handling phase as a special case
             if var == "phi":
-                darr = riox.open_rasterio(Path(sar_dir) / f"{name}.tif")
+                darr = riox.open_rasterio(sar_dir / f"{name}.tif")
                 if not np.iscomplexobj(darr[0]):
                     warnings.warn(
                         "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                     )
             if var.startswith("ifg"):
-                out_file = (
-                    Path(sar_dir) / f"{var.replace("ifg", "phi")}_{postfix}_geo.tif"
-                )
+                out_file = sar_dir / f"{var.replace("ifg", "phi")}_{postfix}_geo.tif"
                 sar2geo(
                     var_file,
                     lut_file,
@@ -1109,33 +1105,56 @@ def geocode_and_merge_iw(
                     magnitude_only=False,
                 )
             tmp_files.append(out_file)
+
+        # merge subswaths
         if tmp_files:
-            out_file = f"{input_dir}/{"_".join(it for it in [var, p] if it)}.tif"
-            if var.startswith("ifg"):
-                out_file = out_file.replace("ifg", "phi")
-            log.info(f"Merge file {Path(out_file).name}")
-            da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
 
-            if any(np.iscomplexobj(it) for it in da_to_merge):
-                raise NotImplementedError(
-                    f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+            # group files by polarization
+            groups_to_merge = {"vv": [], "vh": [], "nopol": []}
+            for fname in tmp_files:
+                key = (
+                    "vv"
+                    if "vv" in fname.stem
+                    else "vh" if "vh" in fname.stem else "nopol"
                 )
+                groups_to_merge[key].append(fname)
 
-            if shp and clip_to_shape:
-                merged = merge_arrays(da_to_merge, parse_coordinates=False).rio.clip(
-                    [shp], all_touched=True
+            log.info(f"---- GROUPS: {groups_to_merge}")
+
+            for k in groups_to_merge:
+                if not groups_to_merge[k]:
+                    continue
+                p = None if k == "nopol" else k
+
+                out_file = (
+                    Path(input_dir) / f"{'_'.join(it for it in [var, p] if it)}.tif"
                 )
-            else:
-                merged = merge_arrays(da_to_merge, parse_coordinates=False)
-            merged.rio.to_raster(
-                out_file,
-                driver="COG",
-                compress="zstd",
-                num_threads="all_cpus",
-                resampling="nearest",
-                overview_resampling="nearest",
-            )
-            # clean tmp files
+                if var.startswith("ifg"):
+                    out_file = out_file.replace("ifg", "phi")
+
+                log.info(f"Merge file {Path(out_file).name}")
+                da_to_merge = [riox.open_rasterio(file) for file in groups_to_merge[k]]
+                
+                if any(np.iscomplexobj(it) for it in da_to_merge):
+                    raise NotImplementedError(
+                        f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
+                    )
+
+                if shp and clip_to_shape:
+                    merged = merge_arrays(
+                        da_to_merge, parse_coordinates=False
+                    ).rio.clip([shp], all_touched=True)
+                else:
+                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
+                merged.rio.to_raster(
+                    out_file,
+                    driver="COG",
+                    compress="zstd",
+                    num_threads="all_cpus",
+                    resampling="nearest",
+                    overview_resampling="nearest",
+                )
+                # clean tmp files
             for file in tmp_files:
                 remove(file)
         if no_file_found:
