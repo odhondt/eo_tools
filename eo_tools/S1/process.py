@@ -1130,7 +1130,7 @@ def geocode_and_merge_iw(
                     Path(input_dir) / f"{'_'.join(it for it in [var, p] if it)}.tif"
                 )
                 if var.startswith("ifg"):
-                    out_file = out_file.replace("ifg", "phi")
+                    out_file = Path(str(out_file).replace("ifg", "phi"))
 
                 log.info(f"Merge file {Path(out_file).name}")
                 da_to_merge = [riox.open_rasterio(file) for file in groups_to_merge[k]]
