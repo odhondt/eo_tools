@@ -1606,7 +1606,7 @@ def h_alpha_dual(
     H = da.where(msk_out, H, np.nan)
 
     da_H = xr.DataArray(
-        name="coh",
+        name="Entropy",
         data=H[None],
         dims=("band", "y", "x"),
     )
@@ -1619,7 +1619,7 @@ def h_alpha_dual(
     alpha = da.where(msk_out, alpha, np.nan)
 
     da_alpha = xr.DataArray(
-        name="coh",
+        name="Alpha angle",
         data=alpha[None],
         dims=("band", "y", "x"),
     )
