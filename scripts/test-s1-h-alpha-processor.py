@@ -83,7 +83,7 @@ out_dir_ha = process_h_alpha_dual(
 
 m = folium.Map()
 _ = show_cog(f"{out_dir_ha}/alpha.tif", m, rescale=f"0, 1")
-_ = show_cog(f"{out_dir_ha}/h.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_ha}/H.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
 # open in a browser

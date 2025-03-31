@@ -3,7 +3,7 @@ import tempfile
 import os
 import numpy as np
 import xarray as xr
-from eo_tools.S1.process import coherence, process_insar
+from eo_tools.S1.process import coherence, process_insar, h_alpha_dual
 import geopandas as gpd
 import multiprocessing
 import rasterio as rio
@@ -204,3 +204,34 @@ def test_goldstein(create_dummy_ifg, create_dummy_output):
         # Check if the output is a valid raster
         da_out = rioxarray.open_rasterio(output_file)
         assert da_out.shape == (1, 2048, 2048), "Output shape is incorrect."
+
+
+@pytest.fixture
+def create_polsar_data():
+    vv_data = np.random.rand(128, 128) + 1j * np.random.rand(128, 128)
+    vh_data = np.random.rand(128, 128) + 1j * np.random.rand(128, 128)
+    vv_ds = xr.DataArray(vv_data.astype("complex64"), dims=("y", "x"))
+    vh_ds = xr.DataArray(vh_data.astype("complex64"), dims=("y", "x"))
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        vv_file = os.path.join(tmpdirname, "vv.tif")
+        vh_file = os.path.join(tmpdirname, "vh.tif")
+        h_file = os.path.join(tmpdirname, "H.tif")
+        alpha_file = os.path.join(tmpdirname, "alpha.tif")
+        vv_ds.rio.to_raster(vv_file)
+        vh_ds.rio.to_raster(vh_file)
+        yield vv_file, vh_file, h_file, alpha_file, vv_ds.shape
+
+
+def test_h_alpha_dual(create_polsar_data):
+    import rioxarray as riox
+
+    vv_file, vh_file, h_file, alpha_file, shp = create_polsar_data
+    h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file)
+    alpha = riox.open_rasterio(alpha_file)[0]
+    h = riox.open_rasterio(h_file)[0]
+
+    assert alpha.shape == shp
+    assert h.shape == shp
+    assert alpha.dtype == "float32"
+    assert h.dtype == "float32"
