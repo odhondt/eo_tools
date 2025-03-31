@@ -714,13 +714,13 @@ def process_h_alpha_dual(
         skip_preprocessing=skip_preprocessing,
     )
 
-    var_names = ["amp"]
+    var_names = ["H", "alpha"]
 
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"iw{iw}" for iw in iw_idx]
     for pattern in patterns:
-        vv_file = f"{out_dir}/slc_{pattern}_vv.tif"
-        vh_file = f"{out_dir}/slc_{pattern}_vh.tif"
+        vv_file = f"{out_dir}/slc_vv_{pattern}.tif"
+        vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
 
         if os.path.isfile(vv_file) and os.path.isfile(vh_file):
             log.info(
@@ -1501,10 +1501,10 @@ def eigh_2x2(c11, c22, c12_conj):
     l2 = 0.5 * (c11 + c22 + delta)
 
     v11 = (l2 - c22) / c12_conj
-    v12 = 1
+    v12 = np.ones_like(v11)
 
     v21 = (l1 - c22) / c12_conj
-    v22 = 1
+    v22 = np.ones_like(v21)
 
     return l1, l2, v11, v12, v21, v22
 
@@ -1568,6 +1568,7 @@ def h_alpha_dual(
     c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
     c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
 
+
     # fast eigenvalue decomposition
     l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12.conj())
 
@@ -1582,12 +1583,12 @@ def h_alpha_dual(
     H = pp1 * np.log2(pp1 + eps) + pp2 * np.log2(pp2 + eps)
 
     alpha1 = (
-        np.acos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real))
+        np.arccos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real).clip(-1+eps, 1-eps))
         * 180
         / np.pi
     )
     alpha2 = (
-        np.acos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real))
+        np.arccos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real).clip(-1+eps, 1-eps))
         * 180
         / np.pi
     )
