@@ -3,7 +3,7 @@ import tempfile
 import os
 import numpy as np
 import xarray as xr
-from eo_tools.S1.process import coherence, process_insar, h_alpha_dual
+from eo_tools.S1.process import coherence, process_insar, h_alpha_dual, eigh_2x2
 import geopandas as gpd
 import multiprocessing
 import rasterio as rio
@@ -206,10 +206,25 @@ def test_goldstein(create_dummy_ifg, create_dummy_output):
         assert da_out.shape == (1, 2048, 2048), "Output shape is incorrect."
 
 
+def test_eig_2x2():
+    shape = (100, 100)
+    k_vv = np.sqrt(0.5) * (np.random.rand(*shape) + 1j * np.random.rand(*shape))
+    k_vh = np.sqrt(0.5) * (np.random.rand(*shape) + 1j * np.random.rand(*shape))
+
+
+    c11 = np.mean(k_vv * k_vv.conj(), axis=(0, 1))
+    c22 = np.mean(k_vh * k_vh.conj(), axis=(0, 1))
+    c12 = np.mean(k_vv * k_vh.conj(), axis=(0, 1))
+
+    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11.real, c22.real, c12)
+
+
 @pytest.fixture
 def create_polsar_data():
-    vv_data = np.random.rand(128, 128) + 1j * np.random.rand(128, 128)
-    vh_data = np.random.rand(128, 128) + 1j * np.random.rand(128, 128)
+    # siz = 128
+    siz = 64
+    vv_data = np.random.rand(siz, siz) + 1j * np.random.rand(siz, siz)
+    vh_data = np.random.rand(siz, siz) + 1j * np.random.rand(siz, siz)
     vv_ds = xr.DataArray(vv_data.astype("complex64"), dims=("y", "x"))
     vh_ds = xr.DataArray(vh_data.astype("complex64"), dims=("y", "x"))
 
