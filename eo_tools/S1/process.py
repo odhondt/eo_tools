@@ -1069,7 +1069,7 @@ def geocode_and_merge_iw(
                 lut_file = sar_dir / f"lut_{postfix}.tif"
             else:
                 try:
-                    lut_file = list(sar_dir.glob("lut_*.tif"))[0]
+                    lut_file = list(sar_dir.glob(f"lut_*_{iw}.tif"))[0]
                 except:
                     raise FileNotFoundError(f"No LUT found for {name}.tif")
 
@@ -1134,7 +1134,7 @@ def geocode_and_merge_iw(
 
                 log.info(f"Merge file {Path(out_file).name}")
                 da_to_merge = [riox.open_rasterio(file) for file in groups_to_merge[k]]
-                
+
                 if any(np.iscomplexobj(it) for it in da_to_merge):
                     raise NotImplementedError(
                         f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
@@ -1495,16 +1495,23 @@ def coherence(
 
 
 # fast eigenvalue decomposition: https://hal.science/hal-01501221v1
-def eigh_2x2(c11, c22, c12_conj):
-    delta = np.sqrt(4 * np.abs(c12_conj) ** 2 + (c11 - c22) ** 2)
+def eigh_2x2(c11, c22, c12):
+    eps = 1e-30
+    delta = np.sqrt(4 * np.abs(c12) ** 2 + (c11 - c22) ** 2)
     l1 = 0.5 * (c11 + c22 - delta)
     l2 = 0.5 * (c11 + c22 + delta)
 
-    v11 = (l2 - c22) / c12_conj
-    v12 = np.ones_like(v11)
+    v11 = (l2 - c22) / (eps + np.conj(c12))
+    v21 = (l1 - c22) / (eps + np.conj(c12))
 
-    v21 = (l1 - c22) / c12_conj
-    v22 = np.ones_like(v21)
+    n1 = np.abs(v11) + 1
+    n2 = np.abs(v21) + 1
+
+    # normalize vectors
+    v11 /= n1
+    v21 /= n2
+    v12 = 1 / n1
+    v22 = 1 / n2
 
     return l1, l2, v11, v12, v21, v22
 
@@ -1568,30 +1575,21 @@ def h_alpha_dual(
     c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
     c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
 
-
     # fast eigenvalue decomposition
-    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12.conj())
+    l1, l2, v11, _, v21, _ = eigh_2x2(c11.real, c22.real, c12)
 
-    eps = 1e-10
+    eps = 1e-30
     span = l1 + l2
 
     # Pseudo-probabilities
-    pp1 = l1 / (span + eps)
-    pp2 = l2 / (span + eps)
+    pp1 = np.clip(l1 / (span + eps), eps, 1)
+    pp2 = np.clip(l2 / (span + eps), eps, 1)
 
     # Entropy
-    H = pp1 * np.log2(pp1 + eps) + pp2 * np.log2(pp2 + eps)
+    H = -pp1 * np.log2(pp1 + eps) - pp2 * np.log2(pp2 + eps)
 
-    alpha1 = (
-        np.arccos(np.sqrt((v11 * v11.conj()).real + (v12 * v12.conj()).real).clip(-1+eps, 1-eps))
-        * 180
-        / np.pi
-    )
-    alpha2 = (
-        np.arccos(np.sqrt((v21 * v21.conj()).real + (v22 * v22.conj()).real).clip(-1+eps, 1-eps))
-        * 180
-        / np.pi
-    )
+    alpha1 = np.arccos(np.abs(v11)) * 180 / np.pi
+    alpha2 = np.arccos(np.abs(v21)) * 180 / np.pi
 
     # Mean alpha
     alpha = pp1 * alpha1 + pp2 * alpha2
