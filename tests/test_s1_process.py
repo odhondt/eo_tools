@@ -2,6 +2,7 @@ import pytest
 import tempfile
 import os
 import numpy as np
+from numpy.random import randn
 import xarray as xr
 from eo_tools.S1.process import coherence, process_insar, h_alpha_dual, eigh_2x2
 import geopandas as gpd
@@ -211,12 +212,69 @@ def test_eig_2x2():
     k_vv = np.sqrt(0.5) * (np.random.rand(*shape) + 1j * np.random.rand(*shape))
     k_vh = np.sqrt(0.5) * (np.random.rand(*shape) + 1j * np.random.rand(*shape))
 
-
-    c11 = np.mean(k_vv * k_vv.conj(), axis=(0, 1))
-    c22 = np.mean(k_vh * k_vh.conj(), axis=(0, 1))
+    c11 = np.mean(k_vv * k_vv.conj(), axis=(0, 1)).real
+    c22 = np.mean(k_vh * k_vh.conj(), axis=(0, 1)).real
     c12 = np.mean(k_vv * k_vh.conj(), axis=(0, 1))
 
-    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11.real, c22.real, c12)
+    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12)
+
+    assert np.all((np.isfinite(it) for it in [l1, l2, v11, v12, v21, v22]))
+
+
+def test_alpha_ent_basic():
+    # let's test alpha is well estimated 
+    # on a simulate single mechanism target
+
+    # used for conditioning
+    eps = 1e-10
+    # emat = eps * np.diag([1, 1, 1])
+    emat = eps * np.diag([1, 1])
+
+    # centered random vector
+    D = 2
+    N = 100
+    v = np.sqrt(0.5) * (randn(N, N, D) + 1j * randn(N, N, D))
+
+    # polarimetric mechanism
+    alpha_sim = np.pi / 5
+    # unitary vector
+    u = np.array([np.cos(alpha_sim), np.sin(alpha_sim)])
+    # u = np.array([np.cos(alpha_sim), np.sin(alpha_sim), 0])
+    l1 = 7.0
+
+    # square root of mean matrix
+    Sigma = np.sqrt(l1) * u[None, :] * u[:, None].conj()
+    # correlate target vector
+    k = np.matmul(v, Sigma.T)
+
+    # # covariance estimate
+    M = k[:, :, None, :] * k[:, :, :, None].conj()
+    C = np.mean(M, axis=(0, 1)) + emat
+
+    c11 = C[..., 0, 0].real
+    c22 = C[..., 1, 1].real
+    c12 = C[..., 0, 1]
+    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12)
+
+    eps = 1e-30
+    span = l1 + l2
+
+    # Pseudo-probabilities
+    pp1 = np.clip(l1 / (span + eps), eps, 1)
+    pp2 = np.clip(l2 / (span + eps), eps, 1)
+
+    # Entropy
+    H = -pp1 * np.log2(pp1 + eps) - pp2 * np.log2(pp2 + eps)
+
+    alpha1 = np.arccos(np.abs(v21))# * 180 / np.pi
+    alpha2 = np.arccos(np.abs(v11))# * 180 / np.pi
+
+    alpha = pp1 * alpha1 + pp2 * alpha2
+
+    assert np.allclose(l1, 0, atol=0.1)
+    assert np.allclose(l2, 7, atol=0.1)
+    assert np.allclose(alpha, alpha_sim)
+    assert np.allclose(H, 0)
 
 
 @pytest.fixture
