@@ -1504,13 +1504,13 @@ def eigh_2x2(c11, c22, c12):
     v11 = (l2 - c22) / (eps + np.conj(c12))
     v21 = (l1 - c22) / (eps + np.conj(c12))
 
-    n1 = np.abs(v11) + 1
-    n2 = np.abs(v21) + 1
+    n1 = np.sqrt(np.abs(v11)**2 + 1)
+    n2 = np.sqrt(np.abs(v21)**2 + 1)
 
     # normalize vectors
     v11 /= n1
-    v21 /= n2
     v12 = 1 / n1
+    v21 /= n2
     v22 = 1 / n2
 
     return l1, l2, v11, v12, v21, v22
