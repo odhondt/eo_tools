@@ -20,6 +20,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 import folium
 from folium import LayerControl
+import os
+from eo_tools.auxils import remove
 
 from eo_tools_dev.util import show_cog, serve_map
 from eo_tools.S1.process import process_h_alpha_dual
@@ -64,6 +66,11 @@ search_criteria = {
 
 # %%
 
+out_dir_prev = f"{output_dir}/S1_2023-09-04-063730"
+
+if os.path.isdir(out_dir_prev):
+    remove(out_dir_prev)
+
 out_dir_ha = process_h_alpha_dual(
     slc_path=slc_path,
     output_dir=output_dir,
@@ -82,7 +89,7 @@ out_dir_ha = process_h_alpha_dual(
 # %%
 
 m = folium.Map()
-_ = show_cog(f"{out_dir_ha}/alpha.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_ha}/alpha.tif", m, rescale=f"0, 90")
 _ = show_cog(f"{out_dir_ha}/H.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
