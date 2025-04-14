@@ -40,7 +40,8 @@ logging.basicConfig(level=logging.INFO)
 data_dir = "/data/S1"
 
 ids = [
-    "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
+    # "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
+    "S1A_IW_SLC__1SDV_20240410T180524_20240410T180551_053375_067920_A0F7",
 ]
 slc_path = f"{data_dir}/{ids[0]}.zip"
 output_dir = "/data/res/test-h-alpha-processor"
@@ -48,8 +49,9 @@ output_dir = "/data/res/test-h-alpha-processor"
 # %%
 # load a geometry
 # aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
-aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
 # aoi_file = "/eo_tools/data/Morocco_small.geojson"
+aoi_file = "/eo_tools/data/Bretagne_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
 search_criteria = {
@@ -66,10 +68,6 @@ search_criteria = {
 
 # %%
 
-out_dir_prev = f"{output_dir}/S1_2023-09-04-063730"
-
-if os.path.isdir(out_dir_prev):
-    remove(out_dir_prev)
 
 out_dir_ha = process_h_alpha_dual(
     slc_path=slc_path,
