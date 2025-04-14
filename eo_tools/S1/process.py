@@ -1559,6 +1559,7 @@ def h_alpha_dual(
     vv = ds_vv[0].data
     vh = ds_vh[0].data
 
+
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
@@ -1569,6 +1570,14 @@ def h_alpha_dual(
     c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+
+    msk = ~np.isnan(c12)
+    nodataval = np.nan
+
+    # silence dask warnings
+    c11 = np.nan_to_num(c11)
+    c12 = np.nan_to_num(c12)
+    c22 = np.nan_to_num(c22)
 
     # additional boxcar
     c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
@@ -1588,14 +1597,12 @@ def h_alpha_dual(
     # Entropy
     H = -pp1 * np.log2(pp1 + eps) - pp2 * np.log2(pp2 + eps)
 
-    alpha1 = np.arccos(np.abs(v11)) * 180 / np.pi
-    alpha2 = np.arccos(np.abs(v21)) * 180 / np.pi
+    alpha1 = np.arccos(np.clip(np.abs(v11), -1, 1)) * 180 / np.pi
+    alpha2 = np.arccos(np.clip(np.abs(v21), -1, 1)) * 180 / np.pi
 
     # Mean alpha
     alpha = pp1 * alpha1 + pp2 * alpha2
 
-    msk = ~np.isnan(c12)
-    nodataval = np.nan
 
     # Post-processing to adapt to polSAR params
     struct = np.ones((box_az, box_rg))
