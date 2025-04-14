@@ -1,5 +1,5 @@
 # %%
-from folium import Map, GeoJson, Tooltip, LayerControl
+from folium import Map, GeoJson, Tooltip, LayerControl, Popup
 import zipfile
 from pathlib import Path
 from shapely.geometry import Polygon, mapping
@@ -39,7 +39,7 @@ for f in list(Path(data_dir).glob("S1*")):
     footprint = extract_footprint(manifest)
 
     gj = GeoJson(mapping(footprint), name=f.stem)
-    Tooltip(f.stem).add_to(gj)
+    gj.add_child(Popup(f.stem))
     gj.add_to(m)
 
 LayerControl().add_to(m)
