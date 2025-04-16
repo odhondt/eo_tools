@@ -1495,15 +1495,15 @@ def coherence(
 
 
 def eigh_2x2(c11, c22, c12):
-    eps = 1e-10
+    eps = 1e-30
     delta = np.sqrt((0.5 * (c11 - c22)) ** 2 + abs(c12) ** 2)
 
     # eigenvalues
     l1 = 0.5 * (c11 + c22) + delta
     l2 = 0.5 * (c11 + c22) - delta
 
-    u1 = np.where(c11 != l1, - np.conj(c12) / (c11 - l1), 0)
-    u2 = np.where(c11 != l2, - np.conj(c12) / (c11 - l2), 0)
+    u1 = np.where(c11 != l1, - np.conj(c12) / (c11 - l1 + eps), 0)
+    u2 = np.where(c11 != l2, - np.conj(c12) / (c11 - l2 + eps), 0)
 
     n1 = np.sqrt(np.abs(u1)**2 + 1)
     n2 = np.sqrt(np.abs(u2)**2 + 1)
