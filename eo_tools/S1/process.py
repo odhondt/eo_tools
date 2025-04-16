@@ -714,7 +714,7 @@ def process_h_alpha_dual(
         skip_preprocessing=skip_preprocessing,
     )
 
-    var_names = ["H", "alpha"]
+    var_names = ["H", "alpha", "span"]
 
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"iw{iw}" for iw in iw_idx]
@@ -729,11 +729,13 @@ def process_h_alpha_dual(
 
             h_file = f"{out_dir}/H_{pattern}.tif"
             alpha_file = f"{out_dir}/alpha_{pattern}.tif"
+            span_file = f"{out_dir}/span_{pattern}.tif"
             h_alpha_dual(
                 vv_file=vv_file,
                 vh_file=vh_file,
                 h_file=h_file,
                 alpha_file=alpha_file,
+                span_file=span_file,
                 box_size=boxcar_size,
                 multilook=multilook,
             )
@@ -1119,8 +1121,6 @@ def geocode_and_merge_iw(
                 )
                 groups_to_merge[key].append(fname)
 
-            log.info(f"---- GROUPS: {groups_to_merge}")
-
             for k in groups_to_merge:
                 if not groups_to_merge[k]:
                     continue
@@ -1494,25 +1494,27 @@ def coherence(
         )
 
 
-# fast eigenvalue decomposition: https://hal.science/hal-01501221v1
 def eigh_2x2(c11, c22, c12):
-    eps = 1e-30
-    delta = np.sqrt(4 * np.abs(c12) ** 2 + (c11 - c22) ** 2)
-    l1 = 0.5 * (c11 + c22 - delta)
-    l2 = 0.5 * (c11 + c22 + delta)
+    eps = 1e-10
+    delta = np.sqrt((0.5 * (c11 - c22)) ** 2 + abs(c12) ** 2)
 
-    v11 = (l2 - c22) / (eps + np.conj(c12))
-    v21 = (l1 - c22) / (eps + np.conj(c12))
+    # eigenvalues
+    l1 = 0.5 * (c11 + c22) + delta
+    l2 = 0.5 * (c11 + c22) - delta
 
-    n1 = np.sqrt(np.abs(v11)**2 + 1)
-    n2 = np.sqrt(np.abs(v21)**2 + 1)
+    u1 = np.where(c11 != l1, - np.conj(c12) / (c11 - l1), 0)
+    u2 = np.where(c11 != l2, - np.conj(c12) / (c11 - l2), 0)
 
-    # normalize vectors
-    v11 /= n1
+    n1 = np.sqrt(np.abs(u1)**2 + 1)
+    n2 = np.sqrt(np.abs(u2)**2 + 1)
+
+    # first eigenvector
+    v11 = u1 / n1
     v12 = 1 / n1
-    v21 /= n2
-    v22 = 1 / n2
 
+    # second eigenvector
+    v21 = u2 / n2
+    v22 = 1 / n2
     return l1, l2, v11, v12, v21, v22
 
 
@@ -1521,16 +1523,18 @@ def h_alpha_dual(
     vh_file: str,
     h_file: str,
     alpha_file: str,
+    span_file: str,
     box_size: Union[int, List[int]] = 5,
     multilook: List = [1, 1],
 ) -> None:
-    """Compute the complex coherence from two SLC image files.
+    """Compute the dual-polarimetric H alpha decomposition from two SLC polarimetric channels.
 
     Args:
         vv_file (str): GeoTiff file of the VV SLC image
         vh_file (str): GeoTiff file of the VH SLC image
         H_file (str): GeoTiff file of output entropy
         alpha_file (str): GeoTiff file of output alpha angle
+        span_file (str): GeoTiff file of output span (total intensity) image
         out_file (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
@@ -1559,7 +1563,6 @@ def h_alpha_dual(
     vv = ds_vv[0].data
     vh = ds_vh[0].data
 
-
     process_args = dict(
         dimaz=box_az,
         dimrg=box_rg,
@@ -1567,9 +1570,9 @@ def h_alpha_dual(
     )
 
     # multilooking
-    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
 
     msk = ~np.isnan(c12)
     nodataval = np.nan
@@ -1585,7 +1588,7 @@ def h_alpha_dual(
     c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
 
     # fast eigenvalue decomposition
-    l1, l2, v11, _, v21, _ = eigh_2x2(c11.real, c22.real, c12)
+    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11.real, c22.real, c12)
 
     eps = 1e-30
     span = l1 + l2
@@ -1602,7 +1605,6 @@ def h_alpha_dual(
 
     # Mean alpha
     alpha = pp1 * alpha1 + pp2 * alpha2
-
 
     # Post-processing to adapt to polSAR params
     struct = np.ones((box_az, box_rg))
@@ -1633,6 +1635,19 @@ def h_alpha_dual(
     )
     da_alpha.rio.write_nodata(nodataval, inplace=True)
     da_alpha.rio.to_raster(alpha_file)
+
+    span = da.where(msk_out, span, np.nan)
+
+    da_span = xr.DataArray(
+        name="Span",
+        data=span[None],
+        dims=("band", "y", "x"),
+    )
+    da_span.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_span.rio.write_nodata(nodataval, inplace=True)
+    da_span.rio.to_raster(span_file)
 
 
 def goldstein(
