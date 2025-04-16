@@ -291,6 +291,7 @@ def create_polsar_data():
         vh_file = os.path.join(tmpdirname, "vh.tif")
         h_file = os.path.join(tmpdirname, "H.tif")
         alpha_file = os.path.join(tmpdirname, "alpha.tif")
+        span_file = os.path.join(tmpdirname, "span.tif")
         vv_ds.rio.to_raster(vv_file)
         vh_ds.rio.to_raster(vh_file)
         yield vv_file, vh_file, h_file, alpha_file, vv_ds.shape
@@ -299,8 +300,8 @@ def create_polsar_data():
 def test_h_alpha_dual(create_polsar_data):
     import rioxarray as riox
 
-    vv_file, vh_file, h_file, alpha_file, shp = create_polsar_data
-    h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file)
+    vv_file, vh_file, h_file, alpha_file, span_file, shp = create_polsar_data
+    h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file, span_file=span_file)
     alpha = riox.open_rasterio(alpha_file)[0]
     h = riox.open_rasterio(h_file)[0]
 
