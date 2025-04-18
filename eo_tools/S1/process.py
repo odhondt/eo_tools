@@ -657,6 +657,8 @@ def process_h_alpha_dual(
     aoi_name: str = None,
     shp: shape = None,
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    write_vv_amplitude: bool = True,
+    write_vh_amplitude: bool = True,
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
@@ -672,32 +674,29 @@ def process_h_alpha_dual(
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
     Args:
-        slc_path (str): input image (SLC Sentinel-1 product directory or zip file).
-        output_dir (str): location in which the product subdirectory will be created
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
+        output_dir (str): Location in which the product subdirectory will be created.
+        aoi_name (str, optional): Optional suffix to describe AOI / experiment. Defaults to None.
         shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        write_vv_amplitude (bool, optional): If True, writes out the calibrated VV amplitude image. Defaults to False.
+        write_vh_amplitude (bool, optional): If True, writes out the calibrated VH amplitude image. Defaults to False.
         dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
-        dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
-        dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        boxcar_size (Union[int, List[int]], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
         multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
-        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
 
     Returns:
-        str: output directory
+        str: Output directory
     """
 
-    if not np.any([coherence, interferogram]):
-        raise ValueError(
-            "At least one of `write_coherence` and `write_interferogram` must be True."
-        )
-
-    # prepare pair for interferogram computation
     out_dir = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
@@ -714,7 +713,11 @@ def process_h_alpha_dual(
         skip_preprocessing=skip_preprocessing,
     )
 
-    var_names = ["H", "alpha", "span"]
+    var_names = ["H", "alpha"]
+    if write_vv_amplitude:
+        var_names.append("amp_vv")
+    if write_vh_amplitude:
+        var_names.append("amp_vh")
 
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"iw{iw}" for iw in iw_idx]
@@ -729,16 +732,21 @@ def process_h_alpha_dual(
 
             h_file = f"{out_dir}/H_{pattern}.tif"
             alpha_file = f"{out_dir}/alpha_{pattern}.tif"
-            span_file = f"{out_dir}/span_{pattern}.tif"
             h_alpha_dual(
                 vv_file=vv_file,
                 vh_file=vh_file,
                 h_file=h_file,
                 alpha_file=alpha_file,
-                span_file=span_file,
                 box_size=boxcar_size,
                 multilook=multilook,
             )
+            if write_vv_amplitude:
+                ampl_file = f"{out_dir}/amp_vv_{pattern}.tif"
+                amplitude(in_file=vv_file, out_file=ampl_file, multilook=multilook)
+
+            if write_vh_amplitude:
+                ampl_file = f"{out_dir}/amp_vh_{pattern}.tif"
+                amplitude(in_file=vh_file, out_file=ampl_file, multilook=multilook)
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -1502,11 +1510,11 @@ def eigh_2x2(c11, c22, c12):
     l1 = 0.5 * (c11 + c22) + delta
     l2 = 0.5 * (c11 + c22) - delta
 
-    u1 = np.where(c11 != l1, - np.conj(c12) / (c11 - l1 + eps), 0)
-    u2 = np.where(c11 != l2, - np.conj(c12) / (c11 - l2 + eps), 0)
+    u1 = np.where(c11 != l1, -np.conj(c12) / (c11 - l1 + eps), 0)
+    u2 = np.where(c11 != l2, -np.conj(c12) / (c11 - l2 + eps), 0)
 
-    n1 = np.sqrt(np.abs(u1)**2 + 1)
-    n2 = np.sqrt(np.abs(u2)**2 + 1)
+    n1 = np.sqrt(np.abs(u1) ** 2 + 1)
+    n2 = np.sqrt(np.abs(u2) ** 2 + 1)
 
     # first eigenvector
     v11 = u1 / n1
@@ -1523,7 +1531,6 @@ def h_alpha_dual(
     vh_file: str,
     h_file: str,
     alpha_file: str,
-    span_file: str,
     box_size: Union[int, List[int]] = 5,
     multilook: List = [1, 1],
 ) -> None:
@@ -1588,7 +1595,7 @@ def h_alpha_dual(
     c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
 
     # fast eigenvalue decomposition
-    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11.real, c22.real, c12)
+    l1, l2, v11, _, v21, _ = eigh_2x2(c11.real, c22.real, c12)
 
     eps = 1e-30
     span = l1 + l2
@@ -1635,19 +1642,6 @@ def h_alpha_dual(
     )
     da_alpha.rio.write_nodata(nodataval, inplace=True)
     da_alpha.rio.to_raster(alpha_file)
-
-    span = da.where(msk_out, span, np.nan)
-
-    da_span = xr.DataArray(
-        name="Span",
-        data=span[None],
-        dims=("band", "y", "x"),
-    )
-    da_span.rio.write_transform(
-        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
-    )
-    da_span.rio.write_nodata(nodataval, inplace=True)
-    da_span.rio.to_raster(span_file)
 
 
 def goldstein(
