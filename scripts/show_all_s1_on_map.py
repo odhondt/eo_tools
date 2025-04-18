@@ -39,7 +39,7 @@ for f in list(Path(data_dir).glob("S1*")):
     footprint = extract_footprint(manifest)
 
     gj = GeoJson(mapping(footprint), name=f.stem)
-    gj.add_child(Popup(f.stem))
+    gj.add_child(Popup(f"Product ID: {f.stem}<br>Path: {str(f)}"))
     gj.add_to(m)
 
 LayerControl().add_to(m)
