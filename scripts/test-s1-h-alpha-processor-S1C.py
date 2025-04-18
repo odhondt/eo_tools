@@ -27,6 +27,7 @@ from eo_tools_dev.util import show_cog, serve_map
 from eo_tools.S1.process import process_h_alpha_dual
 import geopandas as gpd
 from eodag import EODataAccessGateway
+from math import sqrt
 
 # credentials need to be stored in the following file (see EODAG docs)
 confpath = "/data/eodag_config.yml"
@@ -68,9 +69,11 @@ shp = gpd.read_file(aoi_file).geometry[0]
 out_dir_ha = process_h_alpha_dual(
     slc_path=slc_path,
     output_dir=output_dir,
-    aoi_name=None,
+    aoi_name="beta_cal",
     shp=shp,
     subswaths=["IW1"],
+    write_vv_amplitude=True,
+    write_vh_amplitude=True,
     # subswaths=["IW1", "IW2", "IW3"],
     dem_upsampling=1.8,
     dem_force_download=False,
@@ -84,7 +87,8 @@ out_dir_ha = process_h_alpha_dual(
 # %%
 
 m = folium.Map()
-_ = show_cog(f"{out_dir_ha}/span.tif", m, rescale=f"0, 2")
+_ = show_cog(f"{out_dir_ha}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_ha}/amp_vh.tif", m, rescale=f"0, {1./sqrt(2)}")
 _ = show_cog(f"{out_dir_ha}/alpha.tif", m, rescale=f"0, 90")
 _ = show_cog(f"{out_dir_ha}/H.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
