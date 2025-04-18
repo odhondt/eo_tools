@@ -222,7 +222,7 @@ def test_eig_2x2():
 
 
 def test_alpha_ent_basic():
-    # let's test alpha is well estimated 
+    # let's test alpha is well estimated
     # on a simulated single mechanism target
 
     # used for conditioning
@@ -254,7 +254,7 @@ def test_alpha_ent_basic():
     c11 = C[..., 0, 0].real
     c22 = C[..., 1, 1].real
     c12 = C[..., 0, 1]
-    l1, l2, v11, v12, v21, v22 = eigh_2x2(c11, c22, c12)
+    l1, l2, v11, _, v21, _ = eigh_2x2(c11, c22, c12)
 
     eps = 1e-30
     span = l1 + l2
@@ -266,13 +266,13 @@ def test_alpha_ent_basic():
     # Entropy
     H = -pp1 * np.log2(pp1 + eps) - pp2 * np.log2(pp2 + eps)
 
-    alpha1 = np.arccos(np.abs(v21))# * 180 / np.pi
-    alpha2 = np.arccos(np.abs(v11))# * 180 / np.pi
+    alpha1 = np.arccos(np.abs(v11))  # * 180 / np.pi
+    alpha2 = np.arccos(np.abs(v21))  # * 180 / np.pi
 
     alpha = pp1 * alpha1 + pp2 * alpha2
 
-    assert np.allclose(l1, 0, atol=0.1)
-    assert np.allclose(l2, 7, atol=0.1)
+    assert np.allclose(l1, 7, atol=0.1)
+    assert np.allclose(l2, 0, atol=0.1)
     assert np.allclose(alpha, alpha_sim)
     assert np.allclose(H, 0)
 
@@ -291,7 +291,7 @@ def create_polsar_data():
         vh_file = os.path.join(tmpdirname, "vh.tif")
         h_file = os.path.join(tmpdirname, "H.tif")
         alpha_file = os.path.join(tmpdirname, "alpha.tif")
-        span_file = os.path.join(tmpdirname, "span.tif")
+        # span_file = os.path.join(tmpdirname, "span.tif")
         vv_ds.rio.to_raster(vv_file)
         vh_ds.rio.to_raster(vh_file)
         yield vv_file, vh_file, h_file, alpha_file, vv_ds.shape
@@ -300,8 +300,8 @@ def create_polsar_data():
 def test_h_alpha_dual(create_polsar_data):
     import rioxarray as riox
 
-    vv_file, vh_file, h_file, alpha_file, span_file, shp = create_polsar_data
-    h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file, span_file=span_file)
+    vv_file, vh_file, h_file, alpha_file, shp = create_polsar_data
+    h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file)
     alpha = riox.open_rasterio(alpha_file)[0]
     h = riox.open_rasterio(h_file)[0]
 
