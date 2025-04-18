@@ -223,7 +223,7 @@ def test_eig_2x2():
 
 def test_alpha_ent_basic():
     # let's test alpha is well estimated 
-    # on a simulate single mechanism target
+    # on a simulated single mechanism target
 
     # used for conditioning
     eps = 1e-10
