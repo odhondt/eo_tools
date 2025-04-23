@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eo_tools"
-version = "2025.2.0"
+version = "2025.4.0"
 description = "A toolbox for easily searching, downloading & processing remote sensing imagery from various public sources. "
-dependencies = ["python==3.12.8", "pyproj==3.6.1", "pytest==8.3.4", "gdal==3.10.1", "libgdal-jp2openjpeg==3.10.1", "rasterio==1.4.3", "pyrosar==0.27.0", "spatialist==0.14.0", "pip==25.0.1", "pystac==1.12.1", "pystac-client==0.8.5", "geopandas==1.0.1", "pandas==2.2.3", "eodag==3.0.1", "ipykernel==6.29.5", "ipywidgets==8.1.5", "black==25.1.0", "scikit-image==0.25.1", "ipyleaflet==0.19.2", "folium==0.19.4", "tqdm==4.67.1", "xmltodict==0.14.2", "httpx==0.28.1", "xarray==2025.1.2", "netcdf4==1.7.2", "rioxarray==0.17.0", "numba==0.61.0", "dask==2025.1.0", "bottleneck==1.4.2", "planetary-computer==1.0.0"]
+dependencies = ["python==3.12.10", "pyproj==3.6.1", "pytest==8.3.5", "gdal==3.10.2", "libgdal-jp2openjpeg==3.10.2", "rasterio==1.4.3", "pyrosar==0.29.0", "spatialist==0.15.0", "pip==25.0.1", "pystac==1.13.0", "pystac-client==0.8.6", "geopandas==1.0.1", "pandas==2.2.3", "eodag==3.3.1", "ipykernel==6.29.5", "ipywidgets==8.1.6", "black==25.1.0", "scikit-image==0.25.2", "ipyleaflet==0.19.2", "folium==0.19.5", "tqdm==4.67.1", "xmltodict==0.14.2", "httpx==0.28.1", "xarray==2025.3.1", "netcdf4==1.7.2", "rioxarray==0.19.0", "numba==0.61.2", "dask==2025.4.0", "bottleneck==1.4.2", "planetary-computer==1.0.0"]
 [[project.authors]]
 name = "Olivier D'Hondt"
 email = "dhondt.olivier@gmail.com"

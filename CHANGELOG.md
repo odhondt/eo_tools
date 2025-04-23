@@ -1,3 +1,17 @@
+# 2025.4.0
+
+## New features
+- Introducing the H-Alpha dual-polarimetric decomposition from SLC images.
+- Added tutorial notebooks for the docker, conda versions and docs.
+- The new examples demonstrate EO-Tools ability to process Sentinel-1C products. 
+
+## Other (imporvements, bugfixes, refactoring, maintenance)
+- Adapted the `geocode_and_merge` function to handle file names without polarimetry such as `alpha_iw1.tif`
+- Unit tests for H-Alpha components including a single mechanism simulation.
+- Change tooltips to popups in `show_all_s1_on_map.py` allowing copy and paste product names.
+- Update environment to use the latest `rioxarray` since the bug in `0.18.0` has been fixed.
+- Force using `pyroSAR==0.29.0` to process Sentinel-1C data.
+
 # 2025.2.0
 
 This version does not introduce any new features but adds fixes and improvements.

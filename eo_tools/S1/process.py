@@ -27,6 +27,7 @@ from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
 from skimage.morphology import binary_erosion
+import re
 
 # use child processes
 # USE_CP = True
@@ -650,6 +651,119 @@ def process_slc(
     return Path(out_dir).parent
 
 
+def process_h_alpha_dual(
+    slc_path: str,
+    output_dir: str,
+    aoi_name: str = None,
+    shp: shape = None,
+    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    write_vv_amplitude: bool = True,
+    write_vh_amplitude: bool = True,
+    dem_dir: str = "/tmp",
+    dem_name: str = "nasadem",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
+    boxcar_size: Union[int, List[int]] = [5, 5],
+    multilook: List[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+) -> str:
+    """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
+
+    Args:
+        slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
+        output_dir (str): Location in which the product subdirectory will be created.
+        aoi_name (str, optional): Optional suffix to describe AOI / experiment. Defaults to None.
+        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        write_vv_amplitude (bool, optional): If True, writes out the calibrated VV amplitude image. Defaults to False.
+        write_vh_amplitude (bool, optional): If True, writes out the calibrated VH amplitude image. Defaults to False.
+        dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
+        dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        boxcar_size (Union[int, List[int]], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+
+    Returns:
+        str: Output directory
+    """
+
+    out_dir = prepare_slc(
+        slc_path=slc_path,
+        output_dir=output_dir,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol="full",
+        subswaths=subswaths,
+        cal_type=cal_type,
+        dem_dir=dem_dir,
+        dem_name=dem_name,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+    )
+
+    var_names = ["H", "alpha"]
+    if write_vv_amplitude:
+        var_names.append("amp_vv")
+    if write_vh_amplitude:
+        var_names.append("amp_vh")
+
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"iw{iw}" for iw in iw_idx]
+    for pattern in patterns:
+        vv_file = f"{out_dir}/slc_vv_{pattern}.tif"
+        vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
+
+        if os.path.isfile(vv_file) and os.path.isfile(vh_file):
+            log.info(
+                f"---- H-alpha for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+
+            h_file = f"{out_dir}/H_{pattern}.tif"
+            alpha_file = f"{out_dir}/alpha_{pattern}.tif"
+            h_alpha_dual(
+                vv_file=vv_file,
+                vh_file=vh_file,
+                h_file=h_file,
+                alpha_file=alpha_file,
+                box_size=boxcar_size,
+                multilook=multilook,
+            )
+            if write_vv_amplitude:
+                ampl_file = f"{out_dir}/amp_vv_{pattern}.tif"
+                amplitude(in_file=vv_file, out_file=ampl_file, multilook=multilook)
+
+            if write_vh_amplitude:
+                ampl_file = f"{out_dir}/amp_vh_{pattern}.tif"
+                amplitude(in_file=vh_file, out_file=ampl_file, multilook=multilook)
+
+    # by default, we use iw and pol which exist
+    _child_process(
+        geocode_and_merge_iw,
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
+    )
+    return Path(out_dir).parent
+
+
 def prepare_slc(
     slc_path: str,
     output_dir: str,
@@ -935,67 +1049,99 @@ def geocode_and_merge_iw(
         raise RuntimeError("polarizations must be of type str or list")
     iw_idx = [iw[2] for iw in subswaths]
 
+    sar_dir = Path(input_dir) / "sar"
     for var in var_names:
         no_file_found = True
-        for p in pol_:
-            patterns = [f"{input_dir}/sar/{var}_{p}_iw{iw}.tif" for iw in iw_idx]
 
-            matched_files = [pattern for pattern in patterns if os.path.isfile(pattern)]
+        # filenames patterns with and without polarization information
+        names = [f"{var}_iw{iw}" for iw in iw_idx]
+        names += [f"{var}_{p}_iw{iw}" for iw in iw_idx for p in pol_]
 
-            tmp_files = []
-            if matched_files:
-                no_file_found = False
-            for var_file in matched_files:
-                log.info(f"Geocode file {Path(var_file).name}.")
-                base_name = Path(var_file).stem
-                parts = base_name.split("_")
-                postfix = "_".join(parts[-2:])
-                lut_file = f"{input_dir}/sar/lut_{postfix}.tif"
-                out_file = f"{input_dir}/sar/{var}_{postfix}_geo.tif"
+        matched_names = [
+            name for name in names if os.path.isfile(sar_dir / f"{name}.tif")
+        ]
 
-                if not os.path.exists(lut_file):
-                    raise FileNotFoundError(
-                        f"Corresponding LUT file {lut_file} not found for {var_file}"
+        tmp_files = []
+        if matched_names:
+            no_file_found = False
+        for name in matched_names:
+            pattern = r"^(.*?)_(vv|vh)?_?(iw[1-3])$"
+            match = re.match(pattern, name)
+            if match:
+                var, p, iw = match.groups()
+            else:
+                raise ValueError(f"File name {name} does not match expected pattern")
+            log.info(f"Geocode file {name}.tif.")
+            postfix = "_".join([it for it in [p, iw] if it])
+            var_file = sar_dir / f"{var}_{postfix}.tif"
+            out_file = sar_dir / f"{var}_{postfix}_geo.tif"
+            if p:
+                lut_file = sar_dir / f"lut_{postfix}.tif"
+            else:
+                try:
+                    lut_file = list(sar_dir.glob(f"lut_*_{iw}.tif"))[0]
+                except:
+                    raise FileNotFoundError(f"No LUT found for {name}.tif")
+
+            if not os.path.exists(lut_file):
+                raise FileNotFoundError(
+                    f"Corresponding LUT file {lut_file} not found for {name}.tif"
+                )
+
+            # handling phase as a special case
+            if var == "phi":
+                darr = riox.open_rasterio(sar_dir / f"{name}.tif")
+                if not np.iscomplexobj(darr[0]):
+                    warnings.warn(
+                        "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
                     )
+            if var.startswith("ifg"):
+                out_file = sar_dir / f"{var.replace("ifg", "phi")}_{postfix}_geo.tif"
+                sar2geo(
+                    var_file,
+                    lut_file,
+                    out_file,
+                    warp_kernel,
+                    write_phase=True,
+                    magnitude_only=False,
+                )
+            else:
+                sar2geo(
+                    var_file,
+                    lut_file,
+                    out_file,
+                    warp_kernel,
+                    write_phase=False,
+                    magnitude_only=False,
+                )
+            tmp_files.append(out_file)
 
-                # handling phase as a special case
-                if var == "phi":
-                    darr = riox.open_rasterio(var_file)
-                    if not np.iscomplexobj(darr[0]):
-                        warnings.warn(
-                            "Geocode real-valued phase? If so, the result might not be optimal if the phase is wrapped."
-                        )
-                # if var == "ifg":
+        # merge subswaths
+        if tmp_files:
+
+            # group files by polarization
+            groups_to_merge = {"vv": [], "vh": [], "nopol": []}
+            for fname in tmp_files:
+                key = (
+                    "vv"
+                    if "vv" in fname.stem
+                    else "vh" if "vh" in fname.stem else "nopol"
+                )
+                groups_to_merge[key].append(fname)
+
+            for k in groups_to_merge:
+                if not groups_to_merge[k]:
+                    continue
+                p = None if k == "nopol" else k
+
+                out_file = (
+                    Path(input_dir) / f"{'_'.join(it for it in [var, p] if it)}.tif"
+                )
                 if var.startswith("ifg"):
-                    out_file = (
-                        f"{input_dir}/sar/{var.replace("ifg", "phi")}_{postfix}_geo.tif"
-                    )
-                    sar2geo(
-                        var_file,
-                        lut_file,
-                        out_file,
-                        warp_kernel,
-                        write_phase=True,
-                        magnitude_only=False,
-                    )
-                else:
-                    sar2geo(
-                        var_file,
-                        lut_file,
-                        out_file,
-                        warp_kernel,
-                        write_phase=False,
-                        magnitude_only=False,
-                    )
-                tmp_files.append(out_file)
-            if tmp_files:
-                # if var != "ifg":
-                if not var.startswith("ifg"):
-                    out_file = f"{input_dir}/{var}_{p}.tif"
-                else:
-                    out_file = f"{input_dir}/{var.replace("ifg", "phi")}_{p}.tif"
+                    out_file = Path(str(out_file).replace("ifg", "phi"))
+
                 log.info(f"Merge file {Path(out_file).name}")
-                da_to_merge = [riox.open_rasterio(file) for file in tmp_files]
+                da_to_merge = [riox.open_rasterio(file) for file in groups_to_merge[k]]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
                     raise NotImplementedError(
@@ -1017,8 +1163,8 @@ def geocode_and_merge_iw(
                     overview_resampling="nearest",
                 )
                 # clean tmp files
-                for file in tmp_files:
-                    remove(file)
+            for file in tmp_files:
+                remove(file)
         if no_file_found:
             raise FileNotFoundError(f"No file was found for variable {var}")
 
@@ -1354,6 +1500,148 @@ def coherence(
         da_ifg.rio.to_raster(
             complex_ifg_file, driver="GTiff", tiled=True, blockxsize=512, blockysize=512
         )
+
+
+def eigh_2x2(c11, c22, c12):
+    eps = 1e-30
+    delta = np.sqrt((0.5 * (c11 - c22)) ** 2 + abs(c12) ** 2)
+
+    # eigenvalues
+    l1 = 0.5 * (c11 + c22) + delta
+    l2 = 0.5 * (c11 + c22) - delta
+
+    u1 = np.where(c11 != l1, -np.conj(c12) / (c11 - l1 + eps), 0)
+    u2 = np.where(c11 != l2, -np.conj(c12) / (c11 - l2 + eps), 0)
+
+    n1 = np.sqrt(np.abs(u1) ** 2 + 1)
+    n2 = np.sqrt(np.abs(u2) ** 2 + 1)
+
+    # first eigenvector
+    v11 = u1 / n1
+    v12 = 1 / n1
+
+    # second eigenvector
+    v21 = u2 / n2
+    v22 = 1 / n2
+    return l1, l2, v11, v12, v21, v22
+
+
+def h_alpha_dual(
+    vv_file: str,
+    vh_file: str,
+    h_file: str,
+    alpha_file: str,
+    box_size: Union[int, List[int]] = 5,
+    multilook: List = [1, 1],
+) -> None:
+    """Compute the dual-polarimetric H alpha decomposition from two SLC polarimetric channels.
+
+    Args:
+        vv_file (str): GeoTiff file of the VV SLC image
+        vh_file (str): GeoTiff file of the VH SLC image
+        H_file (str): GeoTiff file of output entropy
+        alpha_file (str): GeoTiff file of output alpha angle
+        span_file (str): GeoTiff file of output span (total intensity) image
+        out_file (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
+    """
+
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size
+        box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_vv = riox.open_rasterio(vv_file, **open_args)
+    ds_vh = riox.open_rasterio(vh_file, **open_args)
+
+    # accessing dask arrays
+    vv = ds_vv[0].data
+    vh = ds_vh[0].data
+
+    process_args = dict(
+        dimaz=box_az,
+        dimrg=box_rg,
+        depth=(box_az, box_rg),
+    )
+
+    # multilooking
+    c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
+    c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
+
+    msk = ~np.isnan(c12)
+    nodataval = np.nan
+
+    # silence dask warnings
+    c11 = np.nan_to_num(c11)
+    c12 = np.nan_to_num(c12)
+    c22 = np.nan_to_num(c22)
+
+    # additional boxcar
+    c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
+    c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
+    c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
+
+    # fast eigenvalue decomposition
+    l1, l2, v11, _, v21, _ = eigh_2x2(c11.real, c22.real, c12)
+
+    eps = 1e-30
+    span = l1 + l2
+
+    # Pseudo-probabilities
+    pp1 = np.clip(l1 / (span + eps), eps, 1)
+    pp2 = np.clip(l2 / (span + eps), eps, 1)
+
+    # Entropy
+    H = -pp1 * np.log2(pp1 + eps) - pp2 * np.log2(pp2 + eps)
+
+    alpha1 = np.arccos(np.clip(np.abs(v11), -1, 1)) * 180 / np.pi
+    alpha2 = np.arccos(np.clip(np.abs(v21), -1, 1)) * 180 / np.pi
+
+    # Mean alpha
+    alpha = pp1 * alpha1 + pp2 * alpha2
+
+    # Post-processing to adapt to polSAR params
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(binary_erosion, msk, struct)
+
+    H = da.where(msk_out, H, np.nan)
+
+    da_H = xr.DataArray(
+        name="Entropy",
+        data=H[None],
+        dims=("band", "y", "x"),
+    )
+    da_H.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_H.rio.write_nodata(nodataval, inplace=True)
+    da_H.rio.to_raster(h_file)
+
+    alpha = da.where(msk_out, alpha, np.nan)
+
+    da_alpha = xr.DataArray(
+        name="Alpha angle",
+        data=alpha[None],
+        dims=("band", "y", "x"),
+    )
+    da_alpha.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_alpha.rio.write_nodata(nodataval, inplace=True)
+    da_alpha.rio.to_raster(alpha_file)
 
 
 def goldstein(

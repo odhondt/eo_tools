@@ -1,8 +1,9 @@
 # %%
-from folium import Map, GeoJson, Tooltip, LayerControl
+from folium import Map, GeoJson, Tooltip, LayerControl, Popup
 import zipfile
 from pathlib import Path
 from shapely.geometry import Polygon, mapping
+from eo_tools_dev.util import serve_map
 
 # change to you directory
 data_dir = "/data/S1"
@@ -38,10 +39,10 @@ for f in list(Path(data_dir).glob("S1*")):
     footprint = extract_footprint(manifest)
 
     gj = GeoJson(mapping(footprint), name=f.stem)
-    Tooltip(f.stem).add_to(gj)
+    gj.add_child(Popup(f"Product ID: {f.stem}<br>Path: {str(f)}"))
     gj.add_to(m)
 
 LayerControl().add_to(m)
-m
+serve_map(m)
 
 # %%
