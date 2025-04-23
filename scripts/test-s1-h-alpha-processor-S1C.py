@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO)
 data_dir = "/data/S1"
 
 ids = [
-    "S1C_IW_SLC__1SDV_20250401T174601_20250401T174629_001703_002E2A_4DC9.SAFE",
+    "S1C_IW_SLC__1SDV_20250401T174601_20250401T174629_001703_002E2A_4DC9",
 ]
 slc_path = f"{data_dir}/{ids[0]}.zip"
 output_dir = "/data/res/test-h-alpha-processor"
