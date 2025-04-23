@@ -10,6 +10,8 @@ Some examples can be viewed here:
 
 - [Sentinel-1 SLC geocoding](s1-easy-slc-geocoding.ipynb)  
 
+- [Sentinel-1 H-alpha dual decomposition](s1-easy-h-alpha-dual.ipynb)  
+
 - [Sentinel-1 SLC terrain normalization](s1-easy-terrain-flattening.ipynb)  
 
 - [Sentinel-1 custom pipeline](s1-custom-pipeline.ipynb)
