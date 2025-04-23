@@ -9,7 +9,7 @@ dependencies:
   - gdal
   - libgdal-jp2openjpeg
   - rasterio
-  - pyrosar
+  - pyrosar=0.29.0
   - spatialist
   - pip
   - pystac
@@ -28,7 +28,8 @@ dependencies:
   - httpx
   - xarray
   - netcdf4
-  - rioxarray=0.17.0
+  - rioxarray
+  #=0.17.0
   - numba
   - dask
   - bottleneck
