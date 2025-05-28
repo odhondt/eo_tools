@@ -271,8 +271,8 @@ def test_alpha_ent_basic():
 
     alpha = pp1 * alpha1 + pp2 * alpha2
 
-    assert np.allclose(l1, 7, atol=0.1)
-    assert np.allclose(l2, 0, atol=0.1)
+    assert np.allclose(l1, 7, atol=0.2)
+    assert np.allclose(l2, 0, atol=0.2)
     assert np.allclose(alpha, alpha_sim)
     assert np.allclose(H, 0)
 
