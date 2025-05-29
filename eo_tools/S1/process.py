@@ -62,6 +62,7 @@ def process_insar(
     cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
 ) -> str:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -91,6 +92,7 @@ def process_insar(
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Returns:
         str: output directory
@@ -119,6 +121,7 @@ def process_insar(
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
+        orb_dir=orb_dir,
     )
 
     var_names = []
@@ -222,6 +225,7 @@ def prepare_insar(
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
 ) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -242,6 +246,7 @@ def prepare_insar(
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Returns:
         str: output directory
@@ -348,6 +353,7 @@ def prepare_insar(
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
+                    orb_dir=orb_dir,
                 )
                 os.rename(
                     f"{out_dir}/primary.tif",
@@ -379,6 +385,7 @@ def preprocess_insar_iw(
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
+    orb_dir: str = "/tmp",
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -398,6 +405,7 @@ def preprocess_insar_iw(
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
@@ -417,8 +425,8 @@ def preprocess_insar_iw(
             "Invalid calibration factor. Possible values are 'beta', 'sigma'."
         )
 
-    prm = S1IWSwath(prm_path, iw=iw, pol=pol)
-    sec = S1IWSwath(sec_path, iw=iw, pol=pol)
+    prm = S1IWSwath(prm_path, iw=iw, pol=pol, orb_dir=orb_dir)
+    sec = S1IWSwath(sec_path, iw=iw, pol=pol, orb_dir=orb_dir)
 
     # retrieve burst geometries
     sub_str = f"IW{iw}"
