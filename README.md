@@ -61,7 +61,7 @@ and the comparison between Beta nought calibration and terrain flattening using 
 - Then the package can be installed with these commands (replace `conda` by `mamba` or `micromamba` if needed):
 
 ```bash
-conda env create -n eo_tools
+conda create -n eo_tools
 conda activate eo_tools
 conda install conda-forge::eo-tools 
 ```
