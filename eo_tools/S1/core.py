@@ -45,7 +45,7 @@ class S1IWSwath:
             safe_path (str): Directory or zip file containing the product.
             iw (int, optional): Subswath index (1 to 3). Defaults to 1.
             pol (str, optional): Polarization ("vv" or "vh"). Defaults to "vv".
-            orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
+            orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
         """
         if not os.path.exists(safe_path):
             raise ValueError("Product not found.")
