@@ -572,6 +572,7 @@ def process_slc(
     cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
 ) -> str:
     """Geocode the amplitude of a Sentinel-1 SLC product in the DEM geometry and writes the results as a COG (Cloud Optimized GeoTiFF) file.
     AOI crop is optional.
@@ -593,6 +594,7 @@ def process_slc(
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Returns:
         str: output directory
@@ -618,6 +620,7 @@ def process_slc(
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
+        orb_dir=orb_dir,
     )
 
     var_names = ["amp"]
@@ -678,6 +681,7 @@ def process_h_alpha_dual(
     cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
 ) -> str:
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
@@ -700,6 +704,7 @@ def process_h_alpha_dual(
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Returns:
         str: Output directory
@@ -719,6 +724,7 @@ def process_h_alpha_dual(
         dem_force_download=dem_force_download,
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
+        orb_dir=orb_dir,
     )
 
     var_names = ["H", "alpha"]
@@ -786,6 +792,7 @@ def prepare_slc(
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
 ) -> str:
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
@@ -803,6 +810,7 @@ def prepare_slc(
         dem_force_download (bool, optional):   To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to True.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Returns:
         str: output directory
@@ -891,6 +899,7 @@ def prepare_slc(
                     dem_upsampling=dem_upsampling,
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
+                    orb_dir=orb_dir,
                 )
                 os.rename(
                     f"{out_dir}/slc.tif",
@@ -915,6 +924,7 @@ def preprocess_slc_iw(
     dem_upsampling: float = 1.8,
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
+    orb_dir: str = "/tmp",
 ) -> None:
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
@@ -932,6 +942,7 @@ def preprocess_slc_iw(
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
+        orb_dir (str, optional): Directory containing orbits. Defaults to "/tmp".
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
@@ -951,7 +962,7 @@ def preprocess_slc_iw(
             "Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain."
         )
 
-    slc = S1IWSwath(slc_path, iw=iw, pol=pol)
+    slc = S1IWSwath(slc_path, iw=iw, pol=pol, orb_dir=orb_dir)
 
     prm_burst_info = slc.meta["product"]["swathTiming"]["burstList"]["burst"]
 
