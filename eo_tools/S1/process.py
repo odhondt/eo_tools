@@ -98,7 +98,7 @@ def process_insar(
         str: output directory
     """
 
-    if not np.any([coherence, interferogram]):
+    if not np.any([write_coherence, write_interferogram]):
         raise ValueError(
             "At least one of `write_coherence` and `write_interferogram` must be True."
         )
