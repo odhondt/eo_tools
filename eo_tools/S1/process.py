@@ -19,6 +19,7 @@ from typing import Union, List, Callable
 from datetime import datetime
 from pathlib import Path
 from shapely.geometry import shape
+from shapely.geometry.base import BaseGeometry
 from osgeo import gdal
 from rasterio.features import geometry_window
 from affine import Affine
@@ -41,10 +42,10 @@ def process_insar(
     prm_path: str,
     sec_path: str,
     output_dir: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    pol: str | list[str] = "full",
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     write_coherence: bool = True,
     write_interferogram: bool = True,
     write_primary_amplitude: bool = True,
@@ -63,7 +64,7 @@ def process_insar(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
-) -> str:
+) -> Path:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
 
@@ -72,8 +73,8 @@ def process_insar(
         sec_path (str): secondary image (SLC Sentinel-1 product directory or zip file).
         output_dir (str): location in which the product subdirectory will be created
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        shp (BaseGeometry, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (str | list[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
         write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
@@ -95,7 +96,7 @@ def process_insar(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
 
     Returns:
-        str: output directory
+        Path: output directory
     """
 
     if not np.any([write_coherence, write_interferogram]):
@@ -212,8 +213,8 @@ def prepare_insar(
     prm_path: str,
     sec_path: str,
     output_dir: str,
-    aoi_name: str = None,
-    shp: shape = None,
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
     pol: Union[str, List[str]] = "full",
     subswaths: List[str] = ["IW1", "IW2", "IW3"],
     apply_fast_esd: bool = False,
@@ -233,8 +234,8 @@ def prepare_insar(
         prm_path (str): Primary image (SLC Sentinel-1 product directory or zip file).
         sec_path (str): Secondary image (SLC Sentinel-1 product directory or zip file).
         output_dir (str): location in which the product subdirectory will be created.
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        aoi_name (str | None, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
@@ -374,9 +375,9 @@ def preprocess_insar_iw(
     sec_path: str,
     output_dir: str,
     iw: int = 1,
-    pol: Union[str, List[str]] = "vv",
+    pol: str | list[str] = "vv",
     min_burst: int = 1,
-    max_burst: int = None,
+    max_burst: int | None = None,
     apply_fast_esd: bool = True,
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
@@ -558,32 +559,32 @@ def preprocess_insar_iw(
 def process_slc(
     slc_path: str,
     output_dir: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    pol: str | list[str] = "full",
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    multilook: List[int] = [1, 4],
+    multilook: list[int] = [1, 4],
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
-) -> str:
+) -> Path:
     """Geocode the amplitude of a Sentinel-1 SLC product in the DEM geometry and writes the results as a COG (Cloud Optimized GeoTiFF) file.
     AOI crop is optional.
 
     Args:
         slc_path (str): input image (SLC Sentinel-1 product directory or zip file).
         output_dir (str): location in which the product subdirectory will be created
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        aoi_name (str | None, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (str | list[str], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (list[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
@@ -597,13 +598,8 @@ def process_slc(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
 
     Returns:
-        str: output directory
+        Path: output directory
     """
-
-    if not np.any([coherence, interferogram]):
-        raise ValueError(
-            "At least one of `write_coherence` and `write_interferogram` must be True."
-        )
 
     # prepare pair for interferogram computation
     out_dir = prepare_slc(
