@@ -15,10 +15,9 @@ import dask.array as da
 from rasterio.errors import NotGeoreferencedWarning
 import logging
 from pyroSAR import identify
-from typing import Union, List, Callable
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 from osgeo import gdal
 from rasterio.features import geometry_window
@@ -56,9 +55,9 @@ def process_insar(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    boxcar_coherence: Union[int, List[int]] = [3, 3],
+    boxcar_coherence: int | list[int] = [3, 3],
     filter_ifg: bool = True,
-    multilook: List[int] = [1, 4],
+    multilook: list[int] = [1, 4],
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
     clip_to_shape: bool = True,
@@ -75,7 +74,7 @@ def process_insar(
         aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (BaseGeometry, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
         pol (str | list[str]], optional): Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        subswaths (list[str], optional): limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         write_coherence (bool, optional): Write the magnitude of the complex coherence. Defaults to True.
         write_interferogram (bool, optional): Write the interferogram phase. Defaults to True.
         write_primary_amplitude (bool, optional): Write the amplitude of the primary image. Defaults to True.
@@ -86,9 +85,9 @@ def process_insar(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_coherence (Union[int, List[int]], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 3].
+        boxcar_coherence (int | list[int], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 3].
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if complex_ifg_file is set to None or write_coherence is set to False. Defaults to True.x
-        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
@@ -215,8 +214,8 @@ def prepare_insar(
     output_dir: str,
     aoi_name: str | None = None,
     shp: BaseGeometry | None = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    pol: str | list[str] = "full",
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     apply_fast_esd: bool = False,
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
@@ -236,8 +235,8 @@ def prepare_insar(
         output_dir (str): location in which the product subdirectory will be created.
         aoi_name (str | None, optional): optional suffix to describe AOI / experiment. Defaults to None.
         shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        pol (str | list[str], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (list[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
@@ -590,7 +589,7 @@ def process_slc(
         dem_upsampling (float, optional): upsampling factor for the DEM, it is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
@@ -661,9 +660,9 @@ def process_slc(
 def process_h_alpha_dual(
     slc_path: str,
     output_dir: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     write_vv_amplitude: bool = True,
     write_vh_amplitude: bool = True,
     dem_dir: str = "/tmp",
@@ -671,22 +670,22 @@ def process_h_alpha_dual(
     dem_upsampling: float = 1.8,
     dem_force_download: bool = False,
     dem_buffer_arc_sec: float = 40,
-    boxcar_size: Union[int, List[int]] = [5, 5],
-    multilook: List[int] = [1, 4],
+    boxcar_size: int | list[int] = [5, 5],
+    multilook: list[int] = [1, 4],
     warp_kernel: str = "bicubic",
     cal_type: str = "beta",
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
-) -> str:
+) -> Path:
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
     Args:
         slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
         output_dir (str): Location in which the product subdirectory will be created.
-        aoi_name (str, optional): Optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        aoi_name (str | None, optional): Optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        subswaths (list[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         write_vv_amplitude (bool, optional): If True, writes out the calibrated VV amplitude image. Defaults to False.
         write_vh_amplitude (bool, optional): If True, writes out the calibrated VH amplitude image. Defaults to False.
         dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
@@ -694,8 +693,8 @@ def process_h_alpha_dual(
         dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_size (Union[int, List[int]], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
-        multilook (List[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
@@ -703,7 +702,7 @@ def process_h_alpha_dual(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
 
     Returns:
-        str: Output directory
+        Path: Output directory
     """
 
     out_dir = prepare_slc(
@@ -777,10 +776,10 @@ def process_h_alpha_dual(
 def prepare_slc(
     slc_path: str,
     output_dir: str,
-    aoi_name: str = None,
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    pol: str | list[str] = "full",
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
@@ -795,10 +794,10 @@ def prepare_slc(
     Args:
         slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
         output_dir (str): location in which the product subdirectory will be created.
-        aoi_name (str, optional): optional suffix to describe AOI / experiment. Defaults to None.
-        shp (shapely.geometry.shape, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
-        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        aoi_name (str | None, optional): optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        pol (str | list[str], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (list[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
@@ -911,9 +910,9 @@ def preprocess_slc_iw(
     slc_path: str,
     output_dir: str,
     iw: int = 1,
-    pol: Union[str, List[str]] = "vv",
+    pol: str | list[str] = "vv",
     min_burst: int = 1,
-    max_burst: int = None,
+    max_burst: int | None = None,
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
@@ -930,7 +929,7 @@ def preprocess_slc_iw(
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
         min_burst (int, optional): first burst to process. Defaults to 1.
-        max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        max_burst (int | None, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_dir (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
@@ -1030,10 +1029,10 @@ def preprocess_slc_iw(
 
 def geocode_and_merge_iw(
     input_dir: str,
-    var_names: List[str],
-    shp: shape = None,
-    pol: Union[str, List[str]] = "full",
-    subswaths: List[str] = ["IW1", "IW2", "IW3"],
+    var_names: list[str],
+    shp: BaseGeometry | None = None,
+    pol: str | list[str] = "full",
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
     warp_kernel: str = "bicubic",
     clip_to_shape: bool = True,
 ) -> None:
@@ -1041,11 +1040,11 @@ def geocode_and_merge_iw(
 
     Args:
         input_dir (str): Interferometric product directory.
-        var_names (List[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
-        shp (shapely.geometry.shape, optional): Area of interest. Defaults to None.
-        pol (Union[str, List[str]], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
-        subswaths (List[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
-        multilook (List[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
+        var_names (list[str]): List of the variable names to process. For instance ['coh', 'ifg', 'amp_prm']
+        shp (BaseGeometry | None, optional): Area of interest. Defaults to None.
+        pol (str | list[str], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
+        subswaths (list[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        multilook (list[int], optional): Multilooking in azimuth and range. Defaults to [1, 4].
         warp_kernel (str, optional): Warping kernel. Defaults to "bicubic".
         clip_to_shape (bool, optional): If set to True, whole bursts intersecting shp will be included. Defaults to True.
     Note:
@@ -1185,9 +1184,9 @@ def geocode_and_merge_iw(
 
 
 def sar2geo(
-    sar_file: str,
-    lut_file: str,
-    out_file: str,
+    sar_file: Path | str,
+    lut_file: Path | str,
+    out_file: Path | str,
     kernel: str = "bicubic",
     write_phase: bool = False,
     magnitude_only: bool = False,
@@ -1195,9 +1194,9 @@ def sar2geo(
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
     Args:
-        sar_file (str): file in the SAR geometry
-        lut_file (str): file containing a lookup table (output of the `preprocess_insar_iw` function)
-        out_file (str): output file
+        sar_file (Path | str): file in the SAR geometry
+        lut_file (Path | str): file containing a lookup table (output of the `preprocess_insar_iw` function)
+        out_file (Path | str): output file
         kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         write_phase (bool): writes the array's phase . Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
@@ -1275,7 +1274,7 @@ def sar2geo(
                 dst.write(arr_out, 1)
 
 
-def multilook(in_file: str, out_file: str, mlt: List = [1, 1]) -> None:
+def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:
     """Apply multilooking to raster.
 
     Args:
@@ -1314,7 +1313,7 @@ def multilook(in_file: str, out_file: str, mlt: List = [1, 1]) -> None:
                     dst.write(arr_out, i + 1)
 
 
-def amplitude(in_file: str, out_file: str, multilook: List = [1, 1]) -> None:
+def amplitude(in_file: str, out_file: str, multilook: list = [1, 1]) -> None:
     """Compute the amplitude of a complex-valued image.
 
     Args:
@@ -1355,7 +1354,7 @@ def amplitude(in_file: str, out_file: str, multilook: List = [1, 1]) -> None:
 
 
 def interferogram(
-    prm_file: str, sec_file: str, out_file: str, multilook: List = [1, 1]
+    prm_file: str, sec_file: str, out_file: str, multilook: list = [1, 1]
 ) -> None:
     """Compute a complex interferogram from two SLC image files.
 
@@ -1397,10 +1396,10 @@ def coherence(
     prm_file: str,
     sec_file: str,
     out_file: str,
-    box_size: Union[int, List[int]] = 5,
-    multilook: List = [1, 1],
+    box_size: int | list[int] = 5,
+    multilook: list = [1, 1],
     magnitude: bool = True,
-    complex_ifg_file: str = None,
+    complex_ifg_file: str | None = None,
     filter_ifg: bool = True,
 ) -> None:
     """Compute the complex coherence from two SLC image files.
@@ -1411,7 +1410,7 @@ def coherence(
         out_file (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
-        complex_ifg_file (str, optional): Writes complex interferogram as well. Defaults to None.
+        complex_ifg_file (str | None, optional): Writes complex interferogram as well. Defaults to None.
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.
     """
 
@@ -1546,8 +1545,8 @@ def h_alpha_dual(
     vh_file: str,
     h_file: str,
     alpha_file: str,
-    box_size: Union[int, List[int]] = 5,
-    multilook: List = [1, 1],
+    box_size: int | list[int] = 5,
+    multilook: list = [1, 1],
 ) -> None:
     """Compute the dual-polarimetric H alpha decomposition from two SLC polarimetric channels.
 
