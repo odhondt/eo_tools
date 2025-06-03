@@ -1039,24 +1039,26 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     # WGS84_crs = "EPSG:4326+5773"
     ECEF_crs = "EPSG:4978"
 
-    # much faster than rasterio transform
-    # tf = Transformer.from_crs(WGS84_crs, ECEF_crs)
-    tf = Transformer.from_crs(composite_crs, ECEF_crs)
-
-    # single-threaded
     # !! pyproj uses lon, lat whereas rasterio uses lat, lon
+    # single-threaded
+    # much faster than rasterio transform
+    # tf = Transformer.from_crs(composite_crs, ECEF_crs)
     # WGS84_points = (lon, lat, alt)
     # dem_pts = tf.transform(*WGS84_points)
+    # dem_x = dem_pts[0]
+    # dem_y = dem_pts[1]
+    # dem_z = dem_pts[2]
 
     # multi-threaded
-    # WARNING: this fails with pyproj 3.7.0
+    # WARNING: this fails with pyproj >= 3.7.0
+    tf = Transformer.from_crs(composite_crs, ECEF_crs)
     chunk = 128
     wgs_pts = [
-        (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
-        for b in range(0, len(lon), chunk)
+    (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
+    for b in range(0, len(lon), chunk)
     ]
     chunked = Parallel(n_jobs=-1, prefer="threads")(
-        delayed(tf.transform)(*b) for b in wgs_pts
+    delayed(tf.transform)(*b) for b in wgs_pts
     )
     dem_x = np.zeros_like(lon)
     dem_y = np.zeros_like(lon)
@@ -1067,6 +1069,26 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
         dem_x[b1:b2] = chunked[i][0]
         dem_y[b1:b2] = chunked[i][1]
         dem_z[b1:b2] = chunked[i][2]
+
+
+    # waiting for an answer to my bug report to activate this code
+    # since pyproj 3.7.0 we need to create one transformer per thread
+    # def transform_chunk(data_chunk):
+    #     tf = Transformer.from_crs(composite_crs, ECEF_crs)
+    #     return tf.transform(data_chunk[0], data_chunk[1], data_chunk[2])
+
+    # chunk = 256
+    # wgs_pts = [
+    #     (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
+    #     for b in range(0, len(lon), chunk)
+    # ]
+
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     chunked = executor.map(transform_chunk, wgs_pts)
+    # chunked = list(chunked)
+    # dem_x = np.vstack([c[0] for c in chunked])
+    # dem_y = np.vstack([c[1] for c in chunked])
+    # dem_z = np.vstack([c[2] for c in chunked])
 
     return dem_x, dem_y, dem_z
 
