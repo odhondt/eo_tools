@@ -7,6 +7,7 @@
 - Updated type hints to adopt a more modern convention
 - Fixed some parameter checks at the beginning of processing functions (e.g. replaced `coherence` with `write_coherence`)
 - Fixed some output paths in test scripts to match the processor outputs
+- Upgraded dependencies
 
 
 # 2025.4.0
