@@ -16,6 +16,11 @@ import numpy as np
 from pyproj import Transformer
 from joblib import Parallel, delayed
 
+from pyproj.network import set_network_enabled
+
+# Enable PROJ network temporarily
+set_network_enabled(False)
+
 # Generate test data
 N = 1000
 lat = np.random.uniform(-90, 90, N)
