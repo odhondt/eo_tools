@@ -90,6 +90,7 @@ process_args = dict(
     warp_kernel="bicubic",
     cal_type="beta",
     clip_to_shape=True,
+    orb_dir="/data/S1_orbits/"
 )
 
 out_dir = process_insar(**process_args)
