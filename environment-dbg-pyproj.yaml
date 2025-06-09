@@ -1,0 +1,8 @@
+name: dbg
+channels:
+  # - defaults
+  - conda-forge
+dependencies:
+  - python=3.8
+  - pyproj=2.5
+  - pytest

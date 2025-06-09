@@ -3,6 +3,9 @@
 import os
 os.environ["PROJ_DEBUG"] = "2"
 
+# use with pyproj 2.5
+os.environ["PROJ_NETWORK"] = "ON"
+
 import logging
 console_handler = logging.StreamHandler()
 formatter = logging.Formatter("%(levelname)s:%(message)s")
@@ -14,12 +17,15 @@ logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
 
 import numpy as np
 from pyproj import Transformer
+# from pyproj import show_versions
 from joblib import Parallel, delayed
 
-from pyproj.network import set_network_enabled
-
+# does not work with 2.5
+# from pyproj.network import set_network_enabled
 # Enable PROJ network temporarily
-set_network_enabled(False)
+# set_network_enabled(False)
+
+# show_versions()
 
 # Generate test data
 N = 1000
@@ -68,3 +74,4 @@ def check_close(a, b, label):
 check_close(x1, x2, "Single vs Threads (X)")
 check_close(y1, y2, "Single vs Threads (Y)")
 check_close(z1, z2, "Single vs Threads (Z)")
+# print(z2)
