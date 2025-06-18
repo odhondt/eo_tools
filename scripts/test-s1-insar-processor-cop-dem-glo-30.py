@@ -110,6 +110,6 @@ _ = show_cog(f"{out_dir}/coh_vv.tif", m, rescale=f"0,1")
 LayerControl().add_to(m)
 
 # open in a browser
-# serve_map(m)
-m
+serve_map(m)
+# m
 # %%

@@ -61,7 +61,7 @@ and the comparison between Beta nought calibration and terrain flattening using 
 - Then the package can be installed with these commands (replace `conda` by `mamba` or `micromamba` if needed):
 
 ```bash
-conda env create -n eo_tools
+conda create -n eo_tools
 conda activate eo_tools
 conda install conda-forge::eo-tools 
 ```
@@ -80,6 +80,7 @@ conda install conda-forge::eo-tools
 - Example jupyter notebooks demonstrate the different features
 - For conda use the notebooks in the `notebooks-cf` directory of the github repository
 - For docker use the notebooks in the `notebooks` directory of the github repository
+- To be able to download products with EODAG on Copernicus Dataspace, a file named `eodag_config.yaml` containing credentials must be created. The file `eodag_config_example.yml` located in the repository root directory may be used for this purpose. Feel free to copy, rename and edit this file with your credentials. It is recommended to store the file in a secure location outside of the local repository.
 
 ## Notice
 

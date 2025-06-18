@@ -232,7 +232,7 @@ def test_alpha_ent_basic():
 
     # centered random vector
     D = 2
-    N = 100
+    N = 1000
     v = np.sqrt(0.5) * (randn(N, N, D) + 1j * randn(N, N, D))
 
     # polarimetric mechanism

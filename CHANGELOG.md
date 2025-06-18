@@ -1,3 +1,15 @@
+# 2025.6.0
+
+## Minor improvements and fixes
+- Added a sample EODAG config file.
+- Added an orbit directory parameter to each processing function.
+- Fixed some type hints where types were wrong or incomplete
+- Updated type hints to adopt a more modern convention
+- Fixed some parameter checks at the beginning of processing functions (e.g. replaced `coherence` with `write_coherence`)
+- Fixed some output paths in test scripts to match the processor outputs
+- Upgraded dependencies
+
+
 # 2025.4.0
 
 ## New features
