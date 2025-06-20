@@ -2157,13 +2157,24 @@ def _apply_fast_esd(
         slope = (yup - ydown) / (xup - xdown)
         off = ydown - slope * xdown
         ramp = slope * x + off
-        return np.exp(1j * (ramp[:, None] + np.zeros((nrg))))
+        return np.exp(1j * ramp)
+
+    # def make_ramp2(phase_esd):
+    #     slope = phase_esd / (naz - 1 - overlap)
+    #     ramp = np.linspace(
+    #             -0.5 * phase_esd - slope * overlap / 2,
+    #             0.5 * phase_esd + slope * overlap / 2,
+    #             naz,
+    #         )
+    #     return np.exp(1j * ramp)
+    
 
     with rio.open(tmp_prm_file, "r") as ds_prm:
         with rio.open(tmp_sec_file, "r+") as ds_sec:
             # computing cross interferograms in overlapping areas
             log.info("Fast ESD: computing cross interferograms")
             phase_diffs = []
+            cross_ifgs = []
             for burst_idx in range(min_burst, max_burst):
                 first_line_tail = (burst_idx - min_burst + 1) * naz - overlap
                 first_line_head = (burst_idx - min_burst + 1) * naz
@@ -2188,7 +2199,11 @@ def _apply_fast_esd(
                 cross_ifg = ifg1 * ifg2.conj()
                 dphi_clx = cross_ifg[~np.isnan(cross_ifg)]
                 phase_diffs.append(np.angle(dphi_clx.mean()))
+                cross_ifgs.append(cross_ifg.ravel())
 
+            # average phase difference on all bursts
+            # phi_esd = np.angle(np.nanmean(np.vstack(cross_ifgs)))
+            # esd_ramp = make_ramp2(phi_esd).astype(np.complex64)
             # making phase ramps and applying to secondary
             log.info("Fast ESD: applying phase corrections")
             for burst_idx in range(min_burst, max_burst + 1):
@@ -2201,7 +2216,7 @@ def _apply_fast_esd(
                     np.complex64
                 )
                 ds_sec.write(
-                    arr_s * esd_ramp,
+                    arr_s * esd_ramp[:, None],
                     indexes=1,
                     window=Window(0, first_line, nrg, naz),
                 )
