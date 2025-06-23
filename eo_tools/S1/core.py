@@ -19,6 +19,7 @@ from pyproj import Transformer
 import concurrent
 import urllib.request
 from pyproj.datadir import get_user_data_dir
+from pyproj.sync import get_proj_endpoint 
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -1082,8 +1083,11 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     else:
         raise ValueError("Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855")
 
-    grid_repo_url = "https://cdn.proj.org"
+    grid_repo_url = get_proj_endpoint()
+    # grid_repo_url = "https://cdn.proj.org"
     proj_path = Path(get_user_data_dir())
+    if not proj_path.is_dir():
+        proj_path.mkdir(parents=True)
     grid_path = proj_path / grid_name
     if not grid_path.exists():
         grid_url = f"{grid_repo_url}/{grid_name}" 
