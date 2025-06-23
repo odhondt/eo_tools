@@ -15,7 +15,7 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 import concurrent
 import urllib.request
 from pyproj.datadir import get_user_data_dir
