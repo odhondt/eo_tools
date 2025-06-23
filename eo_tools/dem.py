@@ -20,7 +20,7 @@ def retrieve_dem(shp, out_file, dem_name="cop-dem-glo-30", upscale_factor=1):
         upscale_factor (float, optional): Upsampling factor.
     """
 
-    log.info("Retrieve DEM")
+    log.info(f"Retrieve DEM ({dem_name})")
     catalog = Client.open(
         "https://planetarycomputer.microsoft.com/api/stac/v1",
         modifier=planetary_computer.sign_inplace,
