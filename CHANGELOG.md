@@ -1,3 +1,11 @@
+# 2025.6.1
+
+## Minor changes
+- Updated dependencies
+- Now using pyproj 3.7.1, pre-downloading geoid grids to avoid concurrency issues in converting DEM coordinates to ECEF
+	- See: https://github.com/pyproj4/pyproj/issues/1499
+- Display DEM name in log messages at download 
+
 # 2025.6.0
 
 ## Minor improvements and fixes
