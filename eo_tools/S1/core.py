@@ -526,6 +526,112 @@ class S1IWSwath:
         phi_deramp = -np.pi * kt[None] * (eta[:, None] - eta_ref[None]) ** 2
         return phi_deramp  # .astype("float32")
 
+    def doppler_burst(self, burst_idx=1):
+        """Computes the Doppler frequency using product metadata.
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+
+        Returns:
+            array: phase correction to apply to the SLC burst.
+        """
+
+        if burst_idx < 1 or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+
+        meta = self.meta
+        meta_image = meta["product"]["imageAnnotation"]
+        meta_general = meta["product"]["generalAnnotation"]
+        meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
+
+        log.info("Compute TOPS deramping phase")
+
+        c0 = 299792458.0
+        # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
+        az_time = meta_burst["azimuthTime"]
+        az_dt = float(meta_image["imageInformation"]["azimuthTimeInterval"])
+        range_sampling_rate = float(
+            meta_general["productInformation"]["rangeSamplingRate"]
+        )
+        slant_range_time = float(meta_image["imageInformation"]["slantRangeTime"])
+        nrg = int(meta_image["imageInformation"]["numberOfSamples"])
+        kp = float(meta_general["productInformation"]["azimuthSteeringRate"])
+        fc = float(meta_general["productInformation"]["radarFrequency"])
+        rg_dt = 1 / range_sampling_rate
+
+        # keeping a few points before and after burst
+        image_info = meta["product"]["imageAnnotation"]["imageInformation"]
+        azimuth_time_interval = float(image_info["azimuthTimeInterval"])
+        dt_az = float(azimuth_time_interval)
+        # naz = int(lines_per_burst)
+        naz = self.lines_per_burst
+        tt0 = self.state_vectors["t0"]
+        t0_az = (isoparse(az_time) - tt0).total_seconds()
+        t_end_burst = t0_az + dt_az * naz
+        t_sv_burst = self.state_vectors["t"]
+        cnd = (t_sv_burst > t0_az - 360) & (t_sv_burst < t_end_burst + 360)
+
+        state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
+
+        # _, orb_v = sv_interpolator_poly(state_vectors)
+        _, orb_v = sv_interpolator(state_vectors)
+        t_mid = t0_az + az_dt * self.lines_per_burst / 2.0
+        v_mid = orb_v(t_mid)
+        ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
+
+        fm_rate_list = meta_general["azimuthFmRateList"]["azimuthFmRate"]
+        fm_rate_times = [
+            (isoparse(it["azimuthTime"]) - tt0).total_seconds() for it in fm_rate_list
+        ]
+        poly_fm_idx = np.argmin(np.abs(np.array(fm_rate_times) - t_mid))
+        poly_fm_str = fm_rate_list[poly_fm_idx]["azimuthFmRatePolynomial"]["#text"]
+        poly_fm_coeffs = np.array((poly_fm_str).split(" "), dtype="float64")
+
+        rg_tau = slant_range_time + np.arange(nrg) * rg_dt
+
+        def ka_fun(tau):
+            return (
+                poly_fm_coeffs[0]
+                + poly_fm_coeffs[1] * (tau - slant_range_time)
+                + poly_fm_coeffs[2] * (tau - slant_range_time) ** 2
+            )
+
+        ka = ka_fun(rg_tau)
+
+        dc_list = meta["product"]["dopplerCentroid"]["dcEstimateList"]["dcEstimate"]
+        dc_times = [
+            (isoparse(it["azimuthTime"]) - tt0).total_seconds() for it in dc_list
+        ]
+        poly_dc_idx = np.argmin(np.abs(np.array(dc_times) - t_mid))
+        poly_dc_str = dc_list[poly_dc_idx]["dataDcPolynomial"]["#text"]
+        poly_dc_coeffs = np.array((poly_dc_str).split(" "), dtype="float64")
+
+        def fdc_fun(tau):
+            return (
+                poly_dc_coeffs[0]
+                + poly_dc_coeffs[1] * (tau - slant_range_time)
+                + poly_dc_coeffs[2] * (tau - slant_range_time) ** 2
+            )
+
+        fdc = fdc_fun(rg_tau)
+        kt = ka * ks / (ka - ks)
+        eta = np.linspace(
+            -az_dt * self.lines_per_burst / 2.0,
+            az_dt * self.lines_per_burst / 2.0,
+            self.lines_per_burst,
+        )
+        eta_c = -fdc / ka
+        rg_mid = slant_range_time + 0.5 * nrg * rg_dt
+        eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
+        eta_ref = eta_c - eta_mid
+
+        # doppler = kt[None] * (eta[:, None] - eta_ref[None]) + fdc[None]
+        # return doppler  # .astype("float32")
+        return kt[None],  fdc[None], (eta[:, None] - eta_ref[None])
+
+
     def calibration_factor(self, burst_idx=1, cal_type="beta"):
         """Computes calibration factor from the metadata.
 
@@ -874,6 +980,50 @@ def fast_esd(ifgs, overlap):
         for i, ifg in enumerate(ifgs):
             log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
             esd_ramp = make_ramp(i).astype(np.complex64)
+            ifg *= esd_ramp
+
+def fast_esd_2(ifgs, kts, fdcs, times, overlap):
+    """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
+    Args:
+        ifgs (list): List of complex SLC interferograms
+        overlap (int): Number of overlapping azimuth pixels between two bursts (can be computed with `compute_burst_overlap`)
+
+    Note:
+        Based on ideas introduced in:
+        Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
+    """
+
+    if len(ifgs) < 2:
+        log.warning(
+            "Skipping ESD: there must be at least 2 consecutive bursts from the same subsawths."
+        )
+    else:
+
+        # nodataval = np.nan + 1j * np.nan
+        phase_diffs = []
+        freq_diffs = []
+        import matplotlib.pyplot as plt
+        for i in range(len(ifgs) - 1):
+            log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
+            cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
+            phi_clx = cross[~np.isnan(cross)]
+            # phase_diffs.append(np.angle(phi_clx.mean()))
+            phase_diffs.append(phi_clx.ravel())
+            dop1 = kts[i]*times[i]+fdcs[i]
+            dop2 = kts[i+1]*times[i+1]+fdcs[i+1]
+            freq_diffs.append((dop2[:overlap] - dop1[-overlap:]).ravel())
+
+        # mean frequency separation
+        delta_fdc = np.concatenate(freq_diffs).mean()
+        # mean esd phase
+        phi_esd = np.angle(np.concatenate(phase_diffs).mean())
+        # misregistration time (we omit a factor 2*pi)
+        dt = phi_esd / delta_fdc
+
+
+        for i, ifg in enumerate(ifgs):
+            log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
+            esd_ramp = np.exp(1j * (kts[i] * times[i] + fdcs[i]) * dt)
             ifg *= esd_ramp
 
 
