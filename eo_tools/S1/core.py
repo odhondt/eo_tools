@@ -629,8 +629,7 @@ class S1IWSwath:
 
         # doppler = kt[None] * (eta[:, None] - eta_ref[None]) + fdc[None]
         # return doppler  # .astype("float32")
-        return kt[None],  fdc[None], (eta[:, None] - eta_ref[None])
-
+        return kt[None], fdc[None], (eta[:, None] - eta_ref[None])
 
     def calibration_factor(self, burst_idx=1, cal_type="beta"):
         """Computes calibration factor from the metadata.
@@ -982,6 +981,7 @@ def fast_esd(ifgs, overlap):
             esd_ramp = make_ramp(i).astype(np.complex64)
             ifg *= esd_ramp
 
+
 def fast_esd_2(ifgs, kts, fdcs, times, overlap):
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
@@ -1003,14 +1003,15 @@ def fast_esd_2(ifgs, kts, fdcs, times, overlap):
         phase_diffs = []
         freq_diffs = []
         import matplotlib.pyplot as plt
+
         for i in range(len(ifgs) - 1):
             log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
             cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
             phi_clx = cross[~np.isnan(cross)]
             # phase_diffs.append(np.angle(phi_clx.mean()))
             phase_diffs.append(phi_clx.ravel())
-            dop1 = kts[i]*times[i]+fdcs[i]
-            dop2 = kts[i+1]*times[i+1]+fdcs[i+1]
+            dop1 = kts[i] * times[i] + fdcs[i]
+            dop2 = kts[i + 1] * times[i + 1] + fdcs[i + 1]
             freq_diffs.append((dop2[:overlap] - dop1[-overlap:]).ravel())
 
         # mean frequency separation
@@ -1020,11 +1021,28 @@ def fast_esd_2(ifgs, kts, fdcs, times, overlap):
         # misregistration time (we omit a factor 2*pi)
         dt = phi_esd / delta_fdc
 
-
         for i, ifg in enumerate(ifgs):
             log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
             esd_ramp = np.exp(1j * (kts[i] * times[i] + fdcs[i]) * dt)
             ifg *= esd_ramp
+
+
+def compute_ESD_shift(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw):
+
+    # if burst_idx > 0
+    # iterate
+    num_it = 3
+    for _ in range(num_it): 
+        pass
+        # cross interferogram
+
+        # multilook
+    
+        # extract forward and backward doppler
+
+        # convert phase to azimuth shift (need azimuth sampling freq)
+
+        # resample
 
 
 def stitch_bursts(bursts, overlap):
@@ -1204,11 +1222,11 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     tf = Transformer.from_crs(composite_crs, ECEF_crs)
     chunk = 128
     wgs_pts = [
-    (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
-    for b in range(0, len(lon), chunk)
+        (lon[b : b + chunk], lat[b : b + chunk], alt[b : b + chunk])
+        for b in range(0, len(lon), chunk)
     ]
     chunked = Parallel(n_jobs=-1, prefer="threads")(
-    delayed(tf.transform)(*b) for b in wgs_pts
+        delayed(tf.transform)(*b) for b in wgs_pts
     )
     dem_x = np.zeros_like(lon)
     dem_y = np.zeros_like(lon)
@@ -1219,7 +1237,6 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
         dem_x[b1:b2] = chunked[i][0]
         dem_y[b1:b2] = chunked[i][1]
         dem_z[b1:b2] = chunked[i][2]
-
 
     # waiting for an answer to my bug report to activate this code
     # since pyproj 3.7.0 we need to create one transformer per thread
