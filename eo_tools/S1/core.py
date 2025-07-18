@@ -21,6 +21,7 @@ from pyroSAR import identify
 from xmltodict import parse
 import zipfile
 
+from eo_tools.bench import timeit
 
 import logging
 
@@ -268,6 +269,7 @@ class S1IWSwath:
             dem_name,
         )
 
+    @timeit
     def geocode_burst(
         self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False
     ):
@@ -546,7 +548,7 @@ class S1IWSwath:
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
 
-        log.info("Compute TOPS deramping phase")
+        log.info("Compute TOPS Doppler.")
 
         c0 = 299792458.0
         # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -627,8 +629,6 @@ class S1IWSwath:
         eta_mid = fdc_fun(rg_mid) / ka_fun(rg_mid)
         eta_ref = eta_c - eta_mid
 
-        # doppler = kt[None] * (eta[:, None] - eta_ref[None]) + fdc[None]
-        # return doppler  # .astype("float32")
         return kt[None], fdc[None], (eta[:, None] - eta_ref[None])
 
     def calibration_factor(self, burst_idx=1, cal_type="beta"):
@@ -674,6 +674,7 @@ class S1IWSwath:
             )
         return cal_fac
 
+    @timeit
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
@@ -1027,22 +1028,75 @@ def fast_esd_2(ifgs, kts, fdcs, times, overlap):
             ifg *= esd_ramp
 
 
-def compute_ESD_shift(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw):
+def esd_shift(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw, overlap):
 
-    # if burst_idx > 0
-    # iterate
-    num_it = 3
-    for _ in range(num_it): 
-        pass
-        # cross interferogram
+    # TODO: use primary and secondary dopplers
+    if burst_idx == 0:
+        log.info("Cannot compute ESD on first burst, skipping.")
+        return None
+    else:
+        log.info(f"Compute ESD shift between burst {burst_idx} and {burst_idx-1}.")
 
-        # multilook
-    
-        # extract forward and backward doppler
+    # cross interferogram
+    ifg1 = arr_p_fw * arr_s_fw.conj()
+    ifg2 = arr_p_bw * arr_s_bw.conj()
+    cross_ifg = ifg1 * ifg2.conj()
 
-        # convert phase to azimuth shift (need azimuth sampling freq)
+    # extract forward and backward doppler
+    s_bw = np.s_[:overlap]
+    s_fw = np.s_[-overlap:]
+    kt_bw, fdc_bw, t_bw = sec.doppler_burst(burst_idx=burst_idx)
+    kt_fw, fdc_fw, t_fw = sec.doppler_burst(burst_idx=burst_idx - 1)
+    dop_bw = kt_bw[s_bw] * t_bw[s_bw] + fdc_bw[s_bw]
+    dop_fw = kt_fw[s_fw] * t_fw[s_fw] + fdc_fw[s_fw]
 
-        # resample
+    # average spectral separation
+    delta_dop = np.mean(dop_bw - dop_fw)
+
+    # convert phase to azimuth shift (need azimuth sampling freq)
+    phi_esd = np.angle(np.nanmean(cross_ifg))
+    # coregistration error
+    dt = phi_esd / (2 * np.pi * delta_dop)
+
+    return dt
+
+def esd_shift_mean_coh(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw, overlap):
+
+    # TODO: use primary and secondary dopplers
+    if burst_idx == 0:
+        log.info("Cannot compute ESD on first burst, skipping.")
+        return None
+    else:
+        log.info(f"Compute ESD shift between burst {burst_idx} and {burst_idx-1}.")
+
+    # cross interferogram
+    ifg1 = arr_p_fw * arr_s_fw.conj()
+    ifg2 = arr_p_bw * arr_s_bw.conj()
+    cross_ifg = ifg1 * ifg2.conj()
+
+    mean_i1 = np.nanmean(np.real(arr_p_fw*arr_p_fw.conj()))
+    mean_i2 = np.nanmean(np.real(arr_s_fw*arr_s_fw.conj()))
+    mean_coh = np.abs(np.nanmean(ifg1)) / np.sqrt( mean_i1 * mean_i2)
+
+    log.info(f"Average coherence {mean_coh}")
+
+    # extract forward and backward doppler
+    s_bw = np.s_[:overlap]
+    s_fw = np.s_[-overlap:]
+    kt_bw, fdc_bw, t_bw = sec.doppler_burst(burst_idx=burst_idx)
+    kt_fw, fdc_fw, t_fw = sec.doppler_burst(burst_idx=burst_idx - 1)
+    dop_bw = kt_bw[s_bw] * t_bw[s_bw] + fdc_bw[s_bw]
+    dop_fw = kt_fw[s_fw] * t_fw[s_fw] + fdc_fw[s_fw]
+
+    # average spectral separation
+    delta_dop = np.mean(dop_bw - dop_fw)
+
+    # convert phase to azimuth shift (need azimuth sampling freq)
+    phi_esd = np.angle(np.nanmean(cross_ifg))
+    # coregistration error
+    dt = phi_esd / (2 * np.pi * delta_dop)
+
+    return dt, mean_coh
 
 
 def stitch_bursts(bursts, overlap):
