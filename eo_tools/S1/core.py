@@ -16,6 +16,7 @@ from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
 from joblib import Parallel, delayed
+from typing import Literal
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -1636,3 +1637,165 @@ def _shadow_mask(theta, rg0, az):
                 mask[i, j] = mask0[int(az[i, j] - az_min), int(rg0[i, j] - rg0_min)]
 
     return mask
+
+
+
+class ESDShiftEstimator:
+    """
+    Estimate azimuth coregistration errors (shifts) in the overlap area
+    between two consecutive bursts using Enhanced Spectral Diversity (ESD).
+
+    Supports different weighting strategies.
+    """
+
+    def __init__(
+        self,
+        prm: "S1IWSwath",
+        sec: "S1IWSwath",
+        overlap: int,
+        method: Literal["esd", "weighted"] = "esd"
+    ) -> None:
+        """
+        Initialize the ESD shift estimator.
+
+        Args:
+            prm: Primary S1IWSwath subswath.
+            sec: Secondary S1IWSwath subswath.
+            overlap: Number of azimuth lines in the overlap region.
+            method: ESD computation method ("esd" or "weighted").
+        """
+        self.prm = prm
+        self.sec = sec
+        self.overlap = overlap
+        self.method = method
+
+        self._fw_p: np.ndarray | None = None  # forward patch (primary)
+        self._fw_s: np.ndarray | None = None  # forward patch (secondary)
+
+    def process_burst(
+        self,
+        burst_idx: int,
+        arr_p: np.ndarray,
+        arr_s2p: np.ndarray,
+    ) -> tuple[float | None, float | None]:
+        """
+        Process one burst and compute the azimuth shift in the overlap area
+        with the previous burst.
+
+        Args:
+            burst_idx: Index of the current burst in the subswath.
+            arr_p: Current primary burst as a complex array.
+            arr_s2p: Current secondary burst resampled to primary grid.
+
+        Returns:
+            Tuple (dt, weight), where:
+                dt: Estimated azimuth shift in seconds, or None for first burst.
+                weight: Optional weight (e.g. coherence), or None if not applicable.
+        """
+        if burst_idx == 0:
+            # Store forward patches for next burst
+            self._fw_p = arr_p[-self.overlap:]
+            self._fw_s = arr_s2p[-self.overlap:]
+            log.debug("Skipping first burst: no overlap with previous burst.")
+            return None, None
+
+        # Backward patches: beginning of current burst
+        arr_p_bw = arr_p[:self.overlap]
+        arr_s_bw = arr_s2p[:self.overlap]
+
+        # Compute ESD-based shift
+        dt, weight = self._compute_dt(
+            burst_idx, arr_p_bw, arr_s_bw, self._fw_p, self._fw_s
+        )
+
+        # Update forward patches for next burst
+        self._fw_p = arr_p[-self.overlap:]
+        self._fw_s = arr_s2p[-self.overlap:]
+
+        return dt, weight
+
+    def _compute_dt(
+        self,
+        burst_idx: int,
+        arr_p_bw: np.ndarray,
+        arr_s_bw: np.ndarray,
+        arr_p_fw: np.ndarray,
+        arr_s_fw: np.ndarray,
+    ) -> tuple[float, float | None]:
+        """
+        Dispatch to the appropriate ESD method.
+        """
+        if self.method == "esd":
+            return self._compute_dt_esd(burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw)
+        elif self.method == "weighted":
+            return self._compute_dt_weighted(burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw)
+        else:
+            raise ValueError(f"Unknown method: {self.method!r}")
+
+    def _compute_dt_esd(
+        self,
+        burst_idx: int,
+        arr_p_bw: np.ndarray,
+        arr_s_bw: np.ndarray,
+        arr_p_fw: np.ndarray,
+        arr_s_fw: np.ndarray,
+    ) -> tuple[float, None]:
+        """
+        Compute ESD-based shift in overlap area without weighting.
+        """
+        ifg_fw = arr_p_fw * arr_s_fw.conj()
+        ifg_bw = arr_p_bw * arr_s_bw.conj()
+        cross_ifg = ifg_fw * ifg_bw.conj()
+
+        s_bw = np.s_[:self.overlap]
+        s_fw = np.s_[-self.overlap:]
+        kt_bw, fdc_bw, t_bw = self.sec.doppler_burst(burst_idx)
+        kt_fw, fdc_fw, t_fw = self.sec.doppler_burst(burst_idx - 1)
+
+        dop_bw = kt_bw[s_bw] * t_bw[s_bw] + fdc_bw[s_bw]
+        dop_fw = kt_fw[s_fw] * t_fw[s_fw] + fdc_fw[s_fw]
+
+        delta_dop = np.mean(dop_bw - dop_fw)
+
+        phi_esd = np.angle(np.nanmean(cross_ifg))
+        dt = phi_esd / (2 * np.pi * delta_dop)
+
+        return dt, None
+
+    def _compute_dt_weighted(
+        self,
+        burst_idx: int,
+        arr_p_bw: np.ndarray,
+        arr_s_bw: np.ndarray,
+        arr_p_fw: np.ndarray,
+        arr_s_fw: np.ndarray,
+    ) -> tuple[float, float]:
+        """
+        Compute ESD-based shift and mean coherence in overlap area.
+        """
+        log.info(f"Compute weighted ESD shift between bursts {burst_idx-1} and {burst_idx}.")
+
+        ifg_fw = arr_p_fw * arr_s_fw.conj()
+        ifg_bw = arr_p_bw * arr_s_bw.conj()
+        cross_ifg = ifg_fw * ifg_bw.conj()
+
+        mean_i1 = np.nanmean(np.real(arr_p_fw * arr_p_fw.conj()))
+        mean_i2 = np.nanmean(np.real(arr_s_fw * arr_s_fw.conj()))
+        mean_coh = np.abs(np.nanmean(ifg_fw)) / np.sqrt(mean_i1 * mean_i2)
+
+        log.info(f"Average coherence in overlap: {mean_coh:.3f}")
+
+        s_bw = np.s_[:self.overlap]
+        s_fw = np.s_[-self.overlap:]
+        kt_bw, fdc_bw, t_bw = self.sec.doppler_burst(burst_idx)
+        kt_fw, fdc_fw, t_fw = self.sec.doppler_burst(burst_idx - 1)
+
+        dop_bw = kt_bw[s_bw] * t_bw[s_bw] + fdc_bw[s_bw]
+        dop_fw = kt_fw[s_fw] * t_fw[s_fw] + fdc_fw[s_fw]
+
+        delta_dop = np.mean(dop_bw - dop_fw)
+
+        phi_esd = np.angle(np.nanmean(cross_ifg))
+        dt = phi_esd / (2 * np.pi * delta_dop)
+
+        return dt, mean_coh
