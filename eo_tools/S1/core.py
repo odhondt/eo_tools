@@ -1643,9 +1643,9 @@ def _shadow_mask(theta, rg0, az):
 class ESDShiftEstimator:
     """
     Estimate azimuth coregistration errors (shifts) in the overlap area
-    between two consecutive bursts using Enhanced Spectral Diversity (ESD).
+    between two consecutive bursts using Envelope Spectral Diversity (ESD).
 
-    Supports different weighting strategies.
+    Supports different weighting strategies based on the ESD phase and optional weights.
     """
 
     def __init__(
@@ -1659,8 +1659,8 @@ class ESDShiftEstimator:
         Initialize the ESD shift estimator.
 
         Args:
-            prm: Primary S1IWSwath subswath.
-            sec: Secondary S1IWSwath subswath.
+            prm: Primary S1IWSwath burst stack.
+            sec: Secondary S1IWSwath burst stack.
             overlap: Number of azimuth lines in the overlap region.
             method: ESD computation method ("esd" or "weighted").
         """
@@ -1671,6 +1671,7 @@ class ESDShiftEstimator:
 
         self._fw_p: np.ndarray | None = None  # forward patch (primary)
         self._fw_s: np.ndarray | None = None  # forward patch (secondary)
+        self._prev_burst_idx: int | None = None  # index of previous burst
 
     def process_burst(
         self,
@@ -1683,21 +1684,30 @@ class ESDShiftEstimator:
         with the previous burst.
 
         Args:
-            burst_idx: Index of the current burst in the subswath.
+            burst_idx: Index of the current burst in the stack.
             arr_p: Current primary burst as a complex array.
             arr_s2p: Current secondary burst resampled to primary grid.
 
         Returns:
             Tuple (dt, weight), where:
-                dt: Estimated azimuth shift in seconds, or None for first burst.
+                dt: Estimated azimuth shift in seconds, or None if first burst.
                 weight: Optional weight (e.g. coherence), or None if not applicable.
+
+        Raises:
+            ValueError: If burst indices are not consecutive.
         """
-        if burst_idx == 0:
-            # Store forward patches for next burst
+        if self._prev_burst_idx is None:
+            # First burst ever seen: store forward patches
             self._fw_p = arr_p[-self.overlap:]
             self._fw_s = arr_s2p[-self.overlap:]
-            log.debug("Skipping first burst: no overlap with previous burst.")
+            self._prev_burst_idx = burst_idx
+            log.debug(f"Initialized with first burst index {burst_idx}")
             return None, None
+
+        if burst_idx != self._prev_burst_idx + 1:
+            raise ValueError(
+                f"Burst indices must be consecutive. Previous: {self._prev_burst_idx}, current: {burst_idx}"
+            )
 
         # Backward patches: beginning of current burst
         arr_p_bw = arr_p[:self.overlap]
@@ -1711,6 +1721,7 @@ class ESDShiftEstimator:
         # Update forward patches for next burst
         self._fw_p = arr_p[-self.overlap:]
         self._fw_s = arr_s2p[-self.overlap:]
+        self._prev_burst_idx = burst_idx
 
         return dt, weight
 
@@ -1771,7 +1782,7 @@ class ESDShiftEstimator:
         arr_s_fw: np.ndarray,
     ) -> tuple[float, float]:
         """
-        Compute ESD-based shift and mean coherence in overlap area.
+        Compute ESD-based shift in overlap area, weighted by mean coherence.
         """
         log.info(f"Compute weighted ESD shift between bursts {burst_idx-1} and {burst_idx}.")
 
