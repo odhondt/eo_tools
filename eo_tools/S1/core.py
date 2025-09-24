@@ -23,6 +23,7 @@ from xmltodict import parse
 import zipfile
 
 from eo_tools.bench import timeit
+from eo_tools.S1.util import boxcar
 
 import logging
 
@@ -1061,7 +1062,10 @@ def esd_shift(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw, overl
 
     return dt
 
-def esd_shift_mean_coh(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw, overlap):
+
+def esd_shift_mean_coh(
+    prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw, overlap
+):
 
     # TODO: use primary and secondary dopplers
     if burst_idx == 0:
@@ -1075,9 +1079,9 @@ def esd_shift_mean_coh(prm, sec, burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_
     ifg2 = arr_p_bw * arr_s_bw.conj()
     cross_ifg = ifg1 * ifg2.conj()
 
-    mean_i1 = np.nanmean(np.real(arr_p_fw*arr_p_fw.conj()))
-    mean_i2 = np.nanmean(np.real(arr_s_fw*arr_s_fw.conj()))
-    mean_coh = np.abs(np.nanmean(ifg1)) / np.sqrt( mean_i1 * mean_i2)
+    mean_i1 = np.nanmean(np.real(arr_p_fw * arr_p_fw.conj()))
+    mean_i2 = np.nanmean(np.real(arr_s_fw * arr_s_fw.conj()))
+    mean_coh = np.abs(np.nanmean(ifg1)) / np.sqrt(mean_i1 * mean_i2)
 
     log.info(f"Average coherence {mean_coh}")
 
@@ -1639,7 +1643,6 @@ def _shadow_mask(theta, rg0, az):
     return mask
 
 
-
 class ESDShiftEstimator:
     """
     Estimate azimuth coregistration errors (shifts) in the overlap area
@@ -1653,7 +1656,7 @@ class ESDShiftEstimator:
         prm: "S1IWSwath",
         sec: "S1IWSwath",
         overlap: int,
-        method: Literal["esd", "weighted"] = "esd"
+        method: Literal["mean", "weighted_simple", "weighted"] = "mean",
     ) -> None:
         """
         Initialize the ESD shift estimator.
@@ -1662,7 +1665,7 @@ class ESDShiftEstimator:
             prm: Primary S1IWSwath burst stack.
             sec: Secondary S1IWSwath burst stack.
             overlap: Number of azimuth lines in the overlap region.
-            method: ESD computation method ("esd" or "weighted").
+            method: ESD computation method ("mean", "weighted_simple" or "weighted").
         """
         self.prm = prm
         self.sec = sec
@@ -1698,8 +1701,8 @@ class ESDShiftEstimator:
         """
         if self._prev_burst_idx is None:
             # First burst ever seen: store forward patches
-            self._fw_p = arr_p[-self.overlap:]
-            self._fw_s = arr_s2p[-self.overlap:]
+            self._fw_p = arr_p[-self.overlap :]
+            self._fw_s = arr_s2p[-self.overlap :]
             self._prev_burst_idx = burst_idx
             log.debug(f"Initialized with first burst index {burst_idx}")
             return None, None
@@ -1710,8 +1713,8 @@ class ESDShiftEstimator:
             )
 
         # Backward patches: beginning of current burst
-        arr_p_bw = arr_p[:self.overlap]
-        arr_s_bw = arr_s2p[:self.overlap]
+        arr_p_bw = arr_p[: self.overlap]
+        arr_s_bw = arr_s2p[: self.overlap]
 
         # Compute ESD-based shift
         dt, weight = self._compute_dt(
@@ -1719,8 +1722,8 @@ class ESDShiftEstimator:
         )
 
         # Update forward patches for next burst
-        self._fw_p = arr_p[-self.overlap:]
-        self._fw_s = arr_s2p[-self.overlap:]
+        self._fw_p = arr_p[-self.overlap :]
+        self._fw_s = arr_s2p[-self.overlap :]
         self._prev_burst_idx = burst_idx
 
         return dt, weight
@@ -1736,14 +1739,22 @@ class ESDShiftEstimator:
         """
         Dispatch to the appropriate ESD method.
         """
-        if self.method == "esd":
-            return self._compute_dt_esd(burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw)
+        if self.method == "mean":
+            return self._compute_dt_mean(
+                burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw
+            )
+        elif self.method == "weighted_simple":
+            return self._compute_dt_weighted_simple(
+                burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw
+            )
         elif self.method == "weighted":
-            return self._compute_dt_weighted(burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw)
+            return self._compute_dt_weighted(
+                burst_idx, arr_p_bw, arr_s_bw, arr_p_fw, arr_s_fw
+            )
         else:
             raise ValueError(f"Unknown method: {self.method!r}")
 
-    def _compute_dt_esd(
+    def _compute_dt_mean(
         self,
         burst_idx: int,
         arr_p_bw: np.ndarray,
@@ -1758,8 +1769,8 @@ class ESDShiftEstimator:
         ifg_bw = arr_p_bw * arr_s_bw.conj()
         cross_ifg = ifg_fw * ifg_bw.conj()
 
-        s_bw = np.s_[:self.overlap]
-        s_fw = np.s_[-self.overlap:]
+        s_bw = np.s_[: self.overlap]
+        s_fw = np.s_[-self.overlap :]
         kt_bw, fdc_bw, t_bw = self.sec.doppler_burst(burst_idx)
         kt_fw, fdc_fw, t_fw = self.sec.doppler_burst(burst_idx - 1)
 
@@ -1773,7 +1784,7 @@ class ESDShiftEstimator:
 
         return dt, None
 
-    def _compute_dt_weighted(
+    def _compute_dt_weighted_simple(
         self,
         burst_idx: int,
         arr_p_bw: np.ndarray,
@@ -1784,7 +1795,9 @@ class ESDShiftEstimator:
         """
         Compute ESD-based shift in overlap area, weighted by mean coherence.
         """
-        log.info(f"Compute weighted ESD shift between bursts {burst_idx-1} and {burst_idx}.")
+        log.info(
+            f"Compute weighted ESD shift between bursts {burst_idx-1} and {burst_idx}."
+        )
 
         ifg_fw = arr_p_fw * arr_s_fw.conj()
         ifg_bw = arr_p_bw * arr_s_bw.conj()
@@ -1796,8 +1809,8 @@ class ESDShiftEstimator:
 
         log.info(f"Average coherence in overlap: {mean_coh:.3f}")
 
-        s_bw = np.s_[:self.overlap]
-        s_fw = np.s_[-self.overlap:]
+        s_bw = np.s_[: self.overlap]
+        s_fw = np.s_[-self.overlap :]
         kt_bw, fdc_bw, t_bw = self.sec.doppler_burst(burst_idx)
         kt_fw, fdc_fw, t_fw = self.sec.doppler_burst(burst_idx - 1)
 
@@ -1810,3 +1823,63 @@ class ESDShiftEstimator:
         dt = phi_esd / (2 * np.pi * delta_dop)
 
         return dt, mean_coh
+
+    def _compute_dt_weighted(
+        self,
+        burst_idx: int,
+        arr_p_bw: np.ndarray,
+        arr_s_bw: np.ndarray,
+        arr_p_fw: np.ndarray,
+        arr_s_fw: np.ndarray,
+    ) -> tuple[float, float]:
+        """
+        Compute ESD-based shift in overlap area, weighted by coherence.
+        """
+        log.info(
+            f"Compute weighted ESD shift between bursts {burst_idx-1} and {burst_idx}."
+        )
+
+        ba = 5
+        br = 5
+
+        ifg_fw = arr_p_fw * arr_s_fw.conj()
+        ifg_bw = arr_p_bw * arr_s_bw.conj()
+        cross_ifg = boxcar(ifg_fw * ifg_bw.conj(), ba, br)
+
+        sigma_1 = boxcar(np.real(arr_p_bw * arr_p_bw.conj()), ba, br)
+        sigma_2 = boxcar(np.real(arr_s_bw * arr_s_bw.conj()), ba, br)
+        coh = np.abs(boxcar(ifg_bw, ba, br)) / np.sqrt(sigma_1 * sigma_2)
+        coh = coh.clip(0, 1)
+
+        s_bw = np.s_[: self.overlap]
+        s_fw = np.s_[-self.overlap :]
+        kt_bw, fdc_bw, t_bw = self.sec.doppler_burst(burst_idx)
+        kt_fw, fdc_fw, t_fw = self.sec.doppler_burst(burst_idx - 1)
+
+        dop_bw = kt_bw[s_bw] * t_bw[s_bw] + fdc_bw[s_bw]
+        dop_fw = kt_fw[s_fw] * t_fw[s_fw] + fdc_fw[s_fw]
+
+        coh[coh < 0.5] = np.nan
+
+        sum_coh = np.nansum(coh) 
+
+        # weighted average ESD phase
+        
+        # phi_esd0 = np.angle(np.nanmean(cross_ifg))
+        # delta_dop0 = np.nanmean(dop_bw - dop_fw)
+        
+        phi_esd = np.angle(np.nansum(coh * cross_ifg) / sum_coh)
+        delta_dop = np.nansum(coh * (dop_bw - dop_fw)) / sum_coh
+        
+        dt = phi_esd / (2 * np.pi * delta_dop)
+
+        # import matplotlib.pyplot as plt
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(coh[:,::8], interpolation="none")
+        # plt.title(f"burst {burst_idx}, weights")
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(np.angle(cross_ifg[:,::8]), interpolation="none")
+        # plt.title(f"burst {burst_idx}, Xifg")
+
+
+        return dt, np.nansum(coh)
