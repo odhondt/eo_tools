@@ -340,10 +340,13 @@ class S1IWSwath:
         t_pad = t_spacing * 36
         cnd = (t_sv_burst > t0_az - t_pad) & (t_sv_burst < t_end_burst + t_pad)
 
-        state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
+        # state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
+        state_vectors = self.state_vectors
+        # print(type(state_vectors["t"]))
 
         # TODO (optional) integrate other models to orbit interpolation
-        interp_pos, interp_vel = sv_interpolator(state_vectors)
+        # interp_pos, interp_vel = sv_interpolator(state_vectors)
+        interp_pos, interp_vel = sv_interpolator_lagrange(state_vectors)
         # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
         log.info("Interpolate orbit")
@@ -476,7 +479,8 @@ class S1IWSwath:
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
         # _, orb_v = sv_interpolator_poly(state_vectors)
-        _, orb_v = sv_interpolator(state_vectors)
+        # _, orb_v = sv_interpolator(state_vectors)
+        _, orb_v = sv_interpolator_lagrange(state_vectors)
         t_mid = t0_az + az_dt * self.lines_per_burst / 2.0
         v_mid = orb_v(t_mid)
         ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
@@ -580,7 +584,8 @@ class S1IWSwath:
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
         # _, orb_v = sv_interpolator_poly(state_vectors)
-        _, orb_v = sv_interpolator(state_vectors)
+        _, orb_v = sv_interpolator_lagrange(state_vectors)
+        # _, orb_v = sv_interpolator(state_vectors)
         t_mid = t0_az + az_dt * self.lines_per_burst / 2.0
         v_mid = orb_v(t_mid)
         ks = (2 * np.sqrt((v_mid**2).sum()) / c0) * fc * np.radians(kp)
@@ -1199,6 +1204,62 @@ def sv_interpolator_poly(state_vectors):
 
     return interp_pos, interp_vel
 
+def sv_interpolator_lagrange(state_vectors):
+    t = np.asarray(state_vectors["t"])
+    x = np.asarray(state_vectors["x"])
+    y = np.asarray(state_vectors["y"])
+    z = np.asarray(state_vectors["z"])
+    vx = np.asarray(state_vectors["vx"])
+    vy = np.asarray(state_vectors["vy"])
+    vz = np.asarray(state_vectors["vz"])
+
+    # infer delta_t from data (assume uniform spacing)
+    dt = np.mean(np.diff(t))
+
+    denominators = np.array([40320, -5040, 1440, -720, 576,
+                             -720, 1440, -5040, 40320], dtype=float)
+
+    def lagrange8(samples, x_norm):
+        # Compute interpolation using fixed denominators
+        numerator = np.prod([x_norm - j for j in range(9)])
+        if numerator == 0:
+            return samples[int(round(x_norm))]
+        out = 0.0
+        for i in range(9):
+            coeff = numerator / denominators[i] / (x_norm - i)
+            out += coeff * samples[i]
+        return out
+
+    def interpolate_component(samples, t_query):
+        # Map query times to normalized index
+        results = []
+        for tq in np.atleast_1d(t_query):
+            idx = int(np.floor((tq - t[0]) / dt))  # left index of stencil
+            # ensure 9-point stencil fits
+            if idx < 0:
+                idx = 0
+            if idx > len(samples) - 9:
+                idx = len(samples) - 9
+            # normalize tq within stencil
+            x_norm = (tq - t[idx]) / dt
+            val = lagrange8(samples[idx:idx+9], x_norm)
+            results.append(val)
+        return np.array(results)
+
+    def interp_pos(t_arr):
+        return np.vstack((
+            interpolate_component(x, t_arr),
+            interpolate_component(y, t_arr),
+            interpolate_component(z, t_arr)
+        )).T
+
+    def interp_vel(t_arr):
+        return np.vstack((
+            interpolate_component(vx, t_arr),
+            interpolate_component(vy, t_arr),
+            interpolate_component(vz, t_arr)
+        )).T
+    return interp_pos, interp_vel
 
 # TODO add resampling type option
 def load_dem_coords(dem_file, upscale_factor=1):
