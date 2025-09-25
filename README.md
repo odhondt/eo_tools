@@ -7,8 +7,6 @@
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo_tools.svg)](https://anaconda.org/conda-forge/eo_tools)  
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, geocode and apply terrain correction to Sentinel-1 SLC products, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
 
-**Important:** read about version 2025.2.0 breaking change in version notes (`CHANGELOG.md`).
-
 Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco,
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" target="_blank">
@@ -44,8 +42,6 @@ and the comparison between Beta nought calibration and terrain flattening using 
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" target="_blank">
         <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened_lowres.png" width="300" alt="Phase.">
     </a>
-    <!-- <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0.png" width="300"> -->
-    <!-- <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" width="300"> -->
 </p>
 
 ## Overview
