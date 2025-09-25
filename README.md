@@ -22,25 +22,25 @@ Here are examples of EO-Tools outputs showing amplitude, coherence and inteferom
 a comparison between Sentinel-1 amplitude, coherence, change map using two dates in 2021 and Sentinel-2 RGB image over the city of Berlin in Germany,
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin_lowres.png" width="350" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin_lowres.png" width="350" alt="Amplitude Berlin.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin_lowres.png" width="350" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin_lowres.png" width="350" alt="Coherence Berlin.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin_lowres.png" width="350" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin_lowres.png" width="350" alt="Change Berlin.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin_lowres.png" width="350" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin_lowres.png" width="350" alt="S2 Berlin.">
     </a>
 </p>
 and the comparison between Beta nought calibration and terrain flattening using Copernicus DEM on Sentinel-1 data over Etna.
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0_lowres.png" width="300" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0_lowres.png" width="300" alt="Beta0.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened_lowres.png" width="300" alt="Phase.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened_lowres.png" width="300" alt="Flattened.">
     </a>
 </p>
 
