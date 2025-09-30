@@ -33,5 +33,7 @@ dependencies:
   - dask
   - bottleneck
   - planetary-computer
+  - zarr
+  - s3fs
   # - memory_profiler
   # - numexpr
