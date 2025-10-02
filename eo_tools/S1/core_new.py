@@ -16,11 +16,12 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
+
 # from joblib import Parallel, delayed
 import concurrent
 import urllib.request
 from pyproj.datadir import get_user_data_dir
-from pyproj.sync import get_proj_endpoint 
+from pyproj.sync import get_proj_endpoint
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -101,7 +102,6 @@ class S1IWSwath:
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
         self.burst_count = int(burst_info["burstList"]["@count"])
 
-
         # raster path
         zarr_pattern = f"**/measurement/*iw{iw}*{pol}*.zarr"
         tiff_pattern = f"**/measurement/*iw{iw}*{pol}*.tiff"
@@ -121,13 +121,12 @@ class S1IWSwath:
         if self.is_zip and pth_raster.suffix == ".tiff":
             self.pth_raster = f"zip://{pth_raster}"
             self.min_burst = 1
-            self.min_burst = self.burst_count
+            self.max_burst = self.burst_count
         else:
             self.pth_raster = pth_raster
             self.ds = xr.open_dataset(self.pth_raster, chunks="auto")
             self.min_burst = self.ds.min_burst
             self.max_burst = self.ds.max_burst
-
 
         # extract calibration LUT to rescale data
         calinfo = read_metadata(pth_cal)
@@ -212,18 +211,17 @@ class S1IWSwath:
         """
 
         if not max_burst:
-            max_burst_ = self.burst_count
+            max_burst_ = self.max_burst
+            # max_burst_ = self.burst_count
         else:
             max_burst_ = max_burst
 
-        if min_burst < 1 or min_burst > self.burst_count:
+        # if min_burst < 1 or min_burst > self.burst_count:
+        if min_burst < self.min_burst or min_burst > self.max_burst:
             raise ValueError(
-                f"Invalid min burst index (must be between 1 and {self.burst_count})"
+                f"Invalid min burst index (must be between {self.min_burst} and {self.max_burst})"
             )
-        if max_burst_ < 1 or max_burst_ > self.burst_count:
-            raise ValueError(
-                f"Invalid max burst index (must be between 1 and {self.burst_count})"
-            )
+
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
         if dem_name not in ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]:
@@ -315,11 +313,14 @@ class S1IWSwath:
         Returns:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
         """
-
-        if burst_idx < 1 or burst_idx > self.burst_count:
+        if burst_idx < self.min_burst or burst_idx > self.max_burst:
             raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
+                f"Invalid min burst index (must be between {self.min_burst} and {self.max_burst})"
             )
+        # if burst_idx < 1 or burst_idx > self.burst_count:
+        #     raise ValueError(
+        #         f"Invalid burst index (must be between 1 and {self.burst_count})"
+        #     )
 
         if dem_upsampling < 0:
             raise ValueError("dem_upsampling must be > 0")
@@ -335,8 +336,8 @@ class S1IWSwath:
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
-        if burst_idx > self.burst_count or burst_idx < 1:
-            raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
+        # if burst_idx > self.burst_count or burst_idx < 1:
+        #     raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
 
@@ -464,11 +465,15 @@ class S1IWSwath:
         Returns:
             array: phase correction to apply to the SLC burst.
         """
-
-        if burst_idx < 1 or burst_idx > self.burst_count:
+        if burst_idx < self.min_burst or burst_idx > self.max_burst:
             raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
+                f"Invalid min burst index (must be between {self.min_burst} and {self.max_burst})"
             )
+
+        # if burst_idx < 1 or burst_idx > self.burst_count:
+        #     raise ValueError(
+        #         f"Invalid burst index (must be between 1 and {self.burst_count})"
+        #     )
 
         meta = self.meta
         meta_image = meta["product"]["imageAnnotation"]
@@ -612,16 +617,18 @@ class S1IWSwath:
         Returns:
             array: Complex raster
         """
-
-        if burst_idx < 1 or burst_idx > self.burst_count:
+        if burst_idx < self.min_burst or burst_idx > self.max_burst:
             raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
+                f"Invalid min burst index (must be between {self.min_burst} and {self.max_burst})"
             )
+        # if burst_idx < 1 or burst_idx > self.burst_count:
+        #     raise ValueError(
+        #         f"Invalid burst index (must be between 1 and {self.burst_count})"
+        #     )
 
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
-
 
         nodataval = np.nan + 1j * np.nan
         if Path(self.pth_raster).suffix == ".tiff":
@@ -631,7 +638,10 @@ class S1IWSwath:
             )
         elif Path(self.pth_raster).suffix == ".zarr":
             first_line = (burst_idx - self.min_burst) * self.lines_per_burst
-            arr = self.ds.i[0, first_line:self.lines_per_burst] + 1j*self.ds.q[0, first_line:self.lines_per_burst]
+            arr = (
+                self.ds.i[first_line : first_line + self.lines_per_burst]
+                + 1j * self.ds.q[first_line : first_line + self.lines_per_burst]
+            )
         else:
             raise ValueError("File fomat not recognized.")
 
@@ -695,10 +705,14 @@ class S1IWSwath:
         Returns:
             int: number of overlapping lines.
         """
-        if burst_idx < 2 or burst_idx > self.burst_count:
+        if burst_idx < 2 or burst_idx < self.min_burst or burst_idx > self.max_burst:
             raise ValueError(
-                f"Invalid burst index (must be between 2 and {self.burst_count})"
+                f"Invalid min burst index (must be between {self.min_burst} and {self.max_burst}, and at least 2)"
             )
+        # if burst_idx < 2 or burst_idx > self.burst_count:
+        #     raise ValueError(
+        #         f"Invalid burst index (must be between 2 and {self.burst_count})"
+        #     )
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
@@ -1116,7 +1130,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     elif composite_crs == "EPSG:4326+3855":
         grid_name = "us_nga_egm08_25.tif"
     else:
-        raise ValueError("Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855")
+        raise ValueError(
+            "Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855"
+        )
 
     grid_repo_url = get_proj_endpoint()
     proj_path = Path(get_user_data_dir())
@@ -1124,10 +1140,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
         proj_path.mkdir(parents=True)
     grid_path = proj_path / grid_name
     if not grid_path.exists():
-        grid_url = f"{grid_repo_url}/{grid_name}" 
+        grid_url = f"{grid_repo_url}/{grid_name}"
         log.info(f"Download {grid_url}")
         urllib.request.urlretrieve(grid_url, grid_path)
-
 
     # since pyproj 3.7.0 we need to create one transformer per thread
     def transform_chunk(data_chunk):
