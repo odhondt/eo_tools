@@ -127,6 +127,7 @@ class S1IWSwath:
             self.ds = xr.open_dataset(self.pth_raster, chunks="auto")
             self.min_burst = self.ds.min_burst
             self.max_burst = self.ds.max_burst
+            log.info(f"Zarr raster found. Burst range from {self.min_burst} to {self.max_burst}")
 
         # extract calibration LUT to rescale data
         calinfo = read_metadata(pth_cal)
@@ -638,10 +639,13 @@ class S1IWSwath:
             )
         elif Path(self.pth_raster).suffix == ".zarr":
             first_line = (burst_idx - self.min_burst) * self.lines_per_burst
+            print(first_line)
             arr = (
                 self.ds.i[first_line : first_line + self.lines_per_burst]
                 + 1j * self.ds.q[first_line : first_line + self.lines_per_burst]
             )
+            print(self.ds.i.shape)
+            print(arr.shape)
         else:
             raise ValueError("File fomat not recognized.")
 
