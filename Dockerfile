@@ -1,4 +1,6 @@
-FROM mambaorg/micromamba
+FROM mambaorg/micromamba:debian12-slim
+# FROM mambaorg/micromamba
+
 
 USER root
 RUN apt-get update && apt-get install -y \
