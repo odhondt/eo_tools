@@ -1,0 +1,26 @@
+FROM mambaorg/micromamba:debian12-slim
+# FROM mambaorg/micromamba:latest
+
+USER root
+
+# System deps
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    software-properties-common \
+    git python3-pip wget libpq-dev procps gdal-bin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy environment early to leverage Docker caching
+COPY environment.yaml /tmp/environment.yaml
+
+# Create environment without activating
+RUN micromamba create -y -n eo_tools -f /tmp/environment.yaml \
+    && micromamba clean --all --yes
+
+# Make eo_tools the default env at container startup
+ENV MAMBA_DOCKERFILE_ACTIVATE=1
+SHELL ["/bin/bash", "--login", "-c"]
+RUN echo "micromamba activate eo_tools" >> ~/.bashrc
+
+# Optional: alias conda
+RUN echo "alias conda='micromamba'" >> ~/.bashrc
