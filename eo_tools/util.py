@@ -58,7 +58,7 @@ def explore_products(products, aoi=None):
             orbit_conf = sel.iloc[0]["orbitDirection"]
             orbit_num = sel.iloc[0]["relativeOrbitNumber"]
             folium_products = folium.GeoJson(
-                geom, name=f"Orbit {orbit_num}, group {i+1}"
+                geom, name=f"Orbit {orbit_num}, group {i+1} ({len(sel)})"
             ).add_to(m)
             # folium_products = folium.GeoJson(geom).add_to(m)
             date_ts = sel["startTimeFromAscendingNode"].dt.strftime("%Y-%m-%d %X")
