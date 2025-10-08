@@ -32,7 +32,9 @@ def search_products(**kwargs):
     relative_orbits = []
     orbit_states = []
     geometries = []
-    items_ = [it.to_dict() for it in items]
+
+    # convert to dict only if needed
+    # items_ = [it.to_dict() for it in items]
 
     for it in items:
         it_dict = it.to_dict()
@@ -51,7 +53,8 @@ def search_products(**kwargs):
             "startTimeFromAscendingNode": start_times,
             "relativeOrbitNumber": relative_orbits,
             "orbitDirection": orbit_states,
-            "stac_item": items_,
+            "stac_item": items, # keep pystac objects
+            # "stac_item": items_, # use dict instead
         },
         geometry=geometries,
     )
@@ -79,7 +82,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
         aws_secret_access_key=aws_secret,
         region_name="default",
     )
-    for it in products:
+    for it in products.stac_item:
         # product will be saved in this subdir
         product_root_dir = f"{it.id}.SAFE"
 
