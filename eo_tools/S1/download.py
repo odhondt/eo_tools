@@ -17,6 +17,9 @@ import boto3
 from eo_tools.auxils import get_burst_geometry
 from eo_tools.S1.core import read_metadata
 
+import logging
+log = logging.getLogger(__name__)
+
 
 # search with pystac client and store in a dataframe
 # TODO: chack arg validity ()
@@ -74,7 +77,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
     )
 
     # needed for other (non-tiff) files
-    session = boto3.session.Session()
+    # session = boto3.session.Session()
     s3 = boto3.resource(
         "s3",
         endpoint_url="https://eodata.dataspace.copernicus.eu",
@@ -83,6 +86,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
         region_name="default",
     )
     for it in products.stac_item:
+        log.info(f"Downloading {it.id}.")
         # product will be saved in this subdir
         product_root_dir = f"{it.id}.SAFE"
 
@@ -166,6 +170,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
                 num_lines = lines_per_burst * (max_burst - min_burst + 1)
                 line_end = line_start + num_lines
 
+                log.info(f"Polarization {pol}, Subswath {subswath}, Bursts {min_burst} to {max_burst}.")
                 # open raster
                 url = it.assets[f"{subswath.lower()}-{pol}"].href
                 # !! Important: open as a dataset (band_as_variable=True)
