@@ -639,7 +639,8 @@ class S1IWSwath:
             )
         elif Path(self.pth_raster).suffix == ".zarr":
             first_line = (burst_idx - self.min_burst) * self.lines_per_burst
-            arr = (
+            # arr = (
+            arr = np.asarray(
                 self.ds.i[first_line : first_line + self.lines_per_burst]
                 + 1j * self.ds.q[first_line : first_line + self.lines_per_burst]
             )
