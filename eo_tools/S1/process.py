@@ -26,7 +26,7 @@ from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
-from skimage.morphology import binary_erosion
+from skimage.morphology import erosion
 import re
 
 # use child processes
@@ -1478,7 +1478,7 @@ def coherence(
         coh = np.abs(coh)
 
     struct = np.ones((box_az, box_rg))
-    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
     coh = da.where(msk_out, coh, np.nan)
 
     da_coh = xr.DataArray(
@@ -1629,7 +1629,9 @@ def h_alpha_dual(
 
     # Post-processing to adapt to polSAR params
     struct = np.ones((box_az, box_rg))
-    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # struct = footprint_rectangle((box_az, box_rg))
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
 
     H = da.where(msk_out, H, np.nan)
 
