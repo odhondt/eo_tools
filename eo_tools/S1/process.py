@@ -772,6 +772,110 @@ def process_h_alpha_dual(
     )
     return Path(out_dir).parent
 
+def process_polsar_cov_dual(
+    slc_path: str,
+    output_dir: str,
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
+    dem_dir: str = "/tmp",
+    dem_name: str = "nasadem",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
+    boxcar_size: int | list[int] = [5, 5],
+    multilook: list[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
+) -> Path:
+    """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
+
+    Args:
+        slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
+        output_dir (str): Location in which the product subdirectory will be created.
+        aoi_name (str | None, optional): Optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        subswaths (list[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
+        dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+
+    Returns:
+        Path: Output directory
+    """
+
+    out_dir = prepare_slc(
+        slc_path=slc_path,
+        output_dir=output_dir,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol="full",
+        subswaths=subswaths,
+        cal_type=cal_type,
+        dem_dir=dem_dir,
+        dem_name=dem_name,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+        orb_dir=orb_dir,
+    )
+
+    var_names = ["c11", "c22", "c12"]
+
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"iw{iw}" for iw in iw_idx]
+    for pattern in patterns:
+        vv_file = f"{out_dir}/slc_vv_{pattern}.tif"
+        vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
+
+        if os.path.isfile(vv_file) and os.path.isfile(vh_file):
+            log.info(
+                f"---- Dual-PolSAR Covariance for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+
+            c11_file = f"{out_dir}/c11_{pattern}.tif"
+            c12_file = f"{out_dir}/c12_{pattern}.tif"
+            c22_file = f"{out_dir}/c22_{pattern}.tif"
+            polsar_cov_dual(
+                vv_file=vv_file,
+                vh_file=vh_file,
+                c11_file=c11_file,
+                c22_file=c22_file,
+                c12_file=c12_file,
+                box_size=boxcar_size,
+                multilook=multilook,
+            )
+
+    # by default, we use iw and pol which exist
+    _child_process(
+        geocode_and_merge_iw,
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
+    )
+    return Path(out_dir).parent
+
+
+
 
 def prepare_slc(
     slc_path: str,
