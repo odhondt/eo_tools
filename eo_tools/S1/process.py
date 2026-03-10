@@ -833,7 +833,7 @@ def process_polsar_cov_dual(
         orb_dir=orb_dir,
     )
 
-    var_names = ["c11", "c22", "c12"]
+    var_names = ["c11", "c22", "c12_real", "c12_imag"]
 
     iw_idx = [iw[2] for iw in subswaths]
     patterns = [f"iw{iw}" for iw in iw_idx]
@@ -847,14 +847,16 @@ def process_polsar_cov_dual(
             )
 
             c11_file = f"{out_dir}/c11_{pattern}.tif"
-            c12_file = f"{out_dir}/c12_{pattern}.tif"
+            c12r_file = f"{out_dir}/c12_real_{pattern}.tif"
+            c12i_file = f"{out_dir}/c12_imag_{pattern}.tif"
             c22_file = f"{out_dir}/c22_{pattern}.tif"
             polsar_cov_dual(
                 vv_file=vv_file,
                 vh_file=vh_file,
                 c11_file=c11_file,
                 c22_file=c22_file,
-                c12_file=c12_file,
+                c12_real_file=c12r_file,
+                c12_imag_file=c12i_file,
                 box_size=boxcar_size,
                 multilook=multilook,
             )
@@ -1769,18 +1771,20 @@ def polsar_cov_dual(
     vh_file: str,
     c11_file: str,
     c22_file: str,
-    c12_file: str,
+    c12_real_file: str,
+    c12_imag_file: str,
     box_size: int | list[int] = 5,
     multilook: list = [1, 1],
 ) -> None:
-    """Compute the dual-polarimetric H alpha decomposition from two SLC polarimetric channels.
+    """Compute the dual-polarimetric covariance matrix elements from two SLC polarimetric channels.
 
     Args:
         vv_file (str): GeoTiff file of the VV SLC image
         vh_file (str): GeoTiff file of the VH SLC image
         c11_file (str): GeoTiff file of C11 output
         c22_file (str): GeoTiff file of C22 output
-        c12_file (str): GeoTiff file of C12 output
+        c12_real_file (str): GeoTiff file of C12 output
+        c12_imag_file (str): GeoTiff file of C12 output
         out_file (str): output file
         box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
         multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
@@ -1851,16 +1855,27 @@ def polsar_cov_dual(
     da_c11.rio.to_raster(c11_file)
 
     c12 = da.where(msk_out, c12, np.nan)
-    da_c12 = xr.DataArray(
-        name="C12",
-        data=c12[None],
+    da_c12r = xr.DataArray(
+        name="c12_real",
+        data=c12.real[None],
         dims=("band", "y", "x"),
     )
-    da_c12.rio.write_transform(
+    da_c12r.rio.write_transform(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
-    da_c12.rio.write_nodata(nodataval, inplace=True)
-    da_c12.rio.to_raster(c12_file)
+    da_c12r.rio.write_nodata(nodataval, inplace=True)
+    da_c12r.rio.to_raster(c12_real_file)
+
+    da_c12i = xr.DataArray(
+        name="c12_imag",
+        data=c12.imag[None],
+        dims=("band", "y", "x"),
+    )
+    da_c12i.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c12i.rio.write_nodata(nodataval, inplace=True)
+    da_c12i.rio.to_raster(c12_imag_file)
 
     c22 = da.where(msk_out, c22, np.nan)
     da_c22 = xr.DataArray(
