@@ -9,7 +9,7 @@ dependencies:
   - gdal
   - libgdal-jp2openjpeg
   - rasterio
-  - pyrosar=0.29.0
+  - pyrosar=0.35
   - spatialist
   - pip
   - pystac

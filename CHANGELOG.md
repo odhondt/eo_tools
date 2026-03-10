@@ -1,3 +1,11 @@
+# 2026.3.0
+## Bugfixes and improvements
+- Dockerfile now uses debian latest
+- Fix Dockerfile related environment issues 
+- Use pyrosar 0.35 for orbits and compatilibity with Sentinel 1C and 1D
+
+
+
 # 2025.6.1
 
 ## Minor changes
