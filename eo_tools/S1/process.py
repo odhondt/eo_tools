@@ -1660,6 +1660,115 @@ def h_alpha_dual(
     da_alpha.rio.write_nodata(nodataval, inplace=True)
     da_alpha.rio.to_raster(alpha_file)
 
+def polsar_cov_dual(
+    vv_file: str,
+    vh_file: str,
+    c11_file: str,
+    c22_file: str,
+    c12_file: str,
+    box_size: int | list[int] = 5,
+    multilook: list = [1, 1],
+) -> None:
+    """Compute the dual-polarimetric H alpha decomposition from two SLC polarimetric channels.
+
+    Args:
+        vv_file (str): GeoTiff file of the VV SLC image
+        vh_file (str): GeoTiff file of the VH SLC image
+        c11_file (str): GeoTiff file of C11 output
+        c22_file (str): GeoTiff file of C22 output
+        c12_file (str): GeoTiff file of C12 output
+        out_file (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
+    """
+
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size
+        box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
+
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_vv = riox.open_rasterio(vv_file, **open_args)
+    ds_vh = riox.open_rasterio(vh_file, **open_args)
+
+    # accessing dask arrays
+    vv = ds_vv[0].data
+    vh = ds_vh[0].data
+
+    process_args = dict(
+        dimaz=box_az,
+        dimrg=box_rg,
+        depth=(box_az, box_rg),
+    )
+
+    # multilooking
+    c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
+    c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
+
+    msk = ~np.isnan(c12)
+    nodataval = np.nan
+
+    # silence dask warnings
+    c11 = np.nan_to_num(c11)
+    c12 = np.nan_to_num(c12)
+    c22 = np.nan_to_num(c22)
+
+    # additional boxcar
+    c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
+    c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
+    c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
+
+    # Post-processing to adapt to polSAR params
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
+
+    c11 = da.where(msk_out, c11, np.nan)
+    da_c11 = xr.DataArray(
+        name="C11",
+        data=c11[None],
+        dims=("band", "y", "x"),
+    )
+    da_c11.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c11.rio.write_nodata(nodataval, inplace=True)
+    da_c11.rio.to_raster(c11_file)
+
+    c12 = da.where(msk_out, c12, np.nan)
+    da_c12 = xr.DataArray(
+        name="C12",
+        data=c12[None],
+        dims=("band", "y", "x"),
+    )
+    da_c12.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c12.rio.write_nodata(nodataval, inplace=True)
+    da_c12.rio.to_raster(c12_file)
+
+    c22 = da.where(msk_out, c22, np.nan)
+    da_c22 = xr.DataArray(
+        name="C22",
+        data=c22[None],
+        dims=("band", "y", "x"),
+    )
+    da_c22.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c22.rio.write_nodata(nodataval, inplace=True)
+    da_c22.rio.to_raster(c22_file)
 
 def goldstein(
     ifg_file: str, out_file: str, alpha: float = 0.5, overlap: int = 14
