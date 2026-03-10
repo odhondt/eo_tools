@@ -5,6 +5,7 @@ import numpy as np
 import rasterio
 import hashlib
 from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
+from scipy.interpolate import BarycentricInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
@@ -343,8 +344,9 @@ class S1IWSwath:
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
         # TODO (optional) integrate other models to orbit interpolation
-        interp_pos, interp_vel = sv_interpolator(state_vectors)
-        # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
+        # interp_pos, interp_vel = sv_interpolator(state_vectors)
+        # interp_pos, interp_vel = sv_interpolator_bary(state_vectors)
+        interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
         log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
@@ -951,6 +953,20 @@ def sv_interpolator(state_vectors):
 
     return interp_pos, interp_vel
 
+def sv_interpolator_bary(state_vectors):
+
+    t = state_vectors["t"]
+    x = state_vectors["x"]
+    y = state_vectors["y"]
+    z = state_vectors["z"]
+    vx = state_vectors["vx"]
+    vy = state_vectors["vy"]
+    vz = state_vectors["vz"]
+
+    interp_pos = BarycentricInterpolator(t, np.array([x, y, z]).T)
+    interp_vel = BarycentricInterpolator(t, np.array([vx, vy, vz]).T)
+
+    return interp_pos, interp_vel
 
 # TODO: order as a parmeter
 def sv_interpolator_poly(state_vectors):
