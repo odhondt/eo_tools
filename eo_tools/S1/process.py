@@ -1432,7 +1432,7 @@ def coherence(
         mlt_az, mlt_rg = multilook
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(prm_file, **open_args)
@@ -1574,7 +1574,8 @@ def h_alpha_dual(
         mlt_az, mlt_rg = multilook
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
@@ -1697,7 +1698,9 @@ def goldstein(
         )
 
     # TODO: find a way to automatically tune chunk size
-    open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    # open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    open_args = dict(lock=False, chunks=dict(band=1, y=2048, x=2048), masked=True)
+
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_ifg = riox.open_rasterio(ifg_file, **open_args)
     ifg = ds_ifg[0].data
