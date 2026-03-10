@@ -3,7 +3,9 @@
 - Dockerfile now uses debian latest
 - Fix Dockerfile related environment issues 
 - Use pyrosar 0.35 for orbits and compatilibity with Sentinel 1C and 1D
-
+- Use `skimage.morphology.erosion` instead of `binary_erosion` that will be deprecated
+- Pass chunk sizes using a dict instead of tuple for future compatibility
+- Remove some unused imports, change regex to handle S1D burst geometry
 
 
 # 2025.6.1
