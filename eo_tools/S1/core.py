@@ -274,7 +274,7 @@ class S1IWSwath:
         )
 
     def geocode_burst(
-        self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False
+        self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False, orbit_interpolator="chspline"
     ):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -283,6 +283,7 @@ class S1IWSwath:
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
             simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
+            orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
         Returns:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
@@ -295,6 +296,11 @@ class S1IWSwath:
 
         if dem_upsampling < 0:
             raise ValueError("dem_upsampling must be > 0")
+
+        if orbit_interpolator not in ["chspline", "bary", "poly"]:
+            raise ValueError(
+                "Unknown orbit interpolator. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial)"
+            )
 
         meta = self.meta
 
@@ -343,10 +349,12 @@ class S1IWSwath:
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
-        # TODO (optional) integrate other models to orbit interpolation
-        # interp_pos, interp_vel = sv_interpolator(state_vectors)
-        # interp_pos, interp_vel = sv_interpolator_bary(state_vectors)
-        interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
+        if orbit_interpolator == "chspline":
+            interp_pos, interp_vel = sv_interpolator(state_vectors)
+        elif orbit_interpolator == "bary":
+            interp_pos, interp_vel = sv_interpolator_bary(state_vectors)
+        elif orbit_interpolator == "poly":
+            interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
         log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
