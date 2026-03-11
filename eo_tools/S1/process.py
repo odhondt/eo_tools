@@ -63,6 +63,7 @@ def process_insar(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -93,6 +94,7 @@ def process_insar(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: output directory
@@ -122,6 +124,7 @@ def process_insar(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = []
@@ -226,6 +229,7 @@ def prepare_insar(
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -247,6 +251,7 @@ def prepare_insar(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         str: output directory
@@ -354,6 +359,7 @@ def prepare_insar(
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
                     orb_dir=orb_dir,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 os.rename(
                     f"{out_dir}/primary.tif",
@@ -386,6 +392,7 @@ def preprocess_insar_iw(
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -406,9 +413,10 @@ def preprocess_insar_iw(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
-        DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        DEM-assisted coregistration is performed to align the secondary with the primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
 
     if not os.path.isdir(output_dir):
@@ -507,6 +515,7 @@ def preprocess_insar_iw(
             warp_kernel,
             overlap,
             cal_type,
+            orbit_interpolator,
         ),
     )
 
@@ -573,6 +582,7 @@ def process_slc(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Geocode the amplitude of a Sentinel-1 SLC product in the DEM geometry and writes the results as a COG (Cloud Optimized GeoTiFF) file.
     AOI crop is optional.
@@ -595,6 +605,7 @@ def process_slc(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: output directory
@@ -616,6 +627,7 @@ def process_slc(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = ["amp"]
@@ -677,6 +689,7 @@ def process_h_alpha_dual(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
@@ -700,6 +713,7 @@ def process_h_alpha_dual(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: Output directory
@@ -720,6 +734,7 @@ def process_h_alpha_dual(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = ["H", "alpha"]
@@ -772,6 +787,7 @@ def process_h_alpha_dual(
     )
     return Path(out_dir).parent
 
+
 def process_polsar_cov_dual(
     slc_path: str,
     output_dir: str,
@@ -790,6 +806,7 @@ def process_polsar_cov_dual(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
@@ -811,6 +828,7 @@ def process_polsar_cov_dual(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: Output directory
@@ -831,6 +849,7 @@ def process_polsar_cov_dual(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = ["c11", "c22", "c12_real", "c12_imag"]
@@ -877,8 +896,6 @@ def process_polsar_cov_dual(
     return Path(out_dir).parent
 
 
-
-
 def prepare_slc(
     slc_path: str,
     output_dir: str,
@@ -894,6 +911,7 @@ def prepare_slc(
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> str:
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
@@ -912,6 +930,7 @@ def prepare_slc(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         str: output directory
@@ -1001,6 +1020,7 @@ def prepare_slc(
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
                     orb_dir=orb_dir,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 os.rename(
                     f"{out_dir}/slc.tif",
@@ -1026,6 +1046,7 @@ def preprocess_slc_iw(
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> None:
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
@@ -1044,6 +1065,7 @@ def preprocess_slc_iw(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
@@ -1112,6 +1134,7 @@ def preprocess_slc_iw(
             dem_force_download,
             overlap,
             cal_type,
+            orbit_interpolator,
         ),
     )
 
@@ -1538,7 +1561,9 @@ def coherence(
         mlt_az, mlt_rg = multilook
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(prm_file, **open_args)
@@ -1681,7 +1706,9 @@ def h_alpha_dual(
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
     # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
-    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
@@ -1766,6 +1793,7 @@ def h_alpha_dual(
     da_alpha.rio.write_nodata(nodataval, inplace=True)
     da_alpha.rio.to_raster(alpha_file)
 
+
 def polsar_cov_dual(
     vv_file: str,
     vh_file: str,
@@ -1804,7 +1832,9 @@ def polsar_cov_dual(
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
     # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
-    open_args = dict(lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
@@ -1888,6 +1918,7 @@ def polsar_cov_dual(
     )
     da_c22.rio.write_nodata(nodataval, inplace=True)
     da_c22.rio.to_raster(c22_file)
+
 
 def goldstein(
     ifg_file: str, out_file: str, alpha: float = 0.5, overlap: int = 14
@@ -2062,6 +2093,7 @@ def _process_bursts_insar(
     warp_kernel,
     overlap,
     cal_type,
+    orbit_interpolator,
 ):
 
     H = int(overlap / 2)
@@ -2150,11 +2182,13 @@ def _process_bursts_insar(
                     dem_file_burst,
                     burst_idx=burst_idx,
                     dem_upsampling=1,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 az_s2g, rg_s2g = sec.geocode_burst(
                     dem_file_burst,
                     burst_idx=burst_idx + burst_offset,
                     dem_upsampling=1,
+                    orbit_interpolator=orbit_interpolator,
                 )
 
                 # read primary and secondary burst rasters
@@ -2238,6 +2272,7 @@ def _process_bursts_slc(
     dem_force_download,
     overlap,
     cal_type,
+    orbit_interpolator,
 ):
 
     H = int(overlap / 2)
@@ -2320,6 +2355,7 @@ def _process_bursts_slc(
                         dem_file_burst,
                         burst_idx=burst_idx,
                         dem_upsampling=1,
+                        orbit_interpolator=orbit_interpolator,
                     )
                 else:
                     az_p2g, rg_p2g, gamma_t = slc.geocode_burst(
@@ -2327,6 +2363,7 @@ def _process_bursts_slc(
                         burst_idx=burst_idx,
                         dem_upsampling=1,
                         simulate_terrain=True,
+                        orbit_interpolator=orbit_interpolator,
                     )
 
                 # read primary and secondary burst rasters
