@@ -1,4 +1,8 @@
 # 2026.3.0
+
+## New feature
+- New function `process_polsar_cov_dual` gives access to the geocoded elements of the dual-polarimetric covariance matrix with the same calibration options as the other SLC processors (beta, gamma, radiometric terrain corrected).
+
 ## Bugfixes and improvements
 - Dockerfile now uses debian latest
 - Fix Dockerfile related environment issues 
