@@ -2,6 +2,7 @@
 
 ## New feature
 - New function `process_polsar_cov_dual` gives access to the geocoded elements of the dual-polarimetric covariance matrix with the same calibration options as the other SLC processors (beta, gamma, radiometric terrain corrected).
+- New parameter in all processors `orbit_interpolator` allowing to choose beteen cubic Hermite spline (default), barycentric Lagrange and polynomial interpolators.
 
 ## Bugfixes and improvements
 - Dockerfile now uses debian latest
