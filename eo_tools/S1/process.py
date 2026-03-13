@@ -2241,11 +2241,28 @@ def _process_bursts_insar(
                 )
 
                 # place overlapping burst LUT with azimuth offset
-                if burst_idx > min_burst:
-                    msk_overlap = az_p2g < H
-                    az_p2g[msk_overlap] = np.nan
-                    rg_p2g[msk_overlap] = np.nan
-                msk = ~np.isnan(az_p2g)
+                # if burst_idx > min_burst:
+                #     msk_overlap = az_p2g < H
+                #     az_p2g[msk_overlap] = np.nan
+                #     rg_p2g[msk_overlap] = np.nan
+                # msk = ~np.isnan(az_p2g)
+                # arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                # arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
+                # off_az += prm.lines_per_burst - 2 * H
+
+                # BUGFIX: match slc stitching
+                if burst_idx == min_burst:
+                    mask_overlap = az_p2g >= naz - H
+                elif burst_idx == max_burst:
+                    mask_overlap = az_p2g < H
+                else:
+                    mask_overlap = (az_p2g < H) | (az_p2g >= naz - H)
+
+                az_p2g[mask_overlap] = np.nan
+                rg_p2g[mask_overlap] = np.nan
+
+                msk = ~np.isnan(az_p2g) & np.isnan(arr_lut[0, slices[0], slices[1]])
+
                 arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
                 off_az += prm.lines_per_burst - 2 * H
@@ -2379,8 +2396,11 @@ def _process_bursts_slc(
                     cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
                     log.info("Apply calibration factor and terrain flattening")
                     arr_p /= cal_p
-                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
+                    # DBG
+                    arr_p[~np.isnan(gamma_t)] = np.sqrt(gamma_t[~np.isnan(gamma_t)])
                     arr_p[np.isnan(gamma_t)] = np.nan
+                    # arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
+                    # arr_p[np.isnan(gamma_t)] = np.nan
 
                 # read primary and secondary burst raster
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
@@ -2391,11 +2411,26 @@ def _process_bursts_slc(
                 )
 
                 # place overlapping burst LUT with azimuth offset
-                if burst_idx > min_burst:
-                    msk_overlap = az_p2g < H
-                    az_p2g[msk_overlap] = np.nan
-                    rg_p2g[msk_overlap] = np.nan
-                msk = ~np.isnan(az_p2g)
+
+                # if burst_idx > min_burst:
+                #     msk_overlap = az_p2g < H
+                #     az_p2g[msk_overlap] = np.nan
+                #     rg_p2g[msk_overlap] = np.nan
+                # msk = ~np.isnan(az_p2g)
+
+                # BUGFIX: match slc stitching
+                if burst_idx == min_burst:
+                    mask_overlap = az_p2g >= naz - H
+                elif burst_idx == max_burst:
+                    mask_overlap = az_p2g < H
+                else:
+                    mask_overlap = (az_p2g < H) | (az_p2g >= naz - H)
+
+                az_p2g[mask_overlap] = np.nan
+                rg_p2g[mask_overlap] = np.nan
+
+                msk = ~np.isnan(az_p2g) & np.isnan(arr_lut[0, slices[0], slices[1]])
+
                 arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
                 off_az += slc.lines_per_burst - 2 * H
