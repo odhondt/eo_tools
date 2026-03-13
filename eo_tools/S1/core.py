@@ -1052,10 +1052,11 @@ def load_dem_coords(dem_file, upscale_factor=1):
         lat = lat_[None, :] + np.zeros_like(alt)
 
     # make sure nodata is nan in output
-    if not np.isnan(nodata):
+    msk = None
+    if nodata is not None and not np.isnan(nodata):
         msk = alt == nodata
     alt = alt.astype("float64")
-    if not np.isnan(nodata):
+    if msk is not None:
         alt[msk] = np.nan
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
