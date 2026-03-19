@@ -2510,6 +2510,71 @@ def _apply_fast_esd(
 
 
 def _stitch_bursts(
+    in_file,
+    out_file,
+    lines_per_burst,
+    burst_count,
+    overlap,
+    min_burst=1,
+    swath=None,
+):
+    # Temporary -- TODO: remove after refactor
+    if swath is None:
+        _stitch_bursts_legacy(
+            in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
+        )
+        return
+
+    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+
+    # Compute burst offsets
+    offsets = []
+    for i in range(min_burst, min_burst + burst_count):
+        offset = swath.compute_burst_offset(burst_idx=i, min_burst=min_burst)
+        offsets.append(round(offset))
+
+    # Output raster size is last offset plus burst height
+    dst_size = offsets[-1] + lines_per_burst
+
+    src = riox.open_rasterio(in_file)[0]
+    nrg = src.shape[1]
+    dst = xr.DataArray(data=da.zeros((dst_size, nrg), dtype=src.data.dtype))
+    for i in range(burst_count):
+        overlap = offsets[i - 1] + lines_per_burst - offsets[i] if i > 1 else 0
+
+        # read burst in non-debursted image
+        arr = src[i * lines_per_burst : (i + 1) * lines_per_burst]
+
+        H = overlap // 2
+        # remove H first lines to account for overlap
+        dst[offsets[i] + H : offsets[i] + lines_per_burst] = arr[H:]
+
+    dst.rio.to_raster(out_file)
+
+
+def _child_process(func, args):
+    # convenience function to make code prettier
+    if USE_CP:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
+            if isinstance(args, (list, tuple)):
+                res = e.submit(func, *args).result()
+            elif isinstance(args, dict):
+                res = e.submit(func, **args).result()
+            else:
+                raise ValueError(
+                    "Child process arguments should be tuple, list or dict"
+                )
+        return res
+    else:
+        if isinstance(args, (list, tuple)):
+            return func(*args)
+        elif isinstance(args, dict):
+            return func(**args)
+        else:
+            raise ValueError("Function arguments should be tuple, list or dict")
+
+
+def _stitch_bursts_legacy(
     in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
 ):
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
@@ -2556,25 +2621,3 @@ def _stitch_bursts(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
                 off_dst += nlines
-
-
-def _child_process(func, args):
-    # convenience function to make code prettier
-    if USE_CP:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as e:
-            if isinstance(args, (list, tuple)):
-                res = e.submit(func, *args).result()
-            elif isinstance(args, dict):
-                res = e.submit(func, **args).result()
-            else:
-                raise ValueError(
-                    "Child process arguments should be tuple, list or dict"
-                )
-        return res
-    else:
-        if isinstance(args, (list, tuple)):
-            return func(*args)
-        elif isinstance(args, dict):
-            return func(**args)
-        else:
-            raise ValueError("Function arguments should be tuple, list or dict")
