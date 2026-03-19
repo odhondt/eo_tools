@@ -2540,7 +2540,7 @@ def _stitch_bursts(
     nrg = src.shape[1]
     dst = xr.DataArray(data=da.zeros((dst_size, nrg), dtype=src.data.dtype))
     for i in range(burst_count):
-        overlap = offsets[i - 1] + lines_per_burst - offsets[i] if i > 1 else 0
+        overlap = offsets[i - 1] + lines_per_burst - offsets[i] if i > 0 else 0
 
         # read burst in non-debursted image
         arr = src[i * lines_per_burst : (i + 1) * lines_per_burst]
