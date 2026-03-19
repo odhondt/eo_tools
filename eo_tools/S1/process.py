@@ -2396,11 +2396,8 @@ def _process_bursts_slc(
                     cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
                     log.info("Apply calibration factor and terrain flattening")
                     arr_p /= cal_p
-                    # DBG
-                    arr_p[~np.isnan(gamma_t)] = np.sqrt(gamma_t[~np.isnan(gamma_t)])
+                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
                     arr_p[np.isnan(gamma_t)] = np.nan
-                    # arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
-                    # arr_p[np.isnan(gamma_t)] = np.nan
 
                 # read primary and secondary burst raster
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
