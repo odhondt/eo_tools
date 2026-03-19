@@ -16,11 +16,12 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
+
 # from joblib import Parallel, delayed
 import concurrent
 import urllib.request
 from pyproj.datadir import get_user_data_dir
-from pyproj.sync import get_proj_endpoint 
+from pyproj.sync import get_proj_endpoint
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -274,7 +275,12 @@ class S1IWSwath:
         )
 
     def geocode_burst(
-        self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False, orbit_interpolator="chspline"
+        self,
+        dem_file,
+        burst_idx=1,
+        dem_upsampling=1,
+        simulate_terrain=False,
+        orbit_interpolator="chspline",
     ):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -688,6 +694,41 @@ class S1IWSwath:
         ).total_seconds() + self.lines_per_burst * azimuth_time_interval
         return diff_az_time / azimuth_time_interval
 
+    def compute_burst_offset(self, burst_idx=1, min_burst=1):
+        """Computes burst line index in the stitched SLC using its start time and azimuth time interval.
+
+        Args:
+            burst_idx (int, optional): Burst index. Defaults to 1.
+            min_burst (int, optional): Index of the first burst to process. Defaults to 1.
+
+        Raises:
+            ValueError: Burst index is out of bounds.
+
+        Returns:
+            int: number of overlapping lines.
+        """
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid minimum burst index (must be between 1 and {self.burst_count})"
+            )
+        if burst_idx < min_burst or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+        meta = self.meta
+        image_info = meta["product"]["imageAnnotation"]["imageInformation"]
+        azimuth_time_interval = float(image_info["azimuthTimeInterval"])
+        burst_info = meta["product"]["swathTiming"]
+
+        # start of first burst
+        burst_1 = burst_info["burstList"]["burst"][0]
+        az_time_1 = isoparse(burst_1["azimuthTime"])
+        burst_2 = burst_info["burstList"]["burst"][burst_idx - 1]
+        az_time_2 = isoparse(burst_2["azimuthTime"])
+
+        diff_az_time = (az_time_2 - az_time_1).total_seconds()
+        return diff_az_time / azimuth_time_interval
+
 
 def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     """Fast parallel coregistration based on lookup-tables in a DEM geometry.
@@ -961,6 +1002,7 @@ def sv_interpolator(state_vectors):
 
     return interp_pos, interp_vel
 
+
 def sv_interpolator_bary(state_vectors):
 
     t = state_vectors["t"]
@@ -975,6 +1017,7 @@ def sv_interpolator_bary(state_vectors):
     interp_vel = BarycentricInterpolator(t, np.array([vx, vy, vz]).T)
 
     return interp_pos, interp_vel
+
 
 # TODO: order as a parmeter
 def sv_interpolator_poly(state_vectors):
@@ -1106,7 +1149,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     elif composite_crs == "EPSG:4326+3855":
         grid_name = "us_nga_egm08_25.tif"
     else:
-        raise ValueError("Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855")
+        raise ValueError(
+            "Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855"
+        )
 
     grid_repo_url = get_proj_endpoint()
     proj_path = Path(get_user_data_dir())
@@ -1114,10 +1159,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
         proj_path.mkdir(parents=True)
     grid_path = proj_path / grid_name
     if not grid_path.exists():
-        grid_url = f"{grid_repo_url}/{grid_name}" 
+        grid_url = f"{grid_repo_url}/{grid_name}"
         log.info(f"Download {grid_url}")
         urllib.request.urlretrieve(grid_url, grid_path)
-
 
     # since pyproj 3.7.0 we need to create one transformer per thread
     def transform_chunk(data_chunk):
