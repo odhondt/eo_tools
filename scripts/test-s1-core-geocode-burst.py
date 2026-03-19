@@ -31,13 +31,14 @@ log = logging.getLogger(__name__)
 # change with directory containing your S1 products
 data_dir = "/data/S1"
 # change with directory containing the results
-out_dir = "/data/res/test-s1-core-geocode-burst"
+out_dir = "/data/res/test-s1-core-geocode-bursts"
 if not os.path.isdir(out_dir):
     os.mkdir(out_dir)
 
 # replace with already downloaded and unzipped products (see the other notebooks to download such products)
-primary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20241205T172346_20241205T172413_056860_06FB65_2BBF.SAFE.zip"
-secondary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.zip"
+# primary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20241205T172346_20241205T172413_056860_06FB65_2BBF.SAFE.zip"
+primary_path = f"{data_dir}/S1A_IW_SLC__1SDV_20241205T172346_20241205T172413_056860_06FB65_2BBF.SAFE"
+print(primary_path)
 
 # subswath to process
 iw = 1
@@ -46,8 +47,8 @@ pol = "vv"
 # DEM upsampling
 up = 1.8
 
-min_burst = 5
-max_burst = 5
+min_burst = 1
+max_burst = 9
 
 # %%
 prm = S1IWSwath(primary_path, iw=iw, pol=pol)
