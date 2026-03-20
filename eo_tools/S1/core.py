@@ -668,13 +668,17 @@ class S1IWSwath:
         Used for ESD.
 
         Args:
-            burst_idx (int, optional): Burst index, must be >=2. Defaults to 2.
+            burst_idx (int, optional): Burst index, must be >=min_burst.
+            min_burst (int, optional): Index of the first burst to process. Defaults to 1.
 
         Raises:
             ValueError: Burst index is out of bounds.
 
         Returns:
             int: number of overlapping lines.
+        
+        Notes:
+            Returns 0.0 if burst_idx==min_burst.
         """
         if burst_idx < min_burst or burst_idx > self.burst_count:
             raise ValueError(
@@ -701,7 +705,7 @@ class S1IWSwath:
         """Computes burst line index in the stitched SLC using its start time and azimuth time interval.
 
         Args:
-            burst_idx (int, optional): Burst index. Defaults to 1.
+            burst_idx (int, optional): Burst index.
             min_burst (int, optional): Index of the first burst to process. Defaults to 1.
 
         Raises:
