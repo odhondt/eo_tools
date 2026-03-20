@@ -663,7 +663,7 @@ class S1IWSwath:
 
         return (4 * np.pi / lam) * dist
 
-    def compute_burst_overlap(self, burst_idx=2):
+    def compute_burst_overlap(self, burst_idx, min_burst=1):
         """Computes the overlap between a burst and the previous one.
         Used for ESD.
 
@@ -676,7 +676,7 @@ class S1IWSwath:
         Returns:
             int: number of overlapping lines.
         """
-        if burst_idx < 2 or burst_idx > self.burst_count:
+        if burst_idx < min_burst or burst_idx > self.burst_count:
             raise ValueError(
                 f"Invalid burst index (must be between 2 and {self.burst_count})"
             )
@@ -692,9 +692,12 @@ class S1IWSwath:
         diff_az_time = (
             az_time_1 - az_time_2
         ).total_seconds() + self.lines_per_burst * azimuth_time_interval
-        return diff_az_time / azimuth_time_interval
+        if burst_idx == min_burst:
+            return 0.0
+        else:
+            return diff_az_time / azimuth_time_interval
 
-    def compute_burst_offset(self, burst_idx=1, min_burst=1):
+    def compute_burst_offset(self, burst_idx, min_burst=1):
         """Computes burst line index in the stitched SLC using its start time and azimuth time interval.
 
         Args:
