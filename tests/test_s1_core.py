@@ -411,11 +411,19 @@ def test_phi_topo(create_swath):
 
 def test_burst_overlap(create_swath):
     swath = create_swath
-    with pytest.raises(ValueError, match=r"Invalid burst index.*"):
-        _ = swath.compute_burst_overlap(burst_idx=1)
+    with pytest.raises(ValueError, match=r"Invalid burst index*"):
+        _ = swath.compute_burst_overlap(burst_idx=0)
     olap = swath.compute_burst_overlap(burst_idx=3)
     assert isinstance(olap, float)
     assert olap > 0
+
+def test_burst_offset(create_swath):
+    swath = create_swath
+    with pytest.raises(ValueError, match=r"Invalid burst index*"):
+        _ = swath.compute_burst_offset(burst_idx=0)
+    off = swath.compute_burst_offset(burst_idx=3)
+    assert isinstance(off, float)
+    assert off > 0
 
 
 if __name__ == "__main__":
