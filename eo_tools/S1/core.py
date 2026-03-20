@@ -677,26 +677,33 @@ class S1IWSwath:
         Notes:
             Returns 0.0 if burst_idx==min_burst.
         """
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid minimum burst index (must be between 1 and {self.burst_count})"
+            )
+
         if burst_idx < min_burst or burst_idx > self.burst_count:
             raise ValueError(
-                f"Invalid burst index (must be between 2 and {self.burst_count})"
+                f"Invalid burst index (must be between min_burst and {self.burst_count})"
             )
+        
+        # no ovelap for first processed burst
+        if burst_idx == min_burst:
+            return 0.0
+
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
+        burst_1 = burst_info["burstList"]["burst"][burst_idx - 2]
         az_time_1 = isoparse(burst_1["azimuthTime"])
-        burst_2 = burst_info["burstList"]["burst"][burst_idx]
+        burst_2 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_2 = isoparse(burst_2["azimuthTime"])
 
         diff_az_time = (
             az_time_1 - az_time_2
         ).total_seconds() + self.lines_per_burst * azimuth_time_interval
-        if burst_idx == min_burst:
-            return 0.0
-        else:
-            return diff_az_time / azimuth_time_interval
+        return diff_az_time / azimuth_time_interval
 
     def compute_burst_offset(self, burst_idx, min_burst=1):
         """Computes burst line index in the stitched SLC using its start time and azimuth time interval.
@@ -716,6 +723,11 @@ class S1IWSwath:
             raise ValueError(
                 f"Invalid burst index (must be between 1 and {self.burst_count})"
             )
+
+        # for first processed burst index is always zero
+        if burst_idx == min_burst:
+            return 0.0
+
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
