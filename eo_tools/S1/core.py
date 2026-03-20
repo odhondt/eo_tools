@@ -671,11 +671,8 @@ class S1IWSwath:
             burst_idx (int, optional): Burst index, must be >=min_burst.
             min_burst (int, optional): Index of the first burst to process. Defaults to 1.
 
-        Raises:
-            ValueError: Burst index is out of bounds.
-
         Returns:
-            int: number of overlapping lines.
+            float: number of overlapping lines, not rounded to the closest integer.
         
         Notes:
             Returns 0.0 if burst_idx==min_burst.
@@ -708,11 +705,8 @@ class S1IWSwath:
             burst_idx (int, optional): Burst index.
             min_burst (int, optional): Index of the first burst to process. Defaults to 1.
 
-        Raises:
-            ValueError: Burst index is out of bounds.
-
         Returns:
-            int: number of overlapping lines.
+            float: line offset, not rounded to the closest integer.
         """
         if min_burst < 1 or min_burst > self.burst_count:
             raise ValueError(
