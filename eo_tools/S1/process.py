@@ -2292,7 +2292,6 @@ def _process_bursts_slc(
     orbit_interpolator,
 ):
 
-    # H = int(overlap / 2)
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -2300,14 +2299,11 @@ def _process_bursts_slc(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
-        # compress="zstd",
-        # num_threads="all_cpus",
         tiled=True,
         blockxsize=512,
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # process individual bursts
     dem_file = slc.fetch_dem(
         min_burst,
         max_burst,
@@ -2340,7 +2336,6 @@ def _process_bursts_slc(
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
     with rio.Env(GDAL_CACHEMAX=512) as env:
         with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm, rio.open(dem_file) as ds_dem:
-            off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
                 # position of the burst in the stitched SLC
@@ -2414,33 +2409,16 @@ def _process_bursts_slc(
                     arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
                 )
 
-                # place overlapping burst LUT with azimuth offset
-
-                # if burst_idx > min_burst:
-                #     msk_overlap = az_p2g < H
-                #     az_p2g[msk_overlap] = np.nan
-                #     rg_p2g[msk_overlap] = np.nan
-                # msk = ~np.isnan(az_p2g)
-
-                # BUGFIX: match slc stitching
+                # remove half of the azimuth overlap at burst start
                 H = burst_overlap // 2
-                # if burst_idx == min_burst:
-                #     mask_overlap = az_p2g >= naz - H
-                # elif burst_idx == max_burst:
-                #     mask_overlap = az_p2g < H
-                # else:
-                #     mask_overlap = (az_p2g < H) | (az_p2g >= naz - H)
                 mask_overlap = az_p2g < H
                 az_p2g[mask_overlap] = np.nan
                 rg_p2g[mask_overlap] = np.nan
-                
-                # as in stiching, we overwrite from half overlap
-                msk = ~np.isnan(az_p2g) #& np.isnan(arr_lut[0, slices[0], slices[1]])
 
+                # place overlapping burst LUT with azimuth offset
+                msk = ~np.isnan(az_p2g) 
                 arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + burst_offset
-                # arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-                # off_az += slc.lines_per_burst - 2 * H
 
     remove(dem_file_burst)
 
