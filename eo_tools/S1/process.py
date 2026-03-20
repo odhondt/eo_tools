@@ -460,8 +460,8 @@ def preprocess_insar_iw(
     if not np.all(np.array(offsets) == offsets[0]):
         raise RuntimeError("Overlapping bursts must be consecutive.")
 
-    # == 0 if full overlap
-    burst_offset = offsets[0]
+    # index offset when products partially overlap, == 0 if full overlap
+    burst_idx_offset = offsets[0]
 
     # intra-product overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
@@ -507,7 +507,7 @@ def preprocess_insar_iw(
             nrg,
             min_burst,
             max_burst_,
-            burst_offset,
+            burst_idx_offset,
             dem_name,
             dem_upsampling,
             dem_buffer_arc_sec,
@@ -542,6 +542,8 @@ def preprocess_insar_iw(
                 prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
+                min_burst,
+                prm
             ),
         )
 
@@ -553,6 +555,8 @@ def preprocess_insar_iw(
                 prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
+                min_burst,
+                prm
             ),
         )
 
@@ -1147,6 +1151,8 @@ def preprocess_slc_iw(
                 slc.lines_per_burst,
                 max_burst_ - min_burst + 1,
                 overlap,
+                min_burst,
+                slc,
             ),
         )
 
@@ -2085,7 +2091,7 @@ def _process_bursts_insar(
     nrg,
     min_burst,
     max_burst,
-    burst_offset,
+    burst_idx_offset,
     dem_name,
     dem_upsampling,
     dem_buffer_arc_sec,
@@ -2096,7 +2102,7 @@ def _process_bursts_insar(
     orbit_interpolator,
 ):
 
-    H = int(overlap / 2)
+    # H = int(overlap / 2)
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -2104,14 +2110,11 @@ def _process_bursts_insar(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
-        # compress="zstd",
-        # num_threads="all_cpus",
         tiled=True,
         blockxsize=512,
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # process individual bursts
     dem_file = prm.fetch_dem(
         min_burst,
         max_burst,
@@ -2154,7 +2157,13 @@ def _process_bursts_insar(
             off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
-
+                burst_offset = round(
+                    prm.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
+                )
+                # overlap between consecutive burst, ==0 for min_burst
+                burst_overlap = round(
+                    prm.compute_burst_overlap(burst_idx=burst_idx, min_burst=min_burst)
+                )
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
                 dem_file_burst = f"{output_dir}/dem_burst.tif"
                 burst_geoms = prm.gdf_burst_geom
@@ -2186,26 +2195,26 @@ def _process_bursts_insar(
                 )
                 az_s2g, rg_s2g = sec.geocode_burst(
                     dem_file_burst,
-                    burst_idx=burst_idx + burst_offset,
+                    burst_idx=burst_idx + burst_idx_offset,
                     dem_upsampling=1,
                     orbit_interpolator=orbit_interpolator,
                 )
 
                 # read primary and secondary burst rasters
                 arr_p = prm.read_burst(burst_idx, True)
-                arr_s = sec.read_burst(burst_idx + burst_offset, True)
+                arr_s = sec.read_burst(burst_idx + burst_idx_offset, True)
 
                 # radiometric calibration (beta or sigma nought)
                 cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
                 cal_s = sec.calibration_factor(
-                    burst_idx + burst_offset, cal_type=cal_type
+                    burst_idx + burst_idx_offset, cal_type=cal_type
                 )
                 log.info("Apply calibration factor")
                 arr_p /= cal_p
                 arr_s /= cal_s
 
                 # deramp secondary
-                pdb_s = sec.deramp_burst(burst_idx + burst_offset)
+                pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
                 log.info("Apply phase deramping")
                 arr_s *= np.exp(1j * pdb_s)
 
@@ -2240,32 +2249,16 @@ def _process_bursts_insar(
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
 
-                # place overlapping burst LUT with azimuth offset
-                # if burst_idx > min_burst:
-                #     msk_overlap = az_p2g < H
-                #     az_p2g[msk_overlap] = np.nan
-                #     rg_p2g[msk_overlap] = np.nan
-                # msk = ~np.isnan(az_p2g)
-                # arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
-                # arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-                # off_az += prm.lines_per_burst - 2 * H
-
-                # BUGFIX: match slc stitching
-                if burst_idx == min_burst:
-                    mask_overlap = az_p2g >= naz - H
-                elif burst_idx == max_burst:
-                    mask_overlap = az_p2g < H
-                else:
-                    mask_overlap = (az_p2g < H) | (az_p2g >= naz - H)
-
+                # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
+                H = burst_overlap // 2
+                mask_overlap = az_p2g < H
                 az_p2g[mask_overlap] = np.nan
                 rg_p2g[mask_overlap] = np.nan
 
-                msk = ~np.isnan(az_p2g) & np.isnan(arr_lut[0, slices[0], slices[1]])
-
-                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                # place overlapping burst LUT with azimuth offset
+                msk = ~np.isnan(az_p2g)
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + burst_offset
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-                off_az += prm.lines_per_burst - 2 * H
 
     remove(dem_file_burst)
 
@@ -2409,14 +2402,14 @@ def _process_bursts_slc(
                     arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
                 )
 
-                # remove half of the azimuth overlap at burst start
+                # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
                 H = burst_overlap // 2
                 mask_overlap = az_p2g < H
                 az_p2g[mask_overlap] = np.nan
                 rg_p2g[mask_overlap] = np.nan
 
                 # place overlapping burst LUT with azimuth offset
-                msk = ~np.isnan(az_p2g) 
+                msk = ~np.isnan(az_p2g)
                 arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + burst_offset
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
 
@@ -2515,6 +2508,7 @@ def _stitch_bursts(
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
 
+    log.info("Stitch bursts to make a continuous image")
     # Compute burst offsets
     offsets = []
     for i in range(min_burst, min_burst + burst_count):
@@ -2526,11 +2520,13 @@ def _stitch_bursts(
 
     src = riox.open_rasterio(in_file)[0]
     nrg = src.shape[1]
-    dst = xr.DataArray(data=da.zeros((dst_size, nrg), dtype=src.data.dtype))
+    dst = xr.DataArray(
+        data=da.zeros((dst_size, nrg), dtype=src.data.dtype), dims=src.dims
+    ) .chunk("auto")
+    # .chunk(dict(y=1024, x=1024))
     for i in range(burst_count):
-        # overlap = offsets[i - 1] + lines_per_burst - offsets[i] if i > 0 else 0
         overlap = round(
-            swath.compute_overlap(burst_idx=i + min_burst, min_burst=min_burst)
+            swath.compute_burst_overlap(burst_idx=i + min_burst, min_burst=min_burst)
         )
 
         # read burst in non-debursted image
@@ -2540,7 +2536,7 @@ def _stitch_bursts(
         # remove H first lines and overwrite to account for overlap
         dst[offsets[i] + H : offsets[i] + lines_per_burst] = arr[H:]
 
-    dst.rio.to_raster(out_file)
+    dst.rio.to_raster(out_file, compress="none")
 
 
 def _child_process(func, args):
@@ -2586,9 +2582,9 @@ def _stitch_bursts_legacy(
             dict(width=nrg, height=siz)
             # dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
         )
-        with rio.open(out_file, "w", **prof) as dst:
+        with rio.open(f"{out_file}f", "w", **prof) as dst:
 
-            log.info("Stitch bursts to make a continuous image")
+            log.info("Stitch bursts to make a continuous image (legacy code)")
             off_dst = 0
             for i in range(burst_count):
                 if i == 0:
