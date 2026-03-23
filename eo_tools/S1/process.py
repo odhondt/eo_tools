@@ -707,7 +707,7 @@ def process_h_alpha_dual(
         dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
@@ -822,7 +822,7 @@ def process_polsar_cov_dual(
         dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
@@ -2494,7 +2494,7 @@ def _stitch_bursts(
 ):
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
 
-    log.info("Stitch bursts to make a continuous image (optimized)")
+    log.info("Stitch bursts to make a continuous image")
 
     naz = swath.lines_per_burst
 
