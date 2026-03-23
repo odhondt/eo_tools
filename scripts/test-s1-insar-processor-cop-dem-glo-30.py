@@ -45,8 +45,8 @@ output_dir = "/data/res/test-full-processor"
 # %%
 # load a geometry
 # aoi_file = "/eo_tools/data/Morocco_small.geojson"
-# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
-aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
 # search_criteria = {
@@ -104,7 +104,6 @@ out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-
 ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
 
 m = folium.Map()
-# m = folium.Map(tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", attr="google")
 _ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
 _ = show_cog(f"{out_dir}/phi_vv.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
 _ = show_cog(f"{ref_dir}/coh.tif", m, rescale=f"0,1")

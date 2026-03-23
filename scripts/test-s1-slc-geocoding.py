@@ -62,8 +62,7 @@ out_dir = process_slc(
 
 # %%
 
-# m = folium.Map()
-m = folium.Map(tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", attr="Esri")
+m = folium.Map()
 _ = show_cog(f"{out_dir}/amp_vv.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)
 
