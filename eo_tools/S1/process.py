@@ -540,9 +540,7 @@ def preprocess_insar_iw(
             (
                 tmp_sec,
                 f"{output_dir}/secondary.tif",
-                prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
                 min_burst,
                 prm,
             ),
@@ -553,9 +551,7 @@ def preprocess_insar_iw(
             (
                 tmp_prm,
                 f"{output_dir}/primary.tif",
-                prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
                 min_burst,
                 prm,
             ),
@@ -1143,34 +1139,17 @@ def preprocess_slc_iw(
         ),
     )
 
-    # if max_burst_ > min_burst:
-    #     _child_process(
-    #         _stitch_bursts,
-    #         (
-    #             tmp_slc,
-    #             f"{output_dir}/slc.tif",
-    #             slc.lines_per_burst,
-    #             max_burst_ - min_burst + 1,
-    #             overlap,
-    #             min_burst,
-    #             slc,
-    #         ),
-    #     )
     if max_burst_ > min_burst:
         _child_process(
-            _stitch_bursts_optimized,
+            _stitch_bursts,
             (
                 tmp_slc,
                 f"{output_dir}/slc.tif",
-                slc.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
                 min_burst,
                 slc,
             ),
         )
-        # Temporary assertion to verify optimized version matches original
-        # _assert_files_equal(f"{output_dir}/slc.tif", f"{output_dir}/slc_opt.tif")
 
     log.info("Cleaning temporary files")
     if max_burst_ > min_burst:
@@ -2513,100 +2492,17 @@ from eo_tools.bench import timeit
 def _stitch_bursts(
     in_file,
     out_file,
-    lines_per_burst,
     burst_count,
-    overlap,
     min_burst=1,
     swath=None,
 ):
-    # Temporary -- TODO: remove after refactor
-    if swath is None:
-        _stitch_bursts_legacy(
-            in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
-        )
-        return
-
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-
-    log.info("Stitch bursts to make a continuous image")
-    # Compute burst offsets
-    offsets = []
-    for i in range(min_burst, min_burst + burst_count):
-        offset = swath.compute_burst_offset(burst_idx=i, min_burst=min_burst)
-        offsets.append(round(offset))
-
-    # Output raster size is last offset plus burst height
-    dst_size = offsets[-1] + lines_per_burst
-
-    src = riox.open_rasterio(in_file)[0]
-    nrg = src.shape[1]
-    dst = xr.DataArray(
-        data=da.zeros((dst_size, nrg), dtype=src.data.dtype),
-        dims=src.dims,
-        # ).chunk(dict(y=1024, x="auto"))
-    ).chunk("auto")
-    for i in range(burst_count):
-        overlap = round(
-            swath.compute_burst_overlap(burst_idx=i + min_burst, min_burst=min_burst)
-        )
-
-        # read burst in non-debursted image
-        arr = src[i * lines_per_burst : (i + 1) * lines_per_burst]
-
-        H = overlap // 2
-        # remove H first lines and overwrite to account for overlap
-        dst[offsets[i] + H : offsets[i] + lines_per_burst] = arr[H:]
-
-    # COG WRITING IS VERY SLOW
-    # COG_PROFILE = {"driver": "COG", "compress": "DEFLATE", "predictor": 2}
-    # dst.rio.to_raster(out_file, **COG_PROFILE)
-
-    dst.rio.to_raster(
-        out_file,
-        compress="none",
-        tiled=True,
-        lock=threading.Lock(),
-    )
-
-
-@timeit
-def _stitch_bursts_optimized(
-    in_file,
-    out_file,
-    lines_per_burst,
-    burst_count,
-    overlap,
-    min_burst=1,
-    swath=None,
-):
-    """
-    Optimized version of _stitch_bursts using legacy streaming approach
-    but with per-burst offset/overlap computation from swath object.
-
-    This function is identical in output to _stitch_bursts but uses
-    windowed streaming (no intermediate arrays) for better performance.
-
-    Args:
-        in_file: Input GeoTIFF with stacked bursts
-        out_file: Output stitched GeoTIFF
-        lines_per_burst: Number of lines per burst in input
-        burst_count: Number of bursts to stitch
-        overlap: Overlap value (used if swath is None)
-        min_burst: First burst index (1-based)
-        swath: S1IWSwath object for computing per-burst offsets/overlaps
-    """
-    # Fallback to legacy if no swath object provided
-    if swath is None:
-        _stitch_bursts_legacy(
-            in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
-        )
-        return
-
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
 
     log.info("Stitch bursts to make a continuous image (optimized)")
 
-    # Compute burst offsets and overlaps in a single loop
+    naz = swath.lines_per_burst
+
+    # Compute burst offsets and overlaps
     offsets = []
     overlaps = []
     for i in range(burst_count):
@@ -2617,21 +2513,20 @@ def _stitch_bursts_optimized(
         offsets.append(round(offset))
         overlaps.append(round(ovlp))
 
-    # Output raster size is last offset plus burst height (same as _stitch_bursts)
-    dst_size = offsets[-1] + lines_per_burst
+    # Output raster size is last offset plus burst height
+    dst_size = offsets[-1] + naz
 
-    # Use streaming approach (like legacy) but with per-burst offsets/overlaps
-    # Matches _stitch_bursts behavior: removes H from top of each burst
     with rio.open(in_file) as src:
         nrg = src.width
-        naz = lines_per_burst
 
         prof = src.profile.copy()
         prof.update(dict(width=nrg, height=dst_size))
 
         with rio.open(out_file, "w", **prof) as dst:
             for i in range(burst_count):
+                # for burst_idx == min_burst, compute_burst_overlap returns 0
                 H = overlaps[i] // 2
+                # Removes H from top of each burst
                 off_dst = offsets[i] + H
                 off_src = i * naz + H
                 nlines = naz - H
@@ -2644,69 +2539,6 @@ def _stitch_bursts_optimized(
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
-
-
-def _assert_files_equal(file1: str, file2: str) -> None:
-    """
-    Temporary assertion to verify two GeoTIFF files have identical data.
-    TODO: remove after validation.
-    """
-    log.info(f"Verifying {file2} matches {file1}...")
-
-    with rio.open(file1) as src1:
-        log.info(
-            f"  File1: shape={src1.shape}, dtype={src1.profile['dtype']}, "
-            f"transform={src1.transform}"
-        )
-        data1 = src1.read(1)
-        log.info(
-            f"  File1 data: min={np.nanmin(data1):.4f}, max={np.nanmax(data1):.4f}, "
-            f"NaNs={np.isnan(data1).sum()}"
-        )
-
-    with rio.open(file2) as src2:
-        log.info(
-            f"  File2: shape={src2.shape}, dtype={src2.profile['dtype']}, "
-            f"transform={src2.transform}"
-        )
-        data2 = src2.read(1)
-        log.info(
-            f"  File2 data: min={np.nanmin(data2):.4f}, max={np.nanmax(data2):.4f}, "
-            f"NaNs={np.isnan(data2).sum()}"
-        )
-
-    if src1.shape != src2.shape:
-        raise AssertionError(f"Shape mismatch: {src1.shape} vs {src2.shape}")
-    if src1.profile["dtype"] != src2.profile["dtype"]:
-        raise AssertionError(
-            f"Dtype mismatch: {src1.profile['dtype']} vs {src2.profile['dtype']}"
-        )
-
-    # Check for NaN/invalid data
-    if np.isnan(data1).all():
-        raise AssertionError(f"File1 ({file1}) contains all NaN values")
-    if np.isnan(data2).all():
-        raise AssertionError(f"File2 ({file2}) contains all NaN values")
-
-    # Handle NaN values in comparison
-    nan_mask1 = np.isnan(data1)
-    nan_mask2 = np.isnan(data2)
-    if not np.array_equal(nan_mask1, nan_mask2):
-        raise AssertionError(
-            f"NaN pattern mismatch: file1 has {nan_mask1.sum()} NaNs, "
-            f"file2 has {nan_mask2.sum()} NaNs"
-        )
-
-    # Compare valid values only
-    if not np.allclose(data1, data2, rtol=1e-6, atol=1e-6, equal_nan=True):
-        diff = np.abs(data1 - data2)
-        valid_diff = diff[~np.isnan(diff)]
-        if valid_diff.size > 0:
-            raise AssertionError(
-                f"Data mismatch: max diff={valid_diff.max():.6e}, "
-                f"mean diff={valid_diff.mean():.6e}"
-            )
-    log.info("Files are identical ✓")
 
 
 def _child_process(func, args):
@@ -2729,52 +2561,3 @@ def _child_process(func, args):
             return func(**args)
         else:
             raise ValueError("Function arguments should be tuple, list or dict")
-
-
-def _stitch_bursts_legacy(
-    in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
-):
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    H = int(overlap / 2)
-    naz = lines_per_burst
-    with rio.open(in_file) as src:
-        nrg = src.width
-
-        if burst_count >= 2:
-            siz = (naz - H) * 2 + (burst_count - 2) * (naz - 2 * H)
-        elif burst_count == 1:
-            siz = naz - H
-        else:
-            raise ValueError("Empty burst list")
-
-        prof = src.profile.copy()
-        prof.update(
-            dict(width=nrg, height=siz)
-            # dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
-        )
-        with rio.open(f"{out_file}", "w", **prof) as dst:
-
-            log.info("Stitch bursts to make a continuous image (legacy code)")
-            off_dst = 0
-            for i in range(burst_count):
-                if i == 0:
-                    nlines = naz - H
-                    off_src = 0
-                elif i == burst_count - 1:
-                    nlines = naz - H
-                    off_src = H
-                else:
-                    nlines = naz - 2 * H
-                    off_src = H
-
-                for j in range(src.count):
-                    arr = src.read(
-                        j + 1,
-                        window=Window(
-                            0, (i + off_burst - 1) * naz + off_src, nrg, nlines
-                        ),
-                    )
-                    dst.write(
-                        arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
-                    )
-                off_dst += nlines
