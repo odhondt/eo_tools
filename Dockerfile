@@ -24,5 +24,6 @@ ENV PATH=/opt/conda/envs/eo_tools/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 ENV MAMBA_DEFAULT_ENV=eo_tools
 RUN echo "alias conda=micromamba" >> /root/.bashrc
+RUN echo "micromamba activate eo_tools" >> /root/.bashrc
 
 WORKDIR /
