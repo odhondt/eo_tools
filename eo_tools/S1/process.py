@@ -27,7 +27,6 @@ from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
 from skimage.morphology import erosion
-import threading
 import re
 
 # use child processes
