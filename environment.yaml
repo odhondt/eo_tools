@@ -16,7 +16,7 @@ dependencies:
   - pystac-client
   - geopandas
   - pandas
-  - eodag
+  - eodag=3.10.0
   - ipykernel
   - ipywidgets
   - black
