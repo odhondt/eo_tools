@@ -11,6 +11,7 @@
 - Use `skimage.morphology.erosion` instead of `binary_erosion` that will be deprecated
 - Pass chunk sizes using a dict instead of tuple for future compatibility
 - Remove some unused imports, change regex to handle S1D burst geometry
+- Fix geocoding lookup tables in burst overlap areas, refactored burst stitching and add burst offset computation function for a more robust geocoding implementation
 
 
 # 2025.6.1
