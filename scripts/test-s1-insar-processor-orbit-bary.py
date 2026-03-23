@@ -99,7 +99,7 @@ out_dir = process_insar(**process_args)
 
 # %%
 # compare with reference data processed with SNAP
-out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+out_dir = "/data/res/test-full-processor-orb/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
 
 m = folium.Map()
