@@ -2485,10 +2485,6 @@ def _apply_fast_esd(
                 )
 
 
-from eo_tools.bench import timeit
-
-
-@timeit
 def _stitch_bursts(
     in_file,
     out_file,
