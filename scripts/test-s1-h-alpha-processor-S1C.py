@@ -85,7 +85,7 @@ out_dir_ha = process_h_alpha_dual(
 )
 
 # %%
-
+out_dir_ha = "/data/res/test-h-alpha-processor/S1_2025-04-01-174601_beta_cal"
 m = folium.Map()
 _ = show_cog(f"{out_dir_ha}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_ha}/amp_vh.tif", m, rescale=f"0, {1./sqrt(2)}")

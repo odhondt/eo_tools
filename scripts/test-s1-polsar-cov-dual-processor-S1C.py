@@ -83,7 +83,7 @@ out_dir_ha = process_polsar_cov_dual(
 )
 
 # %%
-
+out_dir_ha = "/data/res/test-polsar-cov-dual-processor/S1_2025-04-01-174601_beta_cal"
 m = folium.Map()
 _ = show_cog(f"{out_dir_ha}/c11.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_ha}/c22.tif", m, rescale=f"0, 0.25")
