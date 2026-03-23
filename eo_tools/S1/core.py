@@ -673,7 +673,7 @@ class S1IWSwath:
 
         Returns:
             float: number of overlapping lines, not rounded to the closest integer.
-        
+
         Notes:
             Returns 0.0 if burst_idx==min_burst.
         """
@@ -686,7 +686,7 @@ class S1IWSwath:
             raise ValueError(
                 f"Invalid burst index (must be between min_burst and {self.burst_count})"
             )
-        
+
         # no ovelap for first processed burst
         if burst_idx == min_burst:
             return 0.0
@@ -734,7 +734,7 @@ class S1IWSwath:
         burst_info = meta["product"]["swathTiming"]
 
         # start of first burst
-        burst_1 = burst_info["burstList"]["burst"][0]
+        burst_1 = burst_info["burstList"]["burst"][min_burst - 1]
         az_time_1 = isoparse(burst_1["azimuthTime"])
         burst_2 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_2 = isoparse(burst_2["azimuthTime"])
