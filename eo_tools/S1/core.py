@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
-    - DEM retrieval (only SRTM 1sec for now)
+    - DEM retrieval
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
