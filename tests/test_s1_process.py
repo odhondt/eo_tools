@@ -4,7 +4,13 @@ import os
 import numpy as np
 from numpy.random import randn
 import xarray as xr
-from eo_tools.S1.process import coherence, process_insar, h_alpha_dual, eigh_2x2
+from eo_tools.S1.process import (
+    coherence,
+    process_insar,
+    h_alpha_dual,
+    eigh_2x2,
+    polsar_cov_dual,
+)
 import geopandas as gpd
 import multiprocessing
 import rasterio as rio
@@ -278,7 +284,7 @@ def test_alpha_ent_basic():
 
 
 @pytest.fixture
-def create_polsar_data():
+def create_h_alpha_data():
     # siz = 128
     siz = 64
     vv_data = np.random.rand(siz, siz) + 1j * np.random.rand(siz, siz)
@@ -297,10 +303,10 @@ def create_polsar_data():
         yield vv_file, vh_file, h_file, alpha_file, vv_ds.shape
 
 
-def test_h_alpha_dual(create_polsar_data):
+def test_h_alpha_dual(create_h_alpha_data):
     import rioxarray as riox
 
-    vv_file, vh_file, h_file, alpha_file, shp = create_polsar_data
+    vv_file, vh_file, h_file, alpha_file, shp = create_h_alpha_data
     h_alpha_dual(vv_file=vv_file, vh_file=vh_file, h_file=h_file, alpha_file=alpha_file)
     alpha = riox.open_rasterio(alpha_file)[0]
     h = riox.open_rasterio(h_file)[0]
@@ -309,3 +315,42 @@ def test_h_alpha_dual(create_polsar_data):
     assert h.shape == shp
     assert alpha.dtype == "float32"
     assert h.dtype == "float32"
+
+@pytest.fixture
+def create_polsar_data():
+    # siz = 128
+    siz = 64
+    vv_data = np.random.rand(siz, siz) + 1j * np.random.rand(siz, siz)
+    vh_data = np.random.rand(siz, siz) + 1j * np.random.rand(siz, siz)
+    vv_ds = xr.DataArray(vv_data.astype("complex64"), dims=("y", "x"))
+    vh_ds = xr.DataArray(vh_data.astype("complex64"), dims=("y", "x"))
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        vv_file = os.path.join(tmpdirname, "vv.tif")
+        vh_file = os.path.join(tmpdirname, "vh.tif")
+        c11_file = os.path.join(tmpdirname, "c11.tif")
+        c12_real_file = os.path.join(tmpdirname, "c12_real.tif")
+        c12_imag_file = os.path.join(tmpdirname, "c12_imag.tif")
+        c22_file = os.path.join(tmpdirname, "c22.tif")
+        vv_ds.rio.to_raster(vv_file)
+        vh_ds.rio.to_raster(vh_file)
+        yield vv_file, vh_file, c11_file, c22_file, c12_real_file, c12_imag_file, vv_ds.shape
+
+def test_polsar_cov_dual(create_polsar_data):
+    import rioxarray as riox
+
+    vv_file, vh_file, c11_file, c22_file, c12_real_file, c12_imag_file, shp = create_polsar_data
+    polsar_cov_dual(vv_file=vv_file, vh_file=vh_file, c11_file=c11_file, c22_file=c22_file, c12_real_file=c12_real_file,  c12_imag_file=c12_imag_file)
+    c11 = riox.open_rasterio(c11_file)[0]
+    c22 = riox.open_rasterio(c22_file)[0]
+    c12r = riox.open_rasterio(c12_real_file)[0]
+    c12i = riox.open_rasterio(c12_imag_file)[0]
+
+    assert c11.shape == shp
+    assert c22.shape == shp
+    assert c12r.shape == shp
+    assert c12i.shape == shp
+    assert c11.dtype == "float32"
+    assert c22.dtype == "float32"
+    assert c12r.dtype == "float32"
+    assert c12i.dtype == "float32"

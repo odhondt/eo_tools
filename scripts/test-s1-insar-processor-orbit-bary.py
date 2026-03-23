@@ -40,7 +40,7 @@ ids = [
 ]
 primary_path = f"{data_dir}/{ids[0]}.zip"
 secondary_path = f"{data_dir}/{ids[1]}.zip"
-output_dir = "/data/res/test-full-processor"
+output_dir = "/data/res/test-full-processor-orb"
 
 # %%
 # load a geometry
@@ -75,14 +75,12 @@ process_args = dict(
     aoi_name=None,
     shp=shp,
     pol="vv",
-    # subswaths=["IW1", "IW2"],
     subswaths=["IW1", "IW2", "IW3"],
     write_coherence=True,
     write_interferogram=True,
     write_primary_amplitude=False,
     write_secondary_amplitude=False,
     apply_fast_esd=True,
-    dem_name="cop-dem-glo-30",
     dem_upsampling=1.8,
     dem_force_download=False,
     dem_buffer_arc_sec=40,
@@ -91,8 +89,9 @@ process_args = dict(
     multilook=[1, 4],
     warp_kernel="bicubic",
     cal_type="beta",
-    clip_to_shape=False,
-    # clip_to_shape=True,
+    clip_to_shape=True,
+    orb_dir="/data/S1_orbits/",
+    orbit_interpolator="bary",
 )
 
 out_dir = process_insar(**process_args)
@@ -100,7 +99,7 @@ out_dir = process_insar(**process_args)
 
 # %%
 # compare with reference data processed with SNAP
-out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+out_dir = "/data/res/test-full-processor-orb/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
 
 m = folium.Map()
@@ -112,4 +111,4 @@ LayerControl().add_to(m)
 
 # open in a browser
 serve_map(m)
-# m
+# %%

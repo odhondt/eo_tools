@@ -338,6 +338,60 @@ def test_burst_geocoding(create_swath):
     assert gamma_t.shape == raster_shape
 
 
+def test_burst_geocoding_bary(create_swath):
+    swath = create_swath
+    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
+    arr = riox.open_rasterio(dem_file)
+    dem_shape = arr[0].shape
+    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
+    dem_upsampling = 0.1
+    az, rg, gamma_t = swath.geocode_burst(
+        dem_file,
+        burst_idx=3,
+        dem_upsampling=dem_upsampling,
+        simulate_terrain=True,
+        orbit_interpolator="bary",
+    )
+
+    out_shape = (
+        int(dem_shape[0] * dem_upsampling),
+        int(dem_shape[1] * dem_upsampling),
+    )
+
+    assert (
+        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
+    )
+    assert (az.shape == out_shape) and (rg.shape == out_shape)
+    assert gamma_t.shape == raster_shape
+
+def test_burst_geocoding_poly(create_swath):
+    swath = create_swath
+    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
+    arr = riox.open_rasterio(dem_file)
+    dem_shape = arr[0].shape
+    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
+    dem_upsampling = 0.1
+    az, rg, gamma_t = swath.geocode_burst(
+        dem_file,
+        burst_idx=3,
+        dem_upsampling=dem_upsampling,
+        simulate_terrain=True,
+        orbit_interpolator="poly",
+    )
+
+    out_shape = (
+        int(dem_shape[0] * dem_upsampling),
+        int(dem_shape[1] * dem_upsampling),
+    )
+
+    assert (
+        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
+    )
+    assert (az.shape == out_shape) and (rg.shape == out_shape)
+    assert gamma_t.shape == raster_shape
+
+
+
 def test_burst_deramping(create_swath):
     swath = create_swath
     arr = swath.deramp_burst(burst_idx=3)
@@ -357,11 +411,19 @@ def test_phi_topo(create_swath):
 
 def test_burst_overlap(create_swath):
     swath = create_swath
-    with pytest.raises(ValueError, match=r"Invalid burst index.*"):
-        _ = swath.compute_burst_overlap(burst_idx=1)
+    with pytest.raises(ValueError, match=r"Invalid burst index*"):
+        _ = swath.compute_burst_overlap(burst_idx=0)
     olap = swath.compute_burst_overlap(burst_idx=3)
     assert isinstance(olap, float)
     assert olap > 0
+
+def test_burst_offset(create_swath):
+    swath = create_swath
+    with pytest.raises(ValueError, match=r"Invalid burst index*"):
+        _ = swath.compute_burst_offset(burst_idx=0)
+    off = swath.compute_burst_offset(burst_idx=3)
+    assert isinstance(off, float)
+    assert off > 0
 
 
 if __name__ == "__main__":

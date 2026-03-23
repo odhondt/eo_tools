@@ -1,3 +1,19 @@
+# 2026.3.0
+
+## New feature
+- New function `process_polsar_cov_dual` gives access to the geocoded elements of the dual-polarimetric covariance matrix with the same calibration options as the other SLC processors (beta, gamma, radiometric terrain corrected).
+- New parameter in all processors `orbit_interpolator` allowing to choose beteen cubic Hermite spline (default), barycentric Lagrange and polynomial interpolators.
+
+## Bugfixes and improvements
+- Dockerfile now uses debian latest
+- Fix Dockerfile related environment issues 
+- Use pyrosar 0.35 for orbits and compatibility with Sentinel 1C and 1D
+- Use `skimage.morphology.erosion` instead of `binary_erosion` that will be deprecated
+- Pass chunk sizes using a dict instead of tuple for future compatibility
+- Remove some unused imports, change regex to handle S1D burst geometry
+- Fix geocoding lookup tables in burst overlap areas, refactored burst stitching and add burst offset computation function for a more robust geocoding implementation
+
+
 # 2025.6.1
 
 ## Minor changes

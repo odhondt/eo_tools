@@ -1,23 +1,28 @@
-FROM mambaorg/micromamba:debian12-slim
-# FROM mambaorg/micromamba
-
+FROM mambaorg/micromamba:latest
 
 USER root
+
 RUN apt-get update && apt-get install -y \
-    software-properties-common
-RUN apt-get install -y git python3-pip wget libpq-dev procps gdal-bin
-# needed for opencv
-# RUN apt-get install -y ffmpeg libsm6 libxext6 libegl1 libopengl0
+    git \
+    python3-pip \
+    wget \
+    libpq-dev \
+    procps \
+    gdal-bin \
+    && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /tmp/conda_init
 
+COPY environment.yaml .
 
-SHELL [ "/bin/bash", "--login", "-c" ]
+# Create the environment
+RUN micromamba create -y -n eo_tools -f environment.yaml && \
+    micromamba clean --all --yes
 
-RUN micromamba shell init --shell=bash --root-prefix=~/micromamba
-RUN source ~/.bashrc
-COPY environment.yaml environment.yaml
-RUN micromamba create -f  environment.yaml
-RUN echo "micromamba activate eo_tools" >> ~/.bashrc
-RUN echo "alias conda='micromamba'" >> ~/.bashrc
+# Make the environment the default Python
+ENV PATH=/opt/conda/envs/eo_tools/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV MAMBA_DEFAULT_ENV=eo_tools
+RUN echo "alias conda=micromamba" >> /root/.bashrc
 
-RUN micromamba activate eo_tools
+WORKDIR /
