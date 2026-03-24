@@ -6,12 +6,13 @@
 
 ## Bugfixes and improvements
 - Dockerfile now uses debian latest
-- Fix Dockerfile related environment issues 
+- Fixed Dockerfile related environment issues 
 - Use pyrosar 0.35 for orbits and compatibility with Sentinel 1C and 1D
 - Use `skimage.morphology.erosion` instead of `binary_erosion` that will be deprecated
 - Pass chunk sizes using a dict instead of tuple for future compatibility
-- Remove some unused imports, change regex to handle S1D burst geometry
+- Removed some unused imports, change regex to handle S1D burst geometry
 - Fix geocoding lookup tables in burst overlap areas, refactored burst stitching and add burst offset computation function for a more robust geocoding implementation
+- Updated dependencies
 
 
 # 2025.6.1
