@@ -4,6 +4,4 @@
   mkdocstrings[python]
   # mkdocstrings-python
   markdown-include
-  # mkdocs-jupyter
-  mkdocs-jupyter==0.24.6
-  # nbconvert<7.16 
+  mkdocs-jupyter==0.25.1
