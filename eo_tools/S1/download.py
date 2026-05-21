@@ -1,7 +1,5 @@
 from pystac_client.client import Client
 import geopandas as gpd
-import rioxarray as riox
-import xarray as xr
 import numpy as np
 import json
 from dask.diagnostics import ProgressBar
@@ -11,6 +9,7 @@ import os
 from datetime import datetime
 
 from rasterio.session import AWSSession
+from rasterio.windows import Window
 import rasterio
 import boto3
 
@@ -19,6 +18,21 @@ from eo_tools.S1.core import read_metadata
 
 import logging
 log = logging.getLogger(__name__)
+
+
+def _write_partial_download_info(path, info):
+    lines = [f"product_id: {json.dumps(info['product_id'])}", "subsets:"]
+    for subswath, pols in info["subsets"].items():
+        lines.append(f"  {subswath}:")
+        for pol, subset in pols.items():
+            lines.append(f"    {pol}:")
+            lines.append(f"      file: {json.dumps(subset['file'])}")
+            lines.append(f"      min_burst: {subset['min_burst']}")
+            lines.append(f"      max_burst: {subset['max_burst']}")
+            lines.append(f"      line_start: {subset['line_start']}")
+            lines.append(f"      number_of_lines: {subset['number_of_lines']}")
+            lines.append(f"      lines_per_burst: {subset['lines_per_burst']}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # search with pystac client and store in a dataframe
@@ -87,8 +101,9 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
     )
     for it in products.stac_item:
         log.info(f"Downloading {it.id}.")
-        # product will be saved in this subdir
-        product_root_dir = f"{it.id}.SAFE"
+        # product will be saved in this SAFE-like partial-product subdir
+        product_root_dir = f"{it.id}.partial.SAFE"
+        source_product_root_dir = f"{it.id}.SAFE"
 
         # use manifest file to get S3 bucket and prefix
         manifest_url = it.assets["safe_manifest"].href
@@ -130,9 +145,13 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
 
             # remove all that is before the SAFE dir
             parts = Path(f).parts
-            idx = parts.index(product_root_dir)
+            idx = parts.index(source_product_root_dir)
             # keep only the subdir (?)
-            local_path = str(Path(out_dir) / Path(*parts[idx:]))  # .parent
+            local_path = str(
+                Path(out_dir)
+                / product_root_dir
+                / Path(*parts[idx + 1 :])
+            )
             # skip raster files
             if Path(remote_file).suffix != ".tiff":
                 bucket.download_file(remote_file, local_path)
@@ -155,6 +174,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
         # identify corresponding subswaths
         sel_subsw = gdf_burst["subswath"]
         unique_subswaths = np.unique(sel_subsw)
+        partial_info = {"product_id": it.id, "subsets": {}}
         for pol in ["vv", "vh"]:
             for subswath in unique_subswaths:
                 # use metadata to find where to crop
@@ -164,31 +184,56 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
                 burst_info = meta["product"]["swathTiming"]
                 lines_per_burst = int(burst_info["linesPerBurst"])
                 burst_indices = gdf_burst[gdf_burst.subswath == subswath].burst
-                min_burst = burst_indices.min()
-                max_burst = burst_indices.max()
+                min_burst = int(burst_indices.min())
+                max_burst = int(burst_indices.max())
                 line_start = lines_per_burst * (min_burst - 1)
                 num_lines = lines_per_burst * (max_burst - min_burst + 1)
-                line_end = line_start + num_lines
 
-                log.info(f"Polarization {pol}, Subswath {subswath}, Bursts {min_burst} to {max_burst}.")
-                # open raster
+                log.info(
+                    f"Polarization {pol}, Subswath {subswath}, "
+                    f"Bursts {min_burst} to {max_burst}."
+                )
                 url = it.assets[f"{subswath.lower()}-{pol}"].href
-                # !! Important: open as a dataset (band_as_variable=True)
+                tiff_name = Path(url).name
+                tiff_out = Path(out_dir) / product_root_dir / "measurement" / tiff_name
+
                 with rasterio.Env(session=rio_session, AWS_VIRTUAL_HOSTING=False):
-                    ds = riox.open_rasterio(url, chunks="auto", band_as_variable=True)
+                    with rasterio.open(url) as src:
+                        window = Window(0, line_start, src.width, num_lines)
+                        profile = {
+                            key: value
+                            for key, value in src.profile.copy().items()
+                            if "gcp" not in key.lower()
+                        }
+                        profile.update(
+                            height=num_lines,
+                            width=src.width,
+                            transform=src.window_transform(window),
+                        )
+                        with rasterio.open(tiff_out, "w", **profile) as dst:
+                            with ProgressBar():
+                                dst.write(src.read(window=window))
 
-                # Complex not handled (yet) in zarr
-                ds["i"] = ds.band_1.real
-                ds["q"] = ds.band_1.imag
-                del ds["band_1"]
+                            for namespace in src.tag_namespaces():
+                                dst.update_tags(ns=namespace, **src.tags(ns=namespace))
+                            dst.update_tags(**src.tags())
+                            for band_idx in src.indexes:
+                                for namespace in src.tag_namespaces(band_idx):
+                                    dst.update_tags(
+                                        band_idx,
+                                        ns=namespace,
+                                        **src.tags(band_idx, ns=namespace),
+                                    )
+                                dst.update_tags(band_idx, **src.tags(band_idx))
 
-                ds.attrs["min_burst"] = min_burst
-                ds.attrs["max_burst"] = max_burst
+                partial_info["subsets"].setdefault(subswath.lower(), {})[pol] = {
+                    "file": f"measurement/{tiff_name}",
+                    "min_burst": min_burst,
+                    "max_burst": max_burst,
+                    "line_start": int(line_start),
+                    "number_of_lines": int(num_lines),
+                    "lines_per_burst": int(lines_per_burst),
+                }
 
-                # download cropped array
-                zarr_name = f"{Path(url).stem}.zarr"
-                zarr_out = Path(out_dir) / product_root_dir / "measurement" / zarr_name
-                with ProgressBar():
-                    ds.isel(y=slice(line_start, line_end)).chunk("auto").to_zarr(
-                        zarr_out, mode="w"
-                    )
+        partial_file = Path(out_dir) / product_root_dir / "partial_download.yml"
+        _write_partial_download_info(partial_file, partial_info)
