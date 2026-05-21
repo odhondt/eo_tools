@@ -1,9 +1,6 @@
-from pyroSAR import identify_many
 import os, shutil
-from datetime import datetime as dt
 import geopandas as gpd
 from shapely.geometry import Polygon
-import configparser
 from zipfile import ZipFile
 from glob import glob
 import re
@@ -36,7 +33,7 @@ def load_metadata(zip_path, subswath, polarization):
         archive_files = archive.namelist()
     else:
         archive_files = glob(f"{zip_path}/**", recursive=True)
-    regex_filter = r"s1(?:a|b|c)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
+    regex_filter = r"s1(?:a|b|c|d)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
     metadata_file_list = []
     for item in archive_files:
         if "calibration" in item or "rfi" in item:

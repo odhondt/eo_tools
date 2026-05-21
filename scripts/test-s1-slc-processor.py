@@ -44,6 +44,7 @@ slc_path = f"{data_dir}/{ids[0]}.zip"
 output_dir = "/data/res/test-slc-processor-sigma"
 output_dir_2 = "/data/res/test-slc-processor-beta"
 output_dir_3 = "/data/res/test-slc-processor-rtc"
+output_dir_4 = "/data/res/test-slc-processor-orbit-bary"
 
 # %%
 # load a geometry
@@ -119,13 +120,32 @@ out_dir_rtc = process_slc(
     clip_to_shape=True,
 )
 
+out_dir_orb = process_slc(
+    slc_path=slc_path,
+    output_dir=output_dir_4,
+    aoi_name=None,
+    shp=shp,
+    pol="full",
+    subswaths=["IW1", "IW2", "IW3"],
+    dem_upsampling=1.8,
+    dem_force_download=False,
+    dem_buffer_arc_sec=40,
+    multilook=[1, 4],
+    warp_kernel="bicubic",
+    cal_type="beta",
+    clip_to_shape=True,
+    orbit_interpolator="bary",
+)
+
 # %%
 
 m = folium.Map()
 _ = show_cog(f"{out_dir_beta}/amp_vv.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_orb}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_sigma}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_rtc}/amp_vv.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_beta}/amp_vh.tif", m, rescale=f"0, 1")
+_ = show_cog(f"{out_dir_orb}/amp_vh.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_sigma}/amp_vh.tif", m, rescale=f"0, 1")
 _ = show_cog(f"{out_dir_rtc}/amp_vh.tif", m, rescale=f"0, 1")
 LayerControl().add_to(m)

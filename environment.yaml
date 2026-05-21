@@ -6,17 +6,18 @@ dependencies:
   - python=3.12
   - pyproj
   - pytest
+  - isort
   - gdal
   - libgdal-jp2openjpeg
   - rasterio
-  - pyrosar=0.29.0
+  - pyrosar=0.35
   - spatialist
   - pip
   - pystac
   - pystac-client
   - geopandas
   - pandas
-  - eodag
+  - eodag=3.10.0
   - ipykernel
   - ipywidgets
   - black

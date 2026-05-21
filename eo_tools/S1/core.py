@@ -5,6 +5,7 @@ import numpy as np
 import rasterio
 import hashlib
 from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
+from scipy.interpolate import BarycentricInterpolator
 from numpy.polynomial import Polynomial
 from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
@@ -15,11 +16,12 @@ from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
 from pyproj import Transformer
+
 # from joblib import Parallel, delayed
 import concurrent
 import urllib.request
 from pyproj.datadir import get_user_data_dir
-from pyproj.sync import get_proj_endpoint 
+from pyproj.sync import get_proj_endpoint
 
 from pyroSAR import identify
 from xmltodict import parse
@@ -34,7 +36,7 @@ log = logging.getLogger(__name__)
 class S1IWSwath:
     """Class that contains metadata & orbit related to a Sentinel-1 subswath for a IW product. Member functions allow to pre-process individual bursts for further TOPS-InSAR processing. It includes:
 
-    - DEM retrieval (only SRTM 1sec for now)
+    - DEM retrieval
     - Back-geocoding to the DEM grid (by computing lookup tables)
     - Computing the azimuth deramping correction term
     - Read the raster burst from the SLC tiff file
@@ -273,7 +275,12 @@ class S1IWSwath:
         )
 
     def geocode_burst(
-        self, dem_file, burst_idx=1, dem_upsampling=1, simulate_terrain=False
+        self,
+        dem_file,
+        burst_idx=1,
+        dem_upsampling=1,
+        simulate_terrain=False,
+        orbit_interpolator="chspline",
     ):
         """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
 
@@ -282,6 +289,7 @@ class S1IWSwath:
             burst_idx (int, optional): Burst index. Defaults to 1.
             dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
             simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
+            orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
         Returns:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
@@ -294,6 +302,11 @@ class S1IWSwath:
 
         if dem_upsampling < 0:
             raise ValueError("dem_upsampling must be > 0")
+
+        if orbit_interpolator not in ["chspline", "bary", "poly"]:
+            raise ValueError(
+                "Unknown orbit interpolator. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial)"
+            )
 
         meta = self.meta
 
@@ -342,9 +355,12 @@ class S1IWSwath:
 
         state_vectors = {k: v[cnd] for k, v in self.state_vectors.items() if k != "t0"}
 
-        # TODO (optional) integrate other models to orbit interpolation
-        interp_pos, interp_vel = sv_interpolator(state_vectors)
-        # interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
+        if orbit_interpolator == "chspline":
+            interp_pos, interp_vel = sv_interpolator(state_vectors)
+        elif orbit_interpolator == "bary":
+            interp_pos, interp_vel = sv_interpolator_bary(state_vectors)
+        elif orbit_interpolator == "poly":
+            interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
         log.info("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
@@ -647,35 +663,83 @@ class S1IWSwath:
 
         return (4 * np.pi / lam) * dist
 
-    def compute_burst_overlap(self, burst_idx=2):
+    def compute_burst_overlap(self, burst_idx, min_burst=1):
         """Computes the overlap between a burst and the previous one.
         Used for ESD.
 
         Args:
-            burst_idx (int, optional): Burst index, must be >=2. Defaults to 2.
-
-        Raises:
-            ValueError: Burst index is out of bounds.
+            burst_idx (int, optional): Burst index, must be >=min_burst.
+            min_burst (int, optional): Index of the first burst to process. Defaults to 1.
 
         Returns:
-            int: number of overlapping lines.
+            float: number of overlapping lines, not rounded to the closest integer.
+
+        Notes:
+            Returns 0.0 if burst_idx==min_burst.
         """
-        if burst_idx < 2 or burst_idx > self.burst_count:
+        if min_burst < 1 or min_burst > self.burst_count:
             raise ValueError(
-                f"Invalid burst index (must be between 2 and {self.burst_count})"
+                f"Invalid minimum burst index (must be between 1 and {self.burst_count})"
             )
+
+        if burst_idx < min_burst or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between min_burst and {self.burst_count})"
+            )
+
+        # no ovelap for first processed burst
+        if burst_idx == min_burst:
+            return 0.0
+
         meta = self.meta
         image_info = meta["product"]["imageAnnotation"]["imageInformation"]
         azimuth_time_interval = float(image_info["azimuthTimeInterval"])
         burst_info = meta["product"]["swathTiming"]
-        burst_1 = burst_info["burstList"]["burst"][burst_idx - 1]
+        burst_1 = burst_info["burstList"]["burst"][burst_idx - 2]
         az_time_1 = isoparse(burst_1["azimuthTime"])
-        burst_2 = burst_info["burstList"]["burst"][burst_idx]
+        burst_2 = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time_2 = isoparse(burst_2["azimuthTime"])
 
         diff_az_time = (
             az_time_1 - az_time_2
         ).total_seconds() + self.lines_per_burst * azimuth_time_interval
+        return diff_az_time / azimuth_time_interval
+
+    def compute_burst_offset(self, burst_idx, min_burst=1):
+        """Computes burst line index in the stitched SLC using its start time and azimuth time interval.
+
+        Args:
+            burst_idx (int, optional): Burst index.
+            min_burst (int, optional): Index of the first burst to process. Defaults to 1.
+
+        Returns:
+            float: line offset, not rounded to the closest integer.
+        """
+        if min_burst < 1 or min_burst > self.burst_count:
+            raise ValueError(
+                f"Invalid minimum burst index (must be between 1 and {self.burst_count})"
+            )
+        if burst_idx < min_burst or burst_idx > self.burst_count:
+            raise ValueError(
+                f"Invalid burst index (must be between 1 and {self.burst_count})"
+            )
+
+        # for first processed burst index is always zero
+        if burst_idx == min_burst:
+            return 0.0
+
+        meta = self.meta
+        image_info = meta["product"]["imageAnnotation"]["imageInformation"]
+        azimuth_time_interval = float(image_info["azimuthTimeInterval"])
+        burst_info = meta["product"]["swathTiming"]
+
+        # start of first burst
+        burst_1 = burst_info["burstList"]["burst"][min_burst - 1]
+        az_time_1 = isoparse(burst_1["azimuthTime"])
+        burst_2 = burst_info["burstList"]["burst"][burst_idx - 1]
+        az_time_2 = isoparse(burst_2["azimuthTime"])
+
+        diff_az_time = (az_time_2 - az_time_1).total_seconds()
         return diff_az_time / azimuth_time_interval
 
 
@@ -952,6 +1016,22 @@ def sv_interpolator(state_vectors):
     return interp_pos, interp_vel
 
 
+def sv_interpolator_bary(state_vectors):
+
+    t = state_vectors["t"]
+    x = state_vectors["x"]
+    y = state_vectors["y"]
+    z = state_vectors["z"]
+    vx = state_vectors["vx"]
+    vy = state_vectors["vy"]
+    vz = state_vectors["vz"]
+
+    interp_pos = BarycentricInterpolator(t, np.array([x, y, z]).T)
+    interp_vel = BarycentricInterpolator(t, np.array([vx, vy, vz]).T)
+
+    return interp_pos, interp_vel
+
+
 # TODO: order as a parmeter
 def sv_interpolator_poly(state_vectors):
     t = state_vectors["t"]
@@ -1028,10 +1108,11 @@ def load_dem_coords(dem_file, upscale_factor=1):
         lat = lat_[None, :] + np.zeros_like(alt)
 
     # make sure nodata is nan in output
-    if not np.isnan(nodata):
+    msk = None
+    if nodata is not None and not np.isnan(nodata):
         msk = alt == nodata
     alt = alt.astype("float64")
-    if not np.isnan(nodata):
+    if msk is not None:
         alt[msk] = np.nan
 
     dem_prof.update({"width": width, "height": height, "transform": dem_trans})
@@ -1081,7 +1162,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     elif composite_crs == "EPSG:4326+3855":
         grid_name = "us_nga_egm08_25.tif"
     else:
-        raise ValueError("Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855")
+        raise ValueError(
+            "Invalid `composite_crs`. Must be either EPSG:4326+5773 or EPSG:4326+3855"
+        )
 
     grid_repo_url = get_proj_endpoint()
     proj_path = Path(get_user_data_dir())
@@ -1089,10 +1172,9 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
         proj_path.mkdir(parents=True)
     grid_path = proj_path / grid_name
     if not grid_path.exists():
-        grid_url = f"{grid_repo_url}/{grid_name}" 
+        grid_url = f"{grid_repo_url}/{grid_name}"
         log.info(f"Download {grid_url}")
         urllib.request.urlretrieve(grid_url, grid_path)
-
 
     # since pyproj 3.7.0 we need to create one transformer per thread
     def transform_chunk(data_chunk):

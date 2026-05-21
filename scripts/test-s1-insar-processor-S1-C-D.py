@@ -35,17 +35,17 @@ from folium import LayerControl
 data_dir = "/data/S1"
 
 ids = [
-    "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
-    "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
+    "S1C_IW_SLC__1SDV_20260420T174607_20260420T174635_007303_00ECDF_FA97",
+    "S1D_IW_SLC__1SDV_20260421T174617_20260421T174645_002448_00405E_4FF4"
 ]
 primary_path = f"{data_dir}/{ids[0]}.zip"
 secondary_path = f"{data_dir}/{ids[1]}.zip"
-output_dir = "/data/res/test-full-processor"
+output_dir = "/data/res/test-s1c-s1d"
 
 # %%
 # load a geometry
 # aoi_file = "/eo_tools/data/Morocco_small.geojson"
-aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+aoi_file = "/eo_tools/data/Andorra_tiny.geojson"
 # aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
@@ -63,10 +63,10 @@ shp = gpd.read_file(aoi_file).geometry[0]
 
 # %%
 
-out_dir_prev = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+# out_dir_prev = f"{output_dir}/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
 
-if os.path.isdir(out_dir_prev):
-    remove(out_dir_prev)
+# if os.path.isdir(out_dir_prev):
+    # remove(out_dir_prev)
 
 process_args = dict(
     prm_path=primary_path,
@@ -100,13 +100,11 @@ out_dir = process_insar(**process_args)
 
 # %%
 # compare with reference data processed with SNAP
-out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
-ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
+# out_dir = "/data/res/test-full-processor/S1_InSAR_2023-09-04-063730__2023-09-16-063730"
+# ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
 
 m = folium.Map()
-_ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
 _ = show_cog(f"{out_dir}/phi_vv.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
-_ = show_cog(f"{ref_dir}/coh.tif", m, rescale=f"0,1")
 _ = show_cog(f"{out_dir}/coh_vv.tif", m, rescale=f"0,1")
 LayerControl().add_to(m)
 

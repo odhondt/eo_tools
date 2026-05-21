@@ -26,7 +26,7 @@ from numpy.fft import fft2, fftshift, ifft2, ifftshift
 from scipy.ndimage import uniform_filter as uflt
 from eo_tools.auxils import block_process
 from eo_tools.util import _has_overlap
-from skimage.morphology import binary_erosion
+from skimage.morphology import erosion
 import re
 
 # use child processes
@@ -63,6 +63,7 @@ def process_insar(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -93,6 +94,7 @@ def process_insar(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: output directory
@@ -122,6 +124,7 @@ def process_insar(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = []
@@ -226,6 +229,7 @@ def prepare_insar(
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> str:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
@@ -247,6 +251,7 @@ def prepare_insar(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         str: output directory
@@ -354,6 +359,7 @@ def prepare_insar(
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
                     orb_dir=orb_dir,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 os.rename(
                     f"{out_dir}/primary.tif",
@@ -386,6 +392,7 @@ def preprocess_insar_iw(
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> None:
     """Pre-process S1 InSAR subswaths pairs. Write coregistered primary and secondary SLC files as well as a lookup table that can be used to geocode rasters in the single-look radar geometry.
 
@@ -406,9 +413,10 @@ def preprocess_insar_iw(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
-        DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        DEM-assisted coregistration is performed to align the secondary with the primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
     """
 
     if not os.path.isdir(output_dir):
@@ -452,8 +460,8 @@ def preprocess_insar_iw(
     if not np.all(np.array(offsets) == offsets[0]):
         raise RuntimeError("Overlapping bursts must be consecutive.")
 
-    # == 0 if full overlap
-    burst_offset = offsets[0]
+    # index offset when products partially overlap, == 0 if full overlap
+    burst_idx_offset = offsets[0]
 
     # intra-product overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
@@ -499,7 +507,7 @@ def preprocess_insar_iw(
             nrg,
             min_burst,
             max_burst_,
-            burst_offset,
+            burst_idx_offset,
             dem_name,
             dem_upsampling,
             dem_buffer_arc_sec,
@@ -507,6 +515,7 @@ def preprocess_insar_iw(
             warp_kernel,
             overlap,
             cal_type,
+            orbit_interpolator,
         ),
     )
 
@@ -530,9 +539,9 @@ def preprocess_insar_iw(
             (
                 tmp_sec,
                 f"{output_dir}/secondary.tif",
-                prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
+                min_burst,
+                prm,
             ),
         )
 
@@ -541,9 +550,9 @@ def preprocess_insar_iw(
             (
                 tmp_prm,
                 f"{output_dir}/primary.tif",
-                prm.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
+                min_burst,
+                prm,
             ),
         )
 
@@ -573,6 +582,7 @@ def process_slc(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Geocode the amplitude of a Sentinel-1 SLC product in the DEM geometry and writes the results as a COG (Cloud Optimized GeoTiFF) file.
     AOI crop is optional.
@@ -595,6 +605,7 @@ def process_slc(
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: output directory
@@ -616,6 +627,7 @@ def process_slc(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = ["amp"]
@@ -677,6 +689,7 @@ def process_h_alpha_dual(
     clip_to_shape: bool = True,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> Path:
     """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
 
@@ -693,13 +706,14 @@ def process_h_alpha_dual(
         dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
-        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the coherency matrix. Defaults to [5, 5].
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
         warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         Path: Output directory
@@ -720,6 +734,7 @@ def process_h_alpha_dual(
         dem_buffer_arc_sec=dem_buffer_arc_sec,
         skip_preprocessing=skip_preprocessing,
         orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
     )
 
     var_names = ["H", "alpha"]
@@ -773,6 +788,114 @@ def process_h_alpha_dual(
     return Path(out_dir).parent
 
 
+def process_polsar_cov_dual(
+    slc_path: str,
+    output_dir: str,
+    aoi_name: str | None = None,
+    shp: BaseGeometry | None = None,
+    subswaths: list[str] = ["IW1", "IW2", "IW3"],
+    dem_dir: str = "/tmp",
+    dem_name: str = "nasadem",
+    dem_upsampling: float = 1.8,
+    dem_force_download: bool = False,
+    dem_buffer_arc_sec: float = 40,
+    boxcar_size: int | list[int] = [5, 5],
+    multilook: list[int] = [1, 4],
+    warp_kernel: str = "bicubic",
+    cal_type: str = "beta",
+    clip_to_shape: bool = True,
+    skip_preprocessing: bool = False,
+    orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
+) -> Path:
+    """Computes and geocode the H-Alpha decomposition for a dual-pol Sentinel-1 SLC product.
+
+    Args:
+        slc_path (str): Input image (SLC Sentinel-1 product directory or zip file).
+        output_dir (str): Location in which the product subdirectory will be created.
+        aoi_name (str | None, optional): Optional suffix to describe AOI / experiment. Defaults to None.
+        shp (BaseGeometry | None, optional): Shapely geometry describing an area of interest as a polygon. Defaults to None.
+        subswaths (list[str], optional): Limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
+        dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
+        dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
+        dem_upsampling (float, optional): Upsampling factor for the DEM. It is recommended to keep the default value. Defaults to 1.8.
+        dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
+        dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
+        boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
+        multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
+        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
+        clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
+        skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
+        orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
+
+    Returns:
+        Path: Output directory
+    """
+
+    out_dir = prepare_slc(
+        slc_path=slc_path,
+        output_dir=output_dir,
+        aoi_name=aoi_name,
+        shp=shp,
+        pol="full",
+        subswaths=subswaths,
+        cal_type=cal_type,
+        dem_dir=dem_dir,
+        dem_name=dem_name,
+        dem_upsampling=dem_upsampling,
+        dem_force_download=dem_force_download,
+        dem_buffer_arc_sec=dem_buffer_arc_sec,
+        skip_preprocessing=skip_preprocessing,
+        orb_dir=orb_dir,
+        orbit_interpolator=orbit_interpolator,
+    )
+
+    var_names = ["c11", "c22", "c12_real", "c12_imag"]
+
+    iw_idx = [iw[2] for iw in subswaths]
+    patterns = [f"iw{iw}" for iw in iw_idx]
+    for pattern in patterns:
+        vv_file = f"{out_dir}/slc_vv_{pattern}.tif"
+        vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
+
+        if os.path.isfile(vv_file) and os.path.isfile(vh_file):
+            log.info(
+                f"---- Dual-PolSAR Covariance for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
+            )
+
+            c11_file = f"{out_dir}/c11_{pattern}.tif"
+            c12r_file = f"{out_dir}/c12_real_{pattern}.tif"
+            c12i_file = f"{out_dir}/c12_imag_{pattern}.tif"
+            c22_file = f"{out_dir}/c22_{pattern}.tif"
+            polsar_cov_dual(
+                vv_file=vv_file,
+                vh_file=vh_file,
+                c11_file=c11_file,
+                c22_file=c22_file,
+                c12_real_file=c12r_file,
+                c12_imag_file=c12i_file,
+                box_size=boxcar_size,
+                multilook=multilook,
+            )
+
+    # by default, we use iw and pol which exist
+    _child_process(
+        geocode_and_merge_iw,
+        dict(
+            input_dir=Path(out_dir).parent,
+            var_names=var_names,
+            shp=shp,
+            pol=["vv", "vh"],
+            subswaths=["IW1", "IW2", "IW3"],
+            warp_kernel=warp_kernel,
+            clip_to_shape=clip_to_shape,
+        ),
+    )
+    return Path(out_dir).parent
+
+
 def prepare_slc(
     slc_path: str,
     output_dir: str,
@@ -788,6 +911,7 @@ def prepare_slc(
     dem_buffer_arc_sec: float = 40,
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> str:
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
@@ -806,6 +930,7 @@ def prepare_slc(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. It is recommended to leave this parameter to default value. Defaults to False.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Returns:
         str: output directory
@@ -895,6 +1020,7 @@ def prepare_slc(
                     dem_buffer_arc_sec=dem_buffer_arc_sec,
                     dem_force_download=dem_force_download,
                     orb_dir=orb_dir,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 os.rename(
                     f"{out_dir}/slc.tif",
@@ -920,6 +1046,7 @@ def preprocess_slc_iw(
     dem_buffer_arc_sec: float = 40,
     dem_force_download: bool = False,
     orb_dir: str = "/tmp",
+    orbit_interpolator: str = "chspline",
 ) -> None:
     """Pre-process a Sentinel-1 SLC subswath, with the ability to select a subset of bursts. Apply radiometric calibration, stitch the selected bursts and compute a lookup table, wich can be used to project the data in the DEM geometry.
 
@@ -938,6 +1065,7 @@ def preprocess_slc_iw(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         dem_force_download (bool, optional): To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to false.
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
+        orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
@@ -1006,6 +1134,7 @@ def preprocess_slc_iw(
             dem_force_download,
             overlap,
             cal_type,
+            orbit_interpolator,
         ),
     )
 
@@ -1015,9 +1144,9 @@ def preprocess_slc_iw(
             (
                 tmp_slc,
                 f"{output_dir}/slc.tif",
-                slc.lines_per_burst,
                 max_burst_ - min_burst + 1,
-                overlap,
+                min_burst,
+                slc,
             ),
         )
 
@@ -1432,7 +1561,9 @@ def coherence(
         mlt_az, mlt_rg = multilook
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_prm = riox.open_rasterio(prm_file, **open_args)
@@ -1478,7 +1609,7 @@ def coherence(
         coh = np.abs(coh)
 
     struct = np.ones((box_az, box_rg))
-    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
     coh = da.where(msk_out, coh, np.nan)
 
     da_coh = xr.DataArray(
@@ -1574,7 +1705,10 @@ def h_alpha_dual(
         mlt_az, mlt_rg = multilook
 
     # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
@@ -1629,7 +1763,9 @@ def h_alpha_dual(
 
     # Post-processing to adapt to polSAR params
     struct = np.ones((box_az, box_rg))
-    msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # msk_out = da.map_blocks(binary_erosion, msk, struct)
+    # struct = footprint_rectangle((box_az, box_rg))
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
 
     H = da.where(msk_out, H, np.nan)
 
@@ -1656,6 +1792,132 @@ def h_alpha_dual(
     )
     da_alpha.rio.write_nodata(nodataval, inplace=True)
     da_alpha.rio.to_raster(alpha_file)
+
+
+def polsar_cov_dual(
+    vv_file: str,
+    vh_file: str,
+    c11_file: str,
+    c22_file: str,
+    c12_real_file: str,
+    c12_imag_file: str,
+    box_size: int | list[int] = 5,
+    multilook: list = [1, 1],
+) -> None:
+    """Compute the dual-polarimetric covariance matrix elements from two SLC polarimetric channels.
+
+    Args:
+        vv_file (str): GeoTiff file of the VV SLC image
+        vh_file (str): GeoTiff file of the VH SLC image
+        c11_file (str): GeoTiff file of C11 output
+        c22_file (str): GeoTiff file of C22 output
+        c12_real_file (str): GeoTiff file of C12 output
+        c12_imag_file (str): GeoTiff file of C12 output
+        out_file (str): output file
+        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
+        multilook (list, optional): multilook dimension in azimuth and range. Defaults to [1, 1].
+    """
+
+    if isinstance(box_size, list):
+        box_az = box_size[0]
+        box_rg = box_size[1]
+    else:
+        box_az = box_size
+        box_rg = box_size
+
+    if not isinstance(multilook, list):
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    else:
+        mlt_az, mlt_rg = multilook
+
+    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
+    # open_args = dict(lock=False, chunks=(1, 1024, 1024), cache=True, masked=True)
+    open_args = dict(
+        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
+    )
+
+    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    ds_vv = riox.open_rasterio(vv_file, **open_args)
+    ds_vh = riox.open_rasterio(vh_file, **open_args)
+
+    # accessing dask arrays
+    vv = ds_vv[0].data
+    vh = ds_vh[0].data
+
+    process_args = dict(
+        dimaz=box_az,
+        dimrg=box_rg,
+        depth=(box_az, box_rg),
+    )
+
+    # multilooking
+    c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
+    c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
+    c12 = presum(vv * vh.conj(), mlt_az, mlt_rg)
+
+    msk = ~np.isnan(c12)
+    nodataval = np.nan
+
+    # silence dask warnings
+    c11 = np.nan_to_num(c11)
+    c12 = np.nan_to_num(c12)
+    c22 = np.nan_to_num(c22)
+
+    # additional boxcar
+    c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
+    c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
+    c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
+
+    # Post-processing to adapt to polSAR params
+    struct = np.ones((box_az, box_rg))
+    msk_out = da.map_blocks(erosion, msk, footprint=struct)
+
+    c11 = da.where(msk_out, c11, np.nan)
+    da_c11 = xr.DataArray(
+        name="C11",
+        data=c11[None],
+        dims=("band", "y", "x"),
+    )
+    da_c11.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c11.rio.write_nodata(nodataval, inplace=True)
+    da_c11.rio.to_raster(c11_file)
+
+    c12 = da.where(msk_out, c12, np.nan)
+    da_c12r = xr.DataArray(
+        name="c12_real",
+        data=c12.real[None],
+        dims=("band", "y", "x"),
+    )
+    da_c12r.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c12r.rio.write_nodata(nodataval, inplace=True)
+    da_c12r.rio.to_raster(c12_real_file)
+
+    da_c12i = xr.DataArray(
+        name="c12_imag",
+        data=c12.imag[None],
+        dims=("band", "y", "x"),
+    )
+    da_c12i.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c12i.rio.write_nodata(nodataval, inplace=True)
+    da_c12i.rio.to_raster(c12_imag_file)
+
+    c22 = da.where(msk_out, c22, np.nan)
+    da_c22 = xr.DataArray(
+        name="C22",
+        data=c22[None],
+        dims=("band", "y", "x"),
+    )
+    da_c22.rio.write_transform(
+        ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
+    )
+    da_c22.rio.write_nodata(nodataval, inplace=True)
+    da_c22.rio.to_raster(c22_file)
 
 
 def goldstein(
@@ -1695,7 +1957,9 @@ def goldstein(
         )
 
     # TODO: find a way to automatically tune chunk size
-    open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    # open_args = dict(lock=False, chunks=(1, 2048, 2048), masked=True)
+    open_args = dict(lock=False, chunks=dict(band=1, y=2048, x=2048), masked=True)
+
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     ds_ifg = riox.open_rasterio(ifg_file, **open_args)
     ifg = ds_ifg[0].data
@@ -1821,7 +2085,7 @@ def _process_bursts_insar(
     nrg,
     min_burst,
     max_burst,
-    burst_offset,
+    burst_idx_offset,
     dem_name,
     dem_upsampling,
     dem_buffer_arc_sec,
@@ -1829,9 +2093,10 @@ def _process_bursts_insar(
     warp_kernel,
     overlap,
     cal_type,
+    orbit_interpolator,
 ):
 
-    H = int(overlap / 2)
+    # H = int(overlap / 2)
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -1839,14 +2104,11 @@ def _process_bursts_insar(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
-        # compress="zstd",
-        # num_threads="all_cpus",
         tiled=True,
         blockxsize=512,
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # process individual bursts
     dem_file = prm.fetch_dem(
         min_burst,
         max_burst,
@@ -1889,7 +2151,13 @@ def _process_bursts_insar(
             off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
-
+                burst_offset = round(
+                    prm.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
+                )
+                # overlap between consecutive burst, ==0 for min_burst
+                burst_overlap = round(
+                    prm.compute_burst_overlap(burst_idx=burst_idx, min_burst=min_burst)
+                )
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
                 dem_file_burst = f"{output_dir}/dem_burst.tif"
                 burst_geoms = prm.gdf_burst_geom
@@ -1917,28 +2185,30 @@ def _process_bursts_insar(
                     dem_file_burst,
                     burst_idx=burst_idx,
                     dem_upsampling=1,
+                    orbit_interpolator=orbit_interpolator,
                 )
                 az_s2g, rg_s2g = sec.geocode_burst(
                     dem_file_burst,
-                    burst_idx=burst_idx + burst_offset,
+                    burst_idx=burst_idx + burst_idx_offset,
                     dem_upsampling=1,
+                    orbit_interpolator=orbit_interpolator,
                 )
 
                 # read primary and secondary burst rasters
                 arr_p = prm.read_burst(burst_idx, True)
-                arr_s = sec.read_burst(burst_idx + burst_offset, True)
+                arr_s = sec.read_burst(burst_idx + burst_idx_offset, True)
 
                 # radiometric calibration (beta or sigma nought)
                 cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
                 cal_s = sec.calibration_factor(
-                    burst_idx + burst_offset, cal_type=cal_type
+                    burst_idx + burst_idx_offset, cal_type=cal_type
                 )
                 log.info("Apply calibration factor")
                 arr_p /= cal_p
                 arr_s /= cal_s
 
                 # deramp secondary
-                pdb_s = sec.deramp_burst(burst_idx + burst_offset)
+                pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
                 log.info("Apply phase deramping")
                 arr_s *= np.exp(1j * pdb_s)
 
@@ -1973,15 +2243,16 @@ def _process_bursts_insar(
                     window=Window(0, first_line, nrg, prm.lines_per_burst),
                 )
 
+                # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
+                H = burst_overlap // 2
+                mask_overlap = az_p2g < H
+                az_p2g[mask_overlap] = np.nan
+                rg_p2g[mask_overlap] = np.nan
+
                 # place overlapping burst LUT with azimuth offset
-                if burst_idx > min_burst:
-                    msk_overlap = az_p2g < H
-                    az_p2g[msk_overlap] = np.nan
-                    rg_p2g[msk_overlap] = np.nan
                 msk = ~np.isnan(az_p2g)
-                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + burst_offset
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-                off_az += prm.lines_per_burst - 2 * H
 
     remove(dem_file_burst)
 
@@ -2005,9 +2276,9 @@ def _process_bursts_slc(
     dem_force_download,
     overlap,
     cal_type,
+    orbit_interpolator,
 ):
 
-    H = int(overlap / 2)
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -2015,14 +2286,11 @@ def _process_bursts_slc(
         dtype="complex64",
         driver="GTiff",
         nodata=np.nan,
-        # compress="zstd",
-        # num_threads="all_cpus",
         tiled=True,
         blockxsize=512,
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # process individual bursts
     dem_file = slc.fetch_dem(
         min_burst,
         max_burst,
@@ -2055,10 +2323,16 @@ def _process_bursts_slc(
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
     with rio.Env(GDAL_CACHEMAX=512) as env:
         with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm, rio.open(dem_file) as ds_dem:
-            off_az = 0
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
-
+                # position of the burst in the stitched SLC
+                burst_offset = round(
+                    slc.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
+                )
+                # overlap between consecutive burst, ==0 for min_burst
+                burst_overlap = round(
+                    slc.compute_burst_overlap(burst_idx=burst_idx, min_burst=min_burst)
+                )
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
                 dem_file_burst = f"{output_dir}/dem_burst.tif"
                 burst_geoms = slc.gdf_burst_geom
@@ -2087,6 +2361,7 @@ def _process_bursts_slc(
                         dem_file_burst,
                         burst_idx=burst_idx,
                         dem_upsampling=1,
+                        orbit_interpolator=orbit_interpolator,
                     )
                 else:
                     az_p2g, rg_p2g, gamma_t = slc.geocode_burst(
@@ -2094,6 +2369,7 @@ def _process_bursts_slc(
                         burst_idx=burst_idx,
                         dem_upsampling=1,
                         simulate_terrain=True,
+                        orbit_interpolator=orbit_interpolator,
                     )
 
                 # read primary and secondary burst rasters
@@ -2120,15 +2396,16 @@ def _process_bursts_slc(
                     arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
                 )
 
+                # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
+                H = burst_overlap // 2
+                mask_overlap = az_p2g < H
+                az_p2g[mask_overlap] = np.nan
+                rg_p2g[mask_overlap] = np.nan
+
                 # place overlapping burst LUT with azimuth offset
-                if burst_idx > min_burst:
-                    msk_overlap = az_p2g < H
-                    az_p2g[msk_overlap] = np.nan
-                    rg_p2g[msk_overlap] = np.nan
                 msk = ~np.isnan(az_p2g)
-                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + off_az
+                arr_lut[0, slices[0], slices[1]][msk] = az_p2g[msk] + burst_offset
                 arr_lut[1, slices[0], slices[1]][msk] = rg_p2g[msk]
-                off_az += slc.lines_per_burst - 2 * H
 
     remove(dem_file_burst)
 
@@ -2208,52 +2485,55 @@ def _apply_fast_esd(
 
 
 def _stitch_bursts(
-    in_file, out_file, lines_per_burst, burst_count, overlap, off_burst=1
+    in_file,
+    out_file,
+    burst_count,
+    min_burst=1,
+    swath=None,
 ):
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    H = int(overlap / 2)
-    naz = lines_per_burst
+
+    log.info("Stitch bursts to make a continuous image")
+
+    naz = swath.lines_per_burst
+
+    # Compute burst offsets and overlaps
+    offsets = []
+    overlaps = []
+    for i in range(burst_count):
+        offset = swath.compute_burst_offset(
+            burst_idx=i + min_burst, min_burst=min_burst
+        )
+        ovlp = swath.compute_burst_overlap(burst_idx=i + min_burst, min_burst=min_burst)
+        offsets.append(round(offset))
+        overlaps.append(round(ovlp))
+
+    # Output raster size is last offset plus burst height
+    dst_size = offsets[-1] + naz
+
     with rio.open(in_file) as src:
         nrg = src.width
 
-        if burst_count >= 2:
-            siz = (naz - H) * 2 + (burst_count - 2) * (naz - 2 * H)
-        elif burst_count == 1:
-            siz = naz - H
-        else:
-            raise ValueError("Empty burst list")
-
         prof = src.profile.copy()
-        prof.update(
-            dict(width=nrg, height=siz)
-            # dict(width=nrg, height=siz, compress="zstd", num_threads="all_cpus")
-        )
-        with rio.open(out_file, "w", **prof) as dst:
+        prof.update(dict(width=nrg, height=dst_size))
 
-            log.info("Stitch bursts to make a continuous image")
-            off_dst = 0
+        with rio.open(out_file, "w", **prof) as dst:
             for i in range(burst_count):
-                if i == 0:
-                    nlines = naz - H
-                    off_src = 0
-                elif i == burst_count - 1:
-                    nlines = naz - H
-                    off_src = H
-                else:
-                    nlines = naz - 2 * H
-                    off_src = H
+                # for burst_idx == min_burst, compute_burst_overlap returns 0
+                H = overlaps[i] // 2
+                # Removes H from top of each burst
+                off_dst = offsets[i] + H
+                off_src = i * naz + H
+                nlines = naz - H
 
                 for j in range(src.count):
                     arr = src.read(
                         j + 1,
-                        window=Window(
-                            0, (i + off_burst - 1) * naz + off_src, nrg, nlines
-                        ),
+                        window=Window(0, off_src, nrg, nlines),
                     )
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
-                off_dst += nlines
 
 
 def _child_process(func, args):
