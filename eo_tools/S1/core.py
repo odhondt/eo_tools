@@ -27,6 +27,8 @@ from pyproj.sync import get_proj_endpoint
 from pyroSAR import identify
 from xmltodict import parse
 import zipfile
+import tempfile
+import shutil
 
 
 import logging
@@ -45,6 +47,21 @@ def read_partial_download_info(safe_path):
 
     with partial_file.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def identify_safe_product(safe_path, is_partial=False):
+    """Identify an S1 product, normalizing partial SAFE names for pyroSAR."""
+    if not is_partial:
+        return identify(safe_path)
+
+    partial_path = Path(safe_path)
+    source_name = partial_path.name.replace(".partial.SAFE", ".SAFE")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        fake_safe = Path(tmp_dir) / source_name
+        fake_safe.mkdir()
+        shutil.copy2(partial_path / "manifest.safe", fake_safe / "manifest.safe")
+        shutil.copytree(partial_path / "annotation", fake_safe / "annotation")
+        return identify(str(fake_safe))
 
 
 class S1IWSwath:
@@ -168,7 +185,7 @@ class S1IWSwath:
         log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors (orbit)
-        product = identify(safe_path)
+        product = identify_safe_product(safe_path, self.is_partial)
         zip_orb = product.getOSV(orb_dir, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
             raise RuntimeError("No orbit file available for this product")
