@@ -356,10 +356,7 @@ class S1IWSwath:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         if dem_upsampling < 0:
             raise ValueError("dem_upsampling must be > 0")
@@ -380,8 +377,6 @@ class S1IWSwath:
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
-        if burst_idx > self.burst_count or burst_idx < 1:
-            raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
 
@@ -513,10 +508,7 @@ class S1IWSwath:
             array: phase correction to apply to the SLC burst.
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         meta = self.meta
         meta_image = meta["product"]["imageAnnotation"]
@@ -617,6 +609,8 @@ class S1IWSwath:
         Returns:
             cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought.
         """
+        self._validate_available_burst(burst_idx)
+
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
         first_line = (burst_idx - 1) * self.lines_per_burst
