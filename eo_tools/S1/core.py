@@ -134,6 +134,13 @@ class S1IWSwath:
             self.min_burst = int(self.partial_subset["min_burst"])
             self.max_burst = int(self.partial_subset["max_burst"])
             self.raster_line_offset = int(self.partial_subset["line_start"])
+            log.info(
+                "Partial product detected for IW%s/%s: available bursts %s to %s.",
+                iw,
+                pol,
+                self.min_burst,
+                self.max_burst,
+            )
         else:
             self.min_burst = 1
             self.max_burst = self.burst_count
