@@ -57,6 +57,27 @@ def test_read_burst_valid_burst(create_swath):
         ), "The returned burst data does not match the expected output"
 
 
+def test_read_burst_partial_product_offset(create_swath):
+    swath = create_swath
+
+    with patch.object(swath, "burst_count", 9), patch.object(
+        swath, "is_partial", True, create=True
+    ), patch.object(
+        swath, "min_burst", 3, create=True
+    ), patch.object(swath, "max_burst", 5, create=True), patch.object(
+        swath, "lines_per_burst", 1500
+    ), patch.object(swath, "pth_tiff", "mocked_partial_path.tiff"), patch(
+        "eo_tools.S1.core.read_chunk"
+    ) as mock_read_chunk:
+        fake_array = np.ones((1500, 2000), dtype=np.complex64)
+        mock_read_chunk.return_value = fake_array
+
+        result = swath.read_burst(burst_idx=4, remove_invalid=False)
+
+        mock_read_chunk.assert_called_once_with("mocked_partial_path.tiff", 1500, 1500)
+        assert np.array_equal(result, fake_array)
+
+
 def test_read_burst_remove_invalid(create_swath):
     swath = create_swath
 
@@ -124,7 +145,7 @@ def test_read_burst_invalid_burst(create_swath):
     swath = create_swath
 
     # Mock the burst count to 3 for testing
-    with patch.object(swath, "burst_count", 3):
+    with patch.object(swath, "burst_count", 3), patch.object(swath, "max_burst", 3):
 
         # Act & Assert: Test burst_idx out of range (e.g., 0 or larger than burst_count)
         with pytest.raises(ValueError, match=r"Invalid burst index.*"):
