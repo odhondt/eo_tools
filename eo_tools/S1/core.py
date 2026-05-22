@@ -650,6 +650,12 @@ class S1IWSwath:
             )
         return cal_fac
 
+    def _validate_available_burst(self, burst_idx):
+        if burst_idx < self.min_burst or burst_idx > self.max_burst:
+            raise ValueError(
+                f"Invalid burst index (must be between {self.min_burst} and {self.max_burst})"
+            )
+
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
@@ -661,16 +667,13 @@ class S1IWSwath:
             array: Complex raster
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
 
-        first_line = (burst_idx - 1) * self.lines_per_burst
+        first_line = (burst_idx - self.min_burst) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
         arr = read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(
