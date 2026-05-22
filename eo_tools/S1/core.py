@@ -4,6 +4,7 @@ import xmltodict
 import numpy as np
 import rasterio
 import hashlib
+import yaml
 from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from scipy.interpolate import BarycentricInterpolator
 from numpy.polynomial import Polynomial
@@ -31,6 +32,19 @@ import zipfile
 import logging
 
 log = logging.getLogger(__name__)
+
+
+def read_partial_download_info(safe_path):
+    """Read partial product download metadata if it exists."""
+    if Path(safe_path).suffix == ".zip":
+        return {}
+
+    partial_file = Path(safe_path) / "partial_download.yml"
+    if not partial_file.is_file():
+        return {}
+
+    with partial_file.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 class S1IWSwath:
@@ -64,6 +78,18 @@ class S1IWSwath:
 
         self.is_zip = Path(safe_path).suffix == ".zip"
         self.product = zipfile.Path(safe_path) if self.is_zip else Path(safe_path)
+        self.partial_download = read_partial_download_info(safe_path)
+        self.is_partial = bool(self.partial_download)
+        self.partial_subset = (
+            self.partial_download.get("subsets", {})
+            .get(f"iw{iw}", {})
+            .get(pol)
+        )
+        if self.is_partial and self.partial_subset is None:
+            raise ValueError(
+                f"Partial product does not contain subswath IW{iw} "
+                f"and polarization {pol}."
+            )
 
         # check product type using dir name
         parts = self.product.stem.split("_")
@@ -74,8 +100,11 @@ class S1IWSwath:
 
         # raster path
         try:
-            str_tiff = f"**/measurement/*iw{iw}*{pol}*.tiff"
-            pth_tiff = list(self.product.glob(str_tiff))[0]
+            if self.partial_subset:
+                pth_tiff = Path(safe_path) / self.partial_subset["file"]
+            else:
+                str_tiff = f"**/measurement/*iw{iw}*{pol}*.tiff"
+                pth_tiff = list(self.product.glob(str_tiff))[0]
         except IndexError:
             raise FileNotFoundError("Tiff file is missing.")
         self.pth_tiff = f"zip://{pth_tiff}" if self.is_zip else pth_tiff
@@ -101,6 +130,14 @@ class S1IWSwath:
         self.lines_per_burst = int(burst_info["linesPerBurst"])
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
         self.burst_count = int(burst_info["burstList"]["@count"])
+        if self.partial_subset:
+            self.min_burst = int(self.partial_subset["min_burst"])
+            self.max_burst = int(self.partial_subset["max_burst"])
+            self.raster_line_offset = int(self.partial_subset["line_start"])
+        else:
+            self.min_burst = 1
+            self.max_burst = self.burst_count
+            self.raster_line_offset = 0
 
         # extract calibration LUT to rescale data
         calinfo = read_metadata(pth_cal)
