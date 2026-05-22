@@ -246,18 +246,12 @@ class S1IWSwath:
         """
 
         if not max_burst:
-            max_burst_ = self.burst_count
+            max_burst_ = self.max_burst
         else:
             max_burst_ = max_burst
 
-        if min_burst < 1 or min_burst > self.burst_count:
-            raise ValueError(
-                f"Invalid min burst index (must be between 1 and {self.burst_count})"
-            )
-        if max_burst_ < 1 or max_burst_ > self.burst_count:
-            raise ValueError(
-                f"Invalid max burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(min_burst)
+        self._validate_available_burst(max_burst_)
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
         if dem_name not in ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]:
