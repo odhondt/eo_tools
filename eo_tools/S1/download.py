@@ -13,7 +13,7 @@ from rasterio.windows import Window
 import rasterio
 import boto3
 
-from eo_tools.auxils import get_burst_geometry
+from eo_tools.auxils import get_burst_geometry, remove
 from eo_tools.S1.core import read_metadata
 
 import logging
@@ -30,6 +30,30 @@ def _write_partial_download_info(path, info):
             default_flow_style=False,
             allow_unicode=False,
         )
+
+
+def _normalize_polarizations(pol):
+    allowed = ("vv", "vh")
+    if isinstance(pol, str):
+        if pol.lower() == "full":
+            selected = list(allowed)
+        else:
+            selected = [pol.lower()]
+    elif isinstance(pol, (list, tuple, set)):
+        selected = [p.lower() for p in pol]
+    else:
+        raise ValueError("pol must be a string or an iterable of strings")
+
+    invalid = sorted(set(selected) - set(allowed))
+    if invalid:
+        raise ValueError(
+            f"Invalid polarization(s): {invalid}. Allowed values are 'vv', 'vh', 'full', or ['vv', 'vh']."
+        )
+
+    selected = [p for p in allowed if p in set(selected)]
+    if not selected:
+        raise ValueError("At least one valid polarization must be selected")
+    return selected
 
 # search with pystac client and store in a dataframe
 # TODO: chack arg validity ()
@@ -74,7 +98,7 @@ def search_products(**kwargs):
     return gdf
 
 
-def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
+def download_partial_products(products, shp, out_dir, aws_key, aws_secret, pol="full"):
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
@@ -95,10 +119,16 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
         aws_secret_access_key=aws_secret,
         region_name="default",
     )
+    selected_pols = _normalize_polarizations(pol)
+    log.info("Selected polarizations: %s", ", ".join(p.upper() for p in selected_pols))
+    geometry_pol = selected_pols[0]
     for it in products.stac_item:
         log.info(f"Downloading {it.id}.")
         # product will be saved in this SAFE-like partial-product subdir
         product_root_dir = f"{it.id}.partial.SAFE"
+        product_dir = Path(out_dir) / product_root_dir
+        if product_dir.exists():
+            remove(product_dir)
         source_product_root_dir = f"{it.id}.SAFE"
 
         # use manifest file to get S3 bucket and prefix
@@ -127,7 +157,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
             "preview/icons",
         )
         for subdir in subdirs:
-            subpath = Path(out_dir) / product_root_dir / subdir
+            subpath = product_dir / subdir
             if not os.path.isdir(subpath):
                 os.makedirs(subpath)
 
@@ -144,8 +174,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
             idx = parts.index(source_product_root_dir)
             # keep only the subdir (?)
             local_path = str(
-                Path(out_dir)
-                / product_root_dir
+                product_dir
                 / Path(*parts[idx + 1 :])
             )
             # skip raster files
@@ -154,9 +183,9 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
 
         # retrieve burst geometries
         gdf_burst = get_burst_geometry(
-            str(Path(out_dir) / product_root_dir),
+            str(product_dir),
             target_subswaths=["IW1", "IW2", "IW3"],
-            polarization="VV",
+            polarization=geometry_pol.upper(),
         )
 
         # find what subswaths and bursts intersect AOI
@@ -171,11 +200,11 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
         sel_subsw = gdf_burst["subswath"]
         unique_subswaths = np.unique(sel_subsw)
         partial_info = {"product_id": it.id, "subsets": {}}
-        for pol in ["vv", "vh"]:
+        for pol in selected_pols:
             for subswath in unique_subswaths:
                 # use metadata to find where to crop
                 str_xml = f"**/annotation/*{subswath.lower()}*{pol}*.xml"
-                pth_xml = list((Path(out_dir) / product_root_dir).glob(str_xml))[0]
+                pth_xml = list(product_dir.glob(str_xml))[0]
                 meta = read_metadata(pth_xml=pth_xml)
                 burst_info = meta["product"]["swathTiming"]
                 lines_per_burst = int(burst_info["linesPerBurst"])
@@ -191,7 +220,7 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
                 )
                 url = it.assets[f"{subswath.lower()}-{pol}"].href
                 tiff_name = Path(url).name
-                tiff_out = Path(out_dir) / product_root_dir / "measurement" / tiff_name
+                tiff_out = product_dir / "measurement" / tiff_name
 
                 with rasterio.Env(session=rio_session, AWS_VIRTUAL_HOSTING=False):
                     with rasterio.open(url) as src:
@@ -206,6 +235,12 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
                             width=src.width,
                             transform=src.window_transform(window),
                         )
+                        # These tiling options are not always compatible with cropped
+                        # outputs, so drop them unless we explicitly re-tile the file.
+                        profile.pop("blockxsize", None)
+                        profile.pop("blockysize", None)
+                        profile.pop("tiled", None)
+
                         with rasterio.open(tiff_out, "w", **profile) as dst:
                             with ProgressBar():
                                 dst.write(src.read(window=window))
@@ -231,5 +266,5 @@ def download_partial_products(products, shp, out_dir, aws_key, aws_secret):
                     "lines_per_burst": int(lines_per_burst),
                 }
 
-        partial_file = Path(out_dir) / product_root_dir / "partial_download.yml"
+        partial_file = product_dir / "partial_download.yml"
         _write_partial_download_info(partial_file, partial_info)
