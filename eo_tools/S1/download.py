@@ -77,6 +77,172 @@ def _normalize_polarizations(pol: str | Sequence[str]) -> list[str]:
     return selected
 
 
+def _get_partial_product_paths(out_dir: str | Path, product_id: str) -> tuple[Path, str, str]:
+    """Return the target directory and SAFE root names for a partial product."""
+    out_dir = Path(out_dir)
+    product_root_dir = f"{product_id}.partial.SAFE"
+    product_dir = out_dir / product_root_dir
+    source_product_root_dir = f"{product_id}.SAFE"
+    return product_dir, product_root_dir, source_product_root_dir
+
+
+def _get_partial_product_source(manifest_url: str) -> tuple[str, str]:
+    """Extract the S3 bucket and prefix from a Sentinel-1 manifest URL."""
+    parsed = urlparse(manifest_url)
+    if parsed.scheme != "s3":
+        raise ValueError("Product url does not start with s3://")
+
+    bucket_name = parsed.netloc
+    manifest_path = Path(parsed.path.lstrip("/"))
+    prefix = str(manifest_path.parent)
+    return bucket_name, prefix
+
+
+def _create_partial_product_subdirs(product_dir: Path) -> None:
+    """Create the SAFE-like directory structure used by a partial product."""
+    subdirs = (
+        "annotation",
+        "measurement",
+        "preview",
+        "support",
+        "annotation/rfi",
+        "annotation/calibration",
+        "preview/icons",
+    )
+    for subdir in subdirs:
+        subpath = product_dir / subdir
+        if not os.path.isdir(subpath):
+            os.makedirs(subpath)
+
+
+def _download_metadata_files(
+    bucket: Any,
+    prefix: str,
+    product_dir: Path,
+    source_product_root_dir: str,
+) -> None:
+    """Download annotation and other non-measurement sidecar files into the partial product tree."""
+    files = [it.key for it in list(bucket.objects.filter(Prefix=prefix))]
+
+    for remote_file in files:
+        parts = Path(remote_file).parts
+        idx = parts.index(source_product_root_dir)
+        local_path = str(product_dir / Path(*parts[idx + 1 :]))
+        if Path(remote_file).suffix != ".tiff":
+            bucket.download_file(remote_file, local_path)
+
+
+def _build_download_list(
+    product_dir: Path,
+    stac_item: Any,
+    selected_pols: Sequence[str],
+    geometry_pol: str,
+    shp: Any,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Build the partial-product manifest data and per-measurement download list."""
+    gdf_burst = get_burst_geometry(
+        str(product_dir),
+        target_subswaths=["IW1", "IW2", "IW3"],
+        polarization=geometry_pol.upper(),
+    )
+
+    gdf_burst = gdf_burst[gdf_burst.intersects(shp)]
+    if gdf_burst.empty:
+        raise RuntimeError(
+            "The list of bursts to process is empty. Make sure shp intersects the product."
+        )
+
+    selected_subswaths = np.unique(gdf_burst["subswath"])
+    partial_info: dict[str, Any] = {"product_id": stac_item.id, "subsets": {}}
+    download_jobs: list[dict[str, Any]] = []
+
+    for pol in selected_pols:
+        for subswath in selected_subswaths:
+            str_xml = f"**/annotation/*{subswath.lower()}*{pol}*.xml"
+            pth_xml = list(product_dir.glob(str_xml))[0]
+            meta = read_metadata(pth_xml=pth_xml)
+            burst_info = meta["product"]["swathTiming"]
+            lines_per_burst = int(burst_info["linesPerBurst"])
+            burst_indices = gdf_burst[gdf_burst.subswath == subswath].burst
+            min_burst = int(burst_indices.min())
+            max_burst = int(burst_indices.max())
+            line_start = lines_per_burst * (min_burst - 1)
+            num_lines = lines_per_burst * (max_burst - min_burst + 1)
+
+            log.info(
+                "Polarization %s, Subswath %s, Bursts %s to %s.",
+                pol,
+                subswath,
+                min_burst,
+                max_burst,
+            )
+
+            url = stac_item.assets[f"{subswath.lower()}-{pol}"].href
+            tiff_name = Path(url).name
+            partial_info["subsets"].setdefault(subswath.lower(), {})[pol] = {
+                "file": f"measurement/{tiff_name}",
+                "min_burst": min_burst,
+                "max_burst": max_burst,
+                "line_start": int(line_start),
+                "number_of_lines": int(num_lines),
+                "lines_per_burst": int(lines_per_burst),
+            }
+            download_jobs.append(
+                {
+                    "url": url,
+                    "tiff_out": product_dir / "measurement" / tiff_name,
+                    "line_start": int(line_start),
+                    "num_lines": int(num_lines),
+                }
+            )
+
+    return partial_info, download_jobs
+
+
+def _download_partial_raster_files(
+    url: str,
+    tiff_out: Path,
+    line_start: int,
+    num_lines: int,
+    rio_session: AWSSession,
+) -> None:
+    """Download and write one cropped measurement TIFF for a partial product."""
+    with rasterio.Env(session=rio_session, AWS_VIRTUAL_HOSTING=False):
+        with rasterio.open(url) as src:
+            window = Window(0, line_start, src.width, num_lines)
+            profile = {
+                key: value
+                for key, value in src.profile.copy().items()
+                if "gcp" not in key.lower()
+            }
+            profile.update(
+                height=num_lines,
+                width=src.width,
+                transform=src.window_transform(window),
+            )
+            # These tiling options are not always compatible with cropped
+            # outputs, so drop them unless we explicitly re-tile the file.
+            profile.pop("blockxsize", None)
+            profile.pop("blockysize", None)
+            profile.pop("tiled", None)
+
+            with rasterio.open(tiff_out, "w", **profile) as dst:
+                with ProgressBar():
+                    dst.write(src.read(window=window))
+
+                for namespace in src.tag_namespaces():
+                    dst.update_tags(ns=namespace, **src.tags(ns=namespace))
+                dst.update_tags(**src.tags())
+                for band_idx in src.indexes:
+                    for namespace in src.tag_namespaces(band_idx):
+                        dst.update_tags(
+                            band_idx,
+                            ns=namespace,
+                            **src.tags(band_idx, ns=namespace),
+                        )
+                    dst.update_tags(band_idx, **src.tags(band_idx))
+
+
 # search with pystac client and store in a dataframe
 def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
     """Search Copernicus Data Space STAC and return the results as a GeoDataFrame.
@@ -164,7 +330,6 @@ def download_partial_products(
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
-    # rasterio session
     rio_session = AWSSession(
         aws_access_key_id=aws_key,
         aws_secret_access_key=aws_secret,
@@ -172,8 +337,6 @@ def download_partial_products(
         endpoint_url="eodata.dataspace.copernicus.eu",
     )
 
-    # needed for other (non-tiff) files
-    # session = boto3.session.Session()
     s3 = boto3.resource(
         "s3",
         endpoint_url="https://eodata.dataspace.copernicus.eu",
@@ -184,11 +347,12 @@ def download_partial_products(
     selected_pols = _normalize_polarizations(pol)
     log.info("Selected polarizations: %s", ", ".join(p.upper() for p in selected_pols))
     geometry_pol = selected_pols[0]
+
     for it in products.stac_item:
         log.info(f"Downloading {it.id}.")
-        # product will be saved in this SAFE-like partial-product subdir
-        product_root_dir = f"{it.id}.partial.SAFE"
-        product_dir = Path(out_dir) / product_root_dir
+        product_dir, _, source_product_root_dir = _get_partial_product_paths(
+            out_dir, it.id
+        )
         if product_dir.exists():
             if force_overwrite:
                 remove(product_dir)
@@ -198,139 +362,33 @@ def download_partial_products(
                     it.id,
                 )
                 continue
-        source_product_root_dir = f"{it.id}.SAFE"
 
-        # use manifest file to get S3 bucket and prefix
-        manifest_url = it.assets["safe_manifest"].href
-
-        # Parse the url
-        parsed = urlparse(manifest_url)
-        if parsed.scheme != "s3":
-            raise ValueError("Product url does not start with s3://")
-
-        # Bucket is the "netloc"
-        bucket_name = parsed.netloc
-
-        # Look for subdir prefix
-        manifest_path = Path(parsed.path.lstrip("/"))
-        prefix = str(manifest_path.parent)
-
-        # create product subdirectories
-        subdirs = (
-            "annotation",
-            "measurement",
-            "preview",
-            "support",
-            "annotation/rfi",
-            "annotation/calibration",
-            "preview/icons",
-        )
-        for subdir in subdirs:
-            subpath = product_dir / subdir
-            if not os.path.isdir(subpath):
-                os.makedirs(subpath)
-
-        # find annotation files
+        bucket_name, prefix = _get_partial_product_source(it.assets["safe_manifest"].href)
         bucket = s3.Bucket(bucket_name)
-        files = [it.key for it in list(bucket.objects.filter(Prefix=prefix))]
 
-        # download
-        for f in files:
-            remote_file = f
-
-            # remove all that is before the SAFE dir
-            parts = Path(f).parts
-            idx = parts.index(source_product_root_dir)
-            # keep only the subdir (?)
-            local_path = str(product_dir / Path(*parts[idx + 1 :]))
-            # skip raster files
-            if Path(remote_file).suffix != ".tiff":
-                bucket.download_file(remote_file, local_path)
-
-        # retrieve burst geometries
-        gdf_burst = get_burst_geometry(
-            str(product_dir),
-            target_subswaths=["IW1", "IW2", "IW3"],
-            polarization=geometry_pol.upper(),
+        _create_partial_product_subdirs(product_dir)
+        _download_metadata_files(
+            bucket=bucket,
+            prefix=prefix,
+            product_dir=product_dir,
+            source_product_root_dir=source_product_root_dir,
         )
 
-        # find what subswaths and bursts intersect AOI
-        gdf_burst = gdf_burst[gdf_burst.intersects(shp)]
-
-        if gdf_burst.empty:
-            raise RuntimeError(
-                "The list of bursts to process is empty. Make sure shp intersects the product."
+        partial_info, download_jobs = _build_download_list(
+            product_dir=product_dir,
+            stac_item=it,
+            selected_pols=selected_pols,
+            geometry_pol=geometry_pol,
+            shp=shp,
+        )
+        for job in download_jobs:
+            _download_partial_raster_files(
+                url=job["url"],
+                tiff_out=job["tiff_out"],
+                line_start=job["line_start"],
+                num_lines=job["num_lines"],
+                rio_session=rio_session,
             )
-
-        # identify corresponding subswaths
-        sel_subsw = gdf_burst["subswath"]
-        unique_subswaths = np.unique(sel_subsw)
-        partial_info = {"product_id": it.id, "subsets": {}}
-        for pol in selected_pols:
-            for subswath in unique_subswaths:
-                # use metadata to find where to crop
-                str_xml = f"**/annotation/*{subswath.lower()}*{pol}*.xml"
-                pth_xml = list(product_dir.glob(str_xml))[0]
-                meta = read_metadata(pth_xml=pth_xml)
-                burst_info = meta["product"]["swathTiming"]
-                lines_per_burst = int(burst_info["linesPerBurst"])
-                burst_indices = gdf_burst[gdf_burst.subswath == subswath].burst
-                min_burst = int(burst_indices.min())
-                max_burst = int(burst_indices.max())
-                line_start = lines_per_burst * (min_burst - 1)
-                num_lines = lines_per_burst * (max_burst - min_burst + 1)
-
-                log.info(
-                    f"Polarization {pol}, Subswath {subswath}, "
-                    f"Bursts {min_burst} to {max_burst}."
-                )
-                url = it.assets[f"{subswath.lower()}-{pol}"].href
-                tiff_name = Path(url).name
-                tiff_out = product_dir / "measurement" / tiff_name
-
-                with rasterio.Env(session=rio_session, AWS_VIRTUAL_HOSTING=False):
-                    with rasterio.open(url) as src:
-                        window = Window(0, line_start, src.width, num_lines)
-                        profile = {
-                            key: value
-                            for key, value in src.profile.copy().items()
-                            if "gcp" not in key.lower()
-                        }
-                        profile.update(
-                            height=num_lines,
-                            width=src.width,
-                            transform=src.window_transform(window),
-                        )
-                        # These tiling options are not always compatible with cropped
-                        # outputs, so drop them unless we explicitly re-tile the file.
-                        profile.pop("blockxsize", None)
-                        profile.pop("blockysize", None)
-                        profile.pop("tiled", None)
-
-                        with rasterio.open(tiff_out, "w", **profile) as dst:
-                            with ProgressBar():
-                                dst.write(src.read(window=window))
-
-                            for namespace in src.tag_namespaces():
-                                dst.update_tags(ns=namespace, **src.tags(ns=namespace))
-                            dst.update_tags(**src.tags())
-                            for band_idx in src.indexes:
-                                for namespace in src.tag_namespaces(band_idx):
-                                    dst.update_tags(
-                                        band_idx,
-                                        ns=namespace,
-                                        **src.tags(band_idx, ns=namespace),
-                                    )
-                                dst.update_tags(band_idx, **src.tags(band_idx))
-
-                partial_info["subsets"].setdefault(subswath.lower(), {})[pol] = {
-                    "file": f"measurement/{tiff_name}",
-                    "min_burst": min_burst,
-                    "max_burst": max_burst,
-                    "line_start": int(line_start),
-                    "number_of_lines": int(num_lines),
-                    "lines_per_burst": int(lines_per_burst),
-                }
 
         partial_file = product_dir / "partial_download.yml"
         _write_partial_download_info(partial_file, partial_info)
