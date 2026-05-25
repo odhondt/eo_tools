@@ -1,6 +1,5 @@
 import logging
 import os
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -170,13 +169,7 @@ def _build_download_list(
             line_start = lines_per_burst * (min_burst - 1)
             num_lines = lines_per_burst * (max_burst - min_burst + 1)
 
-            log.info(
-                "Polarization %s, Subswath %s, Bursts %s to %s.",
-                pol,
-                subswath,
-                min_burst,
-                max_burst,
-            )
+
 
             url = stac_item.assets[f"{subswath.lower()}-{pol}"].href
             tiff_name = Path(url).name
@@ -194,8 +187,10 @@ def _build_download_list(
                     "tiff_out": product_dir / "measurement" / tiff_name,
                     "line_start": int(line_start),
                     "num_lines": int(num_lines),
-                    "subswath": subswath.lower(),
-                    "pol": pol,
+                    "subswath": subswath.upper(),
+                    "pol": pol.upper(),
+                    "min_burst": min_burst,
+                    "max_burst": max_burst,
                 }
             )
 
@@ -384,28 +379,38 @@ def download_partial_products(
                 shp=shp,
             )
             if is_identical:
-                warnings.warn(
-                    f"Product already on disk with identical partial data: {it.id}. Use force_overwrite=True to overwrite the current product.",
-                    stacklevel=2,
+                log.warning(
+                    f"Product already on disk with identical partial data: {it.id}.",
+                    stacklevel=1,
                 )
+                if not force_overwrite:
+                    log.warning(
+                        "Use force_overwrite=True to overwrite the current product.",
+                        stacklevel=1,
+                    )
             else:
-                warnings.warn(
-                    f"Product already on disk with different partial data: {it.id}. Use force_overwrite=True to overwrite the current product.",
-                    stacklevel=2,
+                log.warning(
+                    f"Product already on disk with different partial data: {it.id}.",
+                    stacklevel=1,
                 )
-                warnings.warn(
+                log.warning(
                     f"Incoming partial manifest for {it.id}: {current_info}",
-                    stacklevel=2,
+                    stacklevel=1,
                 )
-                warnings.warn(
+                log.warning(
                     f"On-disk partial manifest for {it.id}: {existing_info}",
-                    stacklevel=2,
+                    stacklevel=1,
                 )
+                if not force_overwrite:
+                    log.warning(
+                        "Use force_overwrite=True to overwrite the current product.",
+                        stacklevel=1,
+                    )
             if not force_overwrite:
                 continue
-            warnings.warn(
+            log.warning(
                 f"force_overwrite=True, overwriting current product: {it.id}",
-                stacklevel=2,
+                stacklevel=1,
             )
             remove(product_dir)
 
@@ -431,9 +436,11 @@ def download_partial_products(
         )
         for job in download_jobs:
             log.info(
-                "Downloading partial raster for %s / %s",
-                job["subswath"].upper(),
-                job["pol"].upper(),
+                "Downloading partial raster for %s / %s, burst %s to %s.",
+                job["subswath"],
+                job["pol"],
+                job["min_burst"],
+                job["max_burst"],
             )
             _download_partial_raster_files(
                 url=job["url"],
