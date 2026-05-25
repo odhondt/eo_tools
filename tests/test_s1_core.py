@@ -60,11 +60,9 @@ def test_read_burst_valid_burst(create_swath):
 def test_read_burst_partial_product_offset(create_swath):
     swath = create_swath
 
-    with patch.object(swath, "burst_count", 9), patch.object(
-        swath, "is_partial", True, create=True
+    with patch.object(swath, "min_burst", 3), patch.object(
+        swath, "max_burst", 5
     ), patch.object(
-        swath, "min_burst", 3, create=True
-    ), patch.object(swath, "max_burst", 5, create=True), patch.object(
         swath, "lines_per_burst", 1500
     ), patch.object(swath, "pth_tiff", "mocked_partial_path.tiff"), patch(
         "eo_tools.S1.core.read_chunk"
