@@ -138,6 +138,7 @@ def download_partial_products(
     aws_key: str,
     aws_secret: str,
     pol: str | Sequence[str] = "full",
+    force_overwrite: bool = False,
 ) -> None:
     """Download cropped Sentinel-1 SAFE-like partial products from CDSE S3.
 
@@ -154,6 +155,8 @@ def download_partial_products(
         aws_secret: Copernicus Data Space S3 secret key.
         pol: Polarization selection. Accepts "vv", "vh", "full", or a
             sequence containing "vv" and/or "vh". Defaults to "full".
+        force_overwrite: When True, overwrite an existing partial product on disk.
+            Defaults to False.
 
     Returns:
         None.
@@ -187,7 +190,14 @@ def download_partial_products(
         product_root_dir = f"{it.id}.partial.SAFE"
         product_dir = Path(out_dir) / product_root_dir
         if product_dir.exists():
-            remove(product_dir)
+            if force_overwrite:
+                remove(product_dir)
+            else:
+                log.info(
+                    "Product already on disk: %s. Use `force_overwrite=True` to overwrite the current product.",
+                    it.id,
+                )
+                continue
         source_product_root_dir = f"{it.id}.SAFE"
 
         # use manifest file to get S3 bucket and prefix
