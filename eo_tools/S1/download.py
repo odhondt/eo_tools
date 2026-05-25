@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -16,7 +17,7 @@ from rasterio.session import AWSSession
 from rasterio.windows import Window
 
 from eo_tools.auxils import get_burst_geometry, remove
-from eo_tools.S1.core import read_metadata
+from eo_tools.S1.core import read_metadata, read_partial_download_info
 
 log = logging.getLogger(__name__)
 
@@ -243,6 +244,25 @@ def _download_partial_raster_files(
                     dst.update_tags(band_idx, **src.tags(band_idx))
 
 
+def _compare_partial_product_manifest(
+    product_dir: Path,
+    stac_item: Any,
+    selected_pols: Sequence[str],
+    geometry_pol: str,
+    shp: Any,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """Build the current manifest and compare it with the on-disk manifest."""
+    current_info, _ = _build_download_list(
+        product_dir=product_dir,
+        stac_item=stac_item,
+        selected_pols=selected_pols,
+        geometry_pol=geometry_pol,
+        shp=shp,
+    )
+    existing_info = read_partial_download_info(product_dir)
+    return current_info, existing_info, current_info == existing_info
+
+
 # search with pystac client and store in a dataframe
 def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
     """Search Copernicus Data Space STAC and return the results as a GeoDataFrame.
@@ -354,14 +374,38 @@ def download_partial_products(
             out_dir, it.id
         )
         if product_dir.exists():
-            if force_overwrite:
-                remove(product_dir)
-            else:
-                log.info(
-                    "Product already on disk: %s. Use `force_overwrite=True` to overwrite the current product.",
-                    it.id,
+            current_info, existing_info, is_identical = _compare_partial_product_manifest(
+                product_dir=product_dir,
+                stac_item=it,
+                selected_pols=selected_pols,
+                geometry_pol=geometry_pol,
+                shp=shp,
+            )
+            if is_identical:
+                warnings.warn(
+                    f"Product already on disk with identical partial data: {it.id}. Use force_overwrite=True to overwrite the current product.",
+                    stacklevel=2,
                 )
+            else:
+                warnings.warn(
+                    f"Product already on disk with different partial data: {it.id}. Use force_overwrite=True to overwrite the current product.",
+                    stacklevel=2,
+                )
+                warnings.warn(
+                    f"Incoming partial manifest for {it.id}: {current_info}",
+                    stacklevel=2,
+                )
+                warnings.warn(
+                    f"On-disk partial manifest for {it.id}: {existing_info}",
+                    stacklevel=2,
+                )
+            if not force_overwrite:
                 continue
+            warnings.warn(
+                f"force_overwrite=True, overwriting current product: {it.id}",
+                stacklevel=2,
+            )
+            remove(product_dir)
 
         bucket_name, prefix = _get_partial_product_source(it.assets["safe_manifest"].href)
         bucket = s3.Bucket(bucket_name)
