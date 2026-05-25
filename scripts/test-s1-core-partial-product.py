@@ -39,11 +39,13 @@ if not os.path.isdir(out_dir):
 # eo_tools.S1.download.download_partial_products
 primary_path = (
     f"{data_dir}/"
-    "S1A_IW_SLC__1SDV_20260312T162104_20260312T162131_063596_07FE32_2B84.partial.SAFE"
+    "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.partial.SAFE"
+    # "S1A_IW_SLC__1SDV_20260312T162104_20260312T162131_063596_07FE32_2B84.partial.SAFE"
 )
 secondary_path = (
     f"{data_dir}/"
-    "S1A_IW_SLC__1SDV_20260429T162104_20260429T162131_064296_081851_502F.partial.SAFE"
+    "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814.partial.SAFE"
+    # "S1A_IW_SLC__1SDV_20260429T162104_20260429T162131_064296_081851_502F.partial.SAFE"
 )
 
 # subswath to process
@@ -87,140 +89,140 @@ log.info("Processing common burst range: %s to %s", min_burst, max_burst)
 # are implemented. The processing block below is the original core test flow,
 # with min_burst/max_burst derived from the opened products.
 
-# overlap = np.round(prm.compute_burst_overlap(min_burst + 1, min_burst)).astype(int)
-#
-# for burst_idx in range(min_burst, max_burst + 1):
-#     log.info(f"---- Processing burst {burst_idx} ----")
-#
-#     # compute geocoding LUTs for master and slave bursts
-#     dem_file = prm.fetch_dem_burst(burst_idx, dem_dir="/data/tmp", force_download=False)
-#     az_p2g, rg_p2g = prm.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
-#     az_s2g, rg_s2g = sec.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
-#
-#     # read primary and secondary burst raster
-#     arr_p = prm.read_burst(burst_idx, True)
-#     arr_s = sec.read_burst(burst_idx, True)
-#
-#     # radiometric calibration
-#     cal_p = prm.calibration_factor(burst_idx, cal_type="beta")
-#     arr_p /= cal_p
-#     cal_s = sec.calibration_factor(burst_idx, cal_type="beta")
-#     arr_s /= cal_s
-#
-#     # deramp secondary
-#     pdb_s = sec.deramp_burst(burst_idx)
-#     arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)
-#
-#     # project slave LUT into master grid
-#     az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
-#
-#     # warp raster slave and deramping phase
-#     arr_s2p = align(arr_s_de, az_s2p, rg_s2p, kernel="bicubic")
-#     pdb_s2p = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
-#
-#     # reramp slave
-#     arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
-#
-#     # compute topographic phases
-#     rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
-#     pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-#     pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-#     pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
-#
-#     # interferogram without topographic phase
-#     ifg = arr_s2p.conj() * arr_p * pha_topo.conj()
-#
-#     # normalize complex coherences
-#     ifgs.append(ifg)
-#     lut.append((az_p2g, rg_p2g))
-#     dems.append(dem_file)
+overlap = np.round(prm.compute_burst_overlap(min_burst + 1, min_burst)).astype(int)
+
+for burst_idx in range(min_burst, max_burst + 1):
+    log.info(f"---- Processing burst {burst_idx} ----")
+
+    # compute geocoding LUTs for master and slave bursts
+    dem_file = prm.fetch_dem_burst(burst_idx, dem_dir="/data/tmp", force_download=False)
+    az_p2g, rg_p2g = prm.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
+    az_s2g, rg_s2g = sec.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
+
+    # read primary and secondary burst raster
+    arr_p = prm.read_burst(burst_idx, True)
+    arr_s = sec.read_burst(burst_idx, True)
+
+    # radiometric calibration
+    cal_p = prm.calibration_factor(burst_idx, cal_type="beta")
+    arr_p /= cal_p
+    cal_s = sec.calibration_factor(burst_idx, cal_type="beta")
+    arr_s /= cal_s
+
+    # deramp secondary
+    pdb_s = sec.deramp_burst(burst_idx)
+    arr_s_de = arr_s * np.exp(1j * pdb_s).astype(np.complex64)
+
+    # project slave LUT into master grid
+    az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
+
+    # warp raster slave and deramping phase
+    arr_s2p = align(arr_s_de, az_s2p, rg_s2p, kernel="bicubic")
+    pdb_s2p = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
+
+    # reramp slave
+    arr_s2p = arr_s2p * np.exp(-1j * pdb_s2p).astype(np.complex64)
+
+    # compute topographic phases
+    rg_p = np.zeros(arr_s.shape[0])[:, None] + np.arange(0, arr_s.shape[1])
+    pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
+    pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
+    pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+
+    # interferogram without topographic phase
+    ifg = arr_s2p.conj() * arr_p * pha_topo.conj()
+
+    # normalize complex coherences
+    ifgs.append(ifg)
+    lut.append((az_p2g, rg_p2g))
+    dems.append(dem_file)
 
 # %%
-# from eo_tools.S1.core import fast_esd
-#
-# fast_esd(ifgs, overlap)
+from eo_tools.S1.core import fast_esd
+
+fast_esd(ifgs, overlap)
 
 # %%
-# from eo_tools.S1.core import stitch_bursts
-#
-# img = stitch_bursts(ifgs, overlap)
+from eo_tools.S1.core import stitch_bursts
 
-
-# %%
-# from eo_tools.S1.core import resample
-# import rioxarray as riox
-# from rioxarray.merge import merge_arrays
-# from eo_tools.auxils import remove
-#
-# mlt_az = 2
-# mlt_rg = 8
-#
-# off = 0
-# H = int(overlap / 2)
-# phi_out = presum(img, mlt_az, mlt_rg)
-# naz = ifgs[0].shape[0]
-# list_ifg = []
-# files_to_remove = []
-# for i in range(min_burst, max_burst + 1):
-#     log.info(f"Resample burst {i}")
-#     az_mst, rg_mst = lut[i - min_burst]
-#     dem_file = dems[i - min_burst]
-#     cnd = (az_mst >= H - 4) & (az_mst < naz - H + 4)
-#     az_mst2 = az_mst.copy()
-#     rg_mst2 = rg_mst.copy()
-#     az_mst2[~cnd] = np.nan
-#     rg_mst2[~cnd] = np.nan
-#
-#     ifg_file = f"{out_dir}/remap_burst_{i}_ifg.tif"
-#     files_to_remove.append(ifg_file)
-#
-#     # does the job but not very elegant
-#     if i == min_burst:
-#         off2 = off
-#     else:
-#         off2 = off - H
-#     resample(
-#         phi_out,
-#         dem_file,
-#         ifg_file,
-#         (az_mst2 + off2) / mlt_az,
-#         (rg_mst2) / mlt_rg,
-#         kernel="bicubic",
-#     )
-#     if i == min_burst:
-#         off += naz - H
-#     else:
-#         off += naz - 2 * H
-#
-#     list_ifg.append(riox.open_rasterio(ifg_file))
-#
-# merged_ifg = merge_arrays(list_ifg)
-# merged_ifg.rio.to_raster(f"{out_dir}/merged_ifg.tif")
-#
-# for fname in files_to_remove:
-#     remove(fname)
+img = stitch_bursts(ifgs, overlap)
 
 
 # %%
-# import xarray as xr
-#
-# # Finite no data value for TiTiler
-# nodata = -9999
-# # avoid metadata being lost in arithmetic opetations
-# xr.set_options(keep_attrs=True)
-# ifg = riox.open_rasterio(f"{out_dir}/merged_ifg.tif")
-# phi = np.arctan2(ifg[1], ifg[0])
-# phi = phi.fillna(nodata)
-# phi.attrs["_FillValue"] = nodata
-# phi.rio.to_raster(f"{out_dir}/merged_phi.tif", nodata=nodata)
-#
-# ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
-# m = folium.Map()
-# _ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
-# _ = show_cog(
-#     f"{out_dir}/merged_phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi()
-# )
-# LayerControl().add_to(m)
-#
-# # open in a browser
-# serve_map(m)
+from eo_tools.S1.core import resample
+import rioxarray as riox
+from rioxarray.merge import merge_arrays
+from eo_tools.auxils import remove
+
+mlt_az = 2
+mlt_rg = 8
+
+off = 0
+H = int(overlap / 2)
+phi_out = presum(img, mlt_az, mlt_rg)
+naz = ifgs[0].shape[0]
+list_ifg = []
+files_to_remove = []
+for i in range(min_burst, max_burst + 1):
+    log.info(f"Resample burst {i}")
+    az_mst, rg_mst = lut[i - min_burst]
+    dem_file = dems[i - min_burst]
+    cnd = (az_mst >= H - 4) & (az_mst < naz - H + 4)
+    az_mst2 = az_mst.copy()
+    rg_mst2 = rg_mst.copy()
+    az_mst2[~cnd] = np.nan
+    rg_mst2[~cnd] = np.nan
+
+    ifg_file = f"{out_dir}/remap_burst_{i}_ifg.tif"
+    files_to_remove.append(ifg_file)
+
+    # does the job but not very elegant
+    if i == min_burst:
+        off2 = off
+    else:
+        off2 = off - H
+    resample(
+        phi_out,
+        dem_file,
+        ifg_file,
+        (az_mst2 + off2) / mlt_az,
+        (rg_mst2) / mlt_rg,
+        kernel="bicubic",
+    )
+    if i == min_burst:
+        off += naz - H
+    else:
+        off += naz - 2 * H
+
+    list_ifg.append(riox.open_rasterio(ifg_file))
+
+merged_ifg = merge_arrays(list_ifg)
+merged_ifg.rio.to_raster(f"{out_dir}/merged_ifg.tif")
+
+for fname in files_to_remove:
+    remove(fname)
+
+
+# %%
+import xarray as xr
+
+# Finite no data value for TiTiler
+nodata = -9999
+# avoid metadata being lost in arithmetic opetations
+xr.set_options(keep_attrs=True)
+ifg = riox.open_rasterio(f"{out_dir}/merged_ifg.tif")
+phi = np.arctan2(ifg[1], ifg[0])
+phi = phi.fillna(nodata)
+phi.attrs["_FillValue"] = nodata
+phi.rio.to_raster(f"{out_dir}/merged_phi.tif", nodata=nodata)
+
+ref_dir = "/data/reference/S1_InSAR_VV_2023-09-04-063730__2023-09-16-063730_Morocco"
+m = folium.Map()
+_ = show_cog(f"{ref_dir}/phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi())
+_ = show_cog(
+    f"{out_dir}/merged_phi.tif", m, rescale=f"{-pi},{pi}", colormap=palette_phi()
+)
+LayerControl().add_to(m)
+
+# open in a browser
+serve_map(m)
