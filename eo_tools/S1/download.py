@@ -194,6 +194,8 @@ def _build_download_list(
                     "tiff_out": product_dir / "measurement" / tiff_name,
                     "line_start": int(line_start),
                     "num_lines": int(num_lines),
+                    "subswath": subswath.lower(),
+                    "pol": pol,
                 }
             )
 
@@ -410,7 +412,9 @@ def download_partial_products(
         bucket_name, prefix = _get_partial_product_source(it.assets["safe_manifest"].href)
         bucket = s3.Bucket(bucket_name)
 
+        log.info("Creating partial product structure for %s", it.id)
         _create_partial_product_subdirs(product_dir)
+        log.info("Write annotation files for %s", it.id)
         _download_metadata_files(
             bucket=bucket,
             prefix=prefix,
@@ -426,6 +430,11 @@ def download_partial_products(
             shp=shp,
         )
         for job in download_jobs:
+            log.info(
+                "Downloading partial raster for %s / %s",
+                job["subswath"].upper(),
+                job["pol"].upper(),
+            )
             _download_partial_raster_files(
                 url=job["url"],
                 tiff_out=job["tiff_out"],
@@ -435,4 +444,5 @@ def download_partial_products(
             )
 
         partial_file = product_dir / "partial_download.yml"
+        log.info("Create partial download manifest %s", partial_file.name)
         _write_partial_download_info(partial_file, partial_info)
