@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime as DateTime
 from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import urlparse
@@ -15,13 +15,14 @@ from dask.diagnostics import ProgressBar
 from pystac_client.client import Client
 from rasterio.session import AWSSession
 from rasterio.windows import Window
-from shapely.geometry import mapping, shape
+from shapely.geometry import Polygon, mapping, shape
 
 from eo_tools.auxils import get_burst_geometry, remove
 from eo_tools.S1.core import read_metadata, read_partial_download_info
 
 log = logging.getLogger(__name__)
 PARTIAL_AOI_FILENAME = "partial_aoi.geojson"
+S1_SLC_COLLECTION = ["sentinel-1-slc"]
 
 
 def _write_partial_download_info(path: Path, info: dict[str, Any]) -> None:
@@ -74,6 +75,18 @@ def _has_matching_partial_aoi(path: Path, shp: Any) -> bool:
         return len(features) == 1 and shape(features[0]["geometry"]).equals(shp)
     except (KeyError, OSError, TypeError, ValueError):
         return False
+
+
+def _validate_single_polygon(shp: Any, parameter_name: str) -> Polygon:
+    """Validate that an AOI is represented by exactly one Polygon."""
+    if not isinstance(shp, Polygon):
+        raise ValueError(
+            f"{parameter_name} must be a single shapely Polygon, not "
+            f"{getattr(shp, 'geom_type', type(shp).__name__)}."
+        )
+    if shp.is_empty:
+        raise ValueError(f"{parameter_name} must not be an empty Polygon.")
+    return shp
 
 
 def _normalize_polarizations(pol: str | Sequence[str]) -> list[str]:
@@ -206,9 +219,6 @@ def _build_download_list(
             max_burst = int(burst_indices.max())
             line_start = lines_per_burst * (min_burst - 1)
             num_lines = lines_per_burst * (max_burst - min_burst + 1)
-
-
-
             url = stac_item.assets[f"{subswath.lower()}-{pol}"].href
             tiff_name = Path(url).name
             partial_info["subsets"].setdefault(subswath.lower(), {})[pol] = {
@@ -302,25 +312,59 @@ def _compare_partial_product_manifest(
 
 
 # search with pystac client and store in a dataframe
-def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
-    """Search Copernicus Data Space STAC and return the results as a GeoDataFrame.
+def search_products(
+    intersects: Polygon,
+    datetime: Any | None = None,
+    ids: Sequence[str] | None = None,
+) -> gpd.GeoDataFrame:
+    """Search CDSE for Sentinel-1 SLC products intersecting one polygon.
 
     The returned frame keeps the original pystac item objects in the stac_item
     column so downstream download helpers can access assets and metadata without
-    repeating the catalog lookup.
+    repeating the catalog lookup. The collection is fixed to Sentinel-1 SLC
+    because other product families are not valid inputs to the partial SLC
+    downloader.
 
     Args:
-        **kwargs: Keyword arguments forwarded directly to Client.search.
+        intersects: Single polygon AOI products must intersect.
+        datetime: Optional STAC datetime/range filter. Required when ids is not
+            set.
+        ids: Optional product identifier sequence. Required when datetime is
+            not set.
 
     Returns:
         A GeoDataFrame containing product metadata and geometry.
+
+    Raises:
+        ValueError: If intersects is not one Polygon, or neither datetime nor
+            a non-empty ids sequence is provided.
     """
+    intersects = _validate_single_polygon(intersects, "intersects")
+    if ids is not None:
+        if (
+            isinstance(ids, str)
+            or not ids
+            or not all(isinstance(it, str) for it in ids)
+        ):
+            raise ValueError("ids must be a non-empty sequence of product ID strings.")
+    if datetime is None and ids is None:
+        raise ValueError("At least one of datetime or ids must be provided.")
+
+    search_params: dict[str, Any] = {
+        "collections": S1_SLC_COLLECTION,
+        "intersects": intersects,
+    }
+    if datetime is not None:
+        search_params["datetime"] = datetime
+    if ids is not None:
+        search_params["ids"] = ids
+
     # Search using STAC api
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
-    search = catalog.search(**kwargs)  # , ids=ids)
+    search = catalog.search(**search_params)
     items = list(search.items())
     start_times = []
-    ids = []
+    result_ids = []
     relative_orbits = []
     orbit_states = []
     geometries = []
@@ -331,8 +375,8 @@ def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
     for it in items:
         it_dict = it.to_dict()
         props = it_dict["properties"]
-        start_times.append(datetime.fromisoformat(props["start_datetime"]))
-        ids.append(it.id)
+        start_times.append(DateTime.fromisoformat(props["start_datetime"]))
+        result_ids.append(it.id)
         relative_orbits.append(props["sat:relative_orbit"])
         orbit_states.append(props["sat:orbit_state"])
         geometries.append(shape(it.geometry))
@@ -341,7 +385,7 @@ def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
     # use columns compatible with util.explore_products
     gdf = gpd.GeoDataFrame(
         data={
-            "id": ids,
+            "id": result_ids,
             "startTimeFromAscendingNode": start_times,
             "relativeOrbitNumber": relative_orbits,
             "orbitDirection": orbit_states,
@@ -384,6 +428,7 @@ def download_partial_products(
     Returns:
         None.
     """
+    shp = _validate_single_polygon(shp, "shp")
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
