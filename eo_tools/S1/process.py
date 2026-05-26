@@ -1,33 +1,33 @@
-from eo_tools.S1.core import S1IWSwath, coregister, align
-from eo_tools.S1.util import presum, boxcar, remap
-from eo_tools.auxils import get_burst_geometry
-from eo_tools.auxils import remove
-import numpy as np
-import xarray as xr
-import rasterio as rio
-from rasterio.windows import Window
-import rioxarray as riox
-from rioxarray.merge import merge_arrays
-import warnings
-import os
 import concurrent
-import dask.array as da
-from rasterio.errors import NotGeoreferencedWarning
 import logging
-from pyroSAR import identify
+import os
+import re
+import warnings
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from shapely.geometry.base import BaseGeometry
-from osgeo import gdal
-from rasterio.features import geometry_window
+
+import dask.array as da
+import numpy as np
+import rasterio as rio
+import rioxarray as riox
+import xarray as xr
 from affine import Affine
 from numpy.fft import fft2, fftshift, ifft2, ifftshift
+from osgeo import gdal
+from pyroSAR import identify
+from rasterio.errors import NotGeoreferencedWarning
+from rasterio.features import geometry_window
+from rasterio.windows import Window
+from rioxarray.merge import merge_arrays
 from scipy.ndimage import uniform_filter as uflt
-from eo_tools.auxils import block_process
-from eo_tools.util import _has_overlap
+from shapely.geometry.base import BaseGeometry
 from skimage.morphology import erosion
-import re
+
+from eo_tools.auxils import block_process, get_burst_geometry, remove
+from eo_tools.S1.core import S1IWSwath, align, coregister
+from eo_tools.S1.util import boxcar, presum, remap
+from eo_tools.util import _has_overlap
 
 # use child processes
 # USE_CP = True
@@ -489,6 +489,25 @@ def preprocess_insar_iw(
         raise ValueError(
             f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
         )
+
+    if prm.is_partial:
+        if min_burst < prm.min_burst or max_burst_ > prm.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial primary "
+                f"product. Requested primary bursts {min_burst} to {max_burst_}; "
+                f"available primary bursts are {prm.min_burst} to {prm.max_burst}."
+            )
+
+    if sec.is_partial:
+        min_burst_sec = min_burst + burst_idx_offset
+        max_burst_sec = max_burst_ + burst_idx_offset
+        if min_burst_sec < sec.min_burst or max_burst_sec > sec.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial secondary "
+                "product. Requested offset-mapped secondary bursts "
+                f"{min_burst_sec} to {max_burst_sec}; available secondary bursts "
+                f"are {sec.min_burst} to {sec.max_burst}."
+            )
 
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
     nrg = prm.samples_per_burst
