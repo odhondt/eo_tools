@@ -8,3 +8,5 @@ __pycache__/
 *.EOF
 notebooks/scratchpad.ipynb
 .vscode
+.agents/
+.codex/

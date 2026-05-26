@@ -1,6 +1,9 @@
 {
   "name": "eo_tools",
-  "dockerComposeFile": "../../docker-compose.yml",
+  "dockerComposeFile": [
+    "../../docker-compose.yml",
+    "docker-compose.codex.yml"
+  ],
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",
   // comment these lines if not using codex 
