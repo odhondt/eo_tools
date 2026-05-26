@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from datetime import datetime
@@ -14,11 +15,13 @@ from dask.diagnostics import ProgressBar
 from pystac_client.client import Client
 from rasterio.session import AWSSession
 from rasterio.windows import Window
+from shapely.geometry import mapping, shape
 
 from eo_tools.auxils import get_burst_geometry, remove
 from eo_tools.S1.core import read_metadata, read_partial_download_info
 
 log = logging.getLogger(__name__)
+PARTIAL_AOI_FILENAME = "partial_aoi.geojson"
 
 
 def _write_partial_download_info(path: Path, info: dict[str, Any]) -> None:
@@ -40,6 +43,37 @@ def _write_partial_download_info(path: Path, info: dict[str, Any]) -> None:
             default_flow_style=False,
             allow_unicode=False,
         )
+
+
+def _write_partial_aoi(path: Path, shp: Any) -> None:
+    """Write the AOI used to build a partial product as GeoJSON metadata."""
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": mapping(shp),
+            }
+        ],
+    }
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(geojson, f, indent=2)
+        f.write("\n")
+
+
+def _has_matching_partial_aoi(path: Path, shp: Any) -> bool:
+    """Check that a stored partial-product AOI is present and unchanged."""
+    if not path.is_file():
+        return False
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            stored_aoi = json.load(f)
+        features = stored_aoi["features"]
+        return len(features) == 1 and shape(features[0]["geometry"]).equals(shp)
+    except (KeyError, OSError, TypeError, ValueError):
+        return False
 
 
 def _normalize_polarizations(pol: str | Sequence[str]) -> list[str]:
@@ -153,7 +187,11 @@ def _build_download_list(
         )
 
     selected_subswaths = np.unique(gdf_burst["subswath"])
-    partial_info: dict[str, Any] = {"product_id": stac_item.id, "subsets": {}}
+    partial_info: dict[str, Any] = {
+        "product_id": stac_item.id,
+        "aoi_file": PARTIAL_AOI_FILENAME,
+        "subsets": {},
+    }
     download_jobs: list[dict[str, Any]] = []
 
     for pol in selected_pols:
@@ -248,7 +286,7 @@ def _compare_partial_product_manifest(
     geometry_pol: str,
     shp: Any,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    """Build the current manifest and compare it with the on-disk manifest."""
+    """Compare requested partial-product metadata with the on-disk product."""
     current_info, _ = _build_download_list(
         product_dir=product_dir,
         stac_item=stac_item,
@@ -257,7 +295,10 @@ def _compare_partial_product_manifest(
         shp=shp,
     )
     existing_info = read_partial_download_info(product_dir)
-    return current_info, existing_info, current_info == existing_info
+    has_same_aoi = _has_matching_partial_aoi(
+        product_dir / PARTIAL_AOI_FILENAME, shp
+    )
+    return current_info, existing_info, current_info == existing_info and has_same_aoi
 
 
 # search with pystac client and store in a dataframe
@@ -278,8 +319,6 @@ def search_products(**kwargs: Any) -> gpd.GeoDataFrame:
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
     search = catalog.search(**kwargs)  # , ids=ids)
     items = list(search.items())
-    from shapely.geometry import shape
-
     start_times = []
     ids = []
     relative_orbits = []
@@ -327,12 +366,13 @@ def download_partial_products(
 
     For each STAC product, the function copies the non-measurement SAFE structure,
     crops the measurement TIFFs to the bursts intersecting shp, and writes a
-    partial_download.yml manifest that records how the cropped rasters map back
-    to the original burst indices.
+    partial_download.yml manifest and a required partial_aoi.geojson file that
+    records the AOI used to select bursts.
 
     Args:
         products: Search result table returned by search_products.
-        shp: Area of interest used to select intersecting bursts.
+        shp: Area of interest used to select intersecting bursts and written to
+            each partial product as required GeoJSON metadata.
         out_dir: Output directory that will receive <product>.partial.SAFE.
         aws_key: Copernicus Data Space S3 access key.
         aws_secret: Copernicus Data Space S3 secret key.
@@ -453,3 +493,6 @@ def download_partial_products(
         partial_file = product_dir / "partial_download.yml"
         log.info("Create partial download manifest %s", partial_file.name)
         _write_partial_download_info(partial_file, partial_info)
+        aoi_file = product_dir / PARTIAL_AOI_FILENAME
+        log.info("Create partial product AOI metadata %s", aoi_file.name)
+        _write_partial_aoi(aoi_file, shp)
