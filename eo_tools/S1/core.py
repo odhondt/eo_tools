@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import xmltodict
@@ -12,7 +13,7 @@ from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
 from eo_tools.auxils import get_burst_geometry
-from shapely.geometry import box
+from shapely.geometry import Polygon, box, shape
 from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
@@ -47,6 +48,41 @@ def read_partial_download_info(safe_path):
 
     with partial_file.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def read_partial_aoi(safe_path, partial_download=None):
+    """Read and validate the AOI stored with a partial product."""
+    if partial_download is None:
+        partial_download = read_partial_download_info(safe_path)
+    if not partial_download:
+        return None
+
+    aoi_filename = partial_download.get("aoi_file")
+    if not aoi_filename:
+        raise ValueError(
+            f"Partial product {safe_path} does not specify required AOI metadata."
+        )
+
+    aoi_path = Path(safe_path) / aoi_filename
+    if not aoi_path.is_file():
+        raise FileNotFoundError(
+            f"Partial product AOI metadata file is missing: {aoi_path}."
+        )
+
+    with aoi_path.open(encoding="utf-8") as f:
+        geojson = json.load(f)
+    features = geojson.get("features", [])
+    if len(features) != 1:
+        raise ValueError(
+            "Partial product AOI metadata must contain exactly one feature: "
+            f"{aoi_path}."
+        )
+    partial_aoi = shape(features[0]["geometry"])
+    if not isinstance(partial_aoi, Polygon) or partial_aoi.is_empty:
+        raise ValueError(
+            f"Partial product AOI metadata must contain one non-empty Polygon: {aoi_path}."
+        )
+    return partial_aoi
 
 
 def identify_safe_product(safe_path, is_partial=False):
@@ -97,6 +133,7 @@ class S1IWSwath:
         self.product = zipfile.Path(safe_path) if self.is_zip else Path(safe_path)
         self.partial_download = read_partial_download_info(safe_path)
         self.is_partial = bool(self.partial_download)
+        self.partial_aoi = read_partial_aoi(safe_path, self.partial_download)
         self.partial_subset = (
             self.partial_download.get("subsets", {})
             .get(f"iw{iw}", {})
