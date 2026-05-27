@@ -25,7 +25,14 @@ from shapely.geometry.base import BaseGeometry
 from skimage.morphology import erosion
 
 from eo_tools.auxils import block_process, get_burst_geometry, remove
-from eo_tools.S1.core import S1IWSwath, align, coregister
+from eo_tools.S1.core import (
+    S1IWSwath,
+    align,
+    coregister,
+    identify_safe_product,
+    read_partial_aoi,
+    read_partial_download_info,
+)
 from eo_tools.S1.util import boxcar, presum, remap
 from eo_tools.util import _has_overlap
 
@@ -253,6 +260,16 @@ def prepare_insar(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
+    Note:
+        Partial-product InSAR processing requires both input products to be
+        partial products generated for the same AOI, with matching downloaded
+        subswaths and polarizations. In this case, the stored partial-product
+        AOI is used instead of `shp`. Per-IW spatial overlap, burst offset, and
+        downloaded burst availability are validated by `preprocess_insar_iw(...)`.
+        In particular, each primary burst selected by the stored AOI must map,
+        through the derived burst index offset, to an available secondary burst.
+        Identical stored AOIs alone do not guarantee that this condition holds.
+
     Returns:
         str: output directory
     """
@@ -265,6 +282,9 @@ def prepare_insar(
     if not isinstance(subswaths, list):
         raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
 
+    partial_info_prm = read_partial_download_info(prm_path)
+    partial_info_sec = read_partial_download_info(sec_path)
+
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
         prm_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
@@ -272,6 +292,19 @@ def prepare_insar(
     gdf_burst_sec = get_burst_geometry(
         sec_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
+
+    partial_aoi = _validate_partial_insar_pair(
+        prm_path,
+        sec_path,
+        partial_info_prm,
+        partial_info_sec,
+    )
+    if partial_aoi is not None:
+        log.info(
+            "Compatible partial InSAR products detected; ignoring the supplied "
+            "shp argument and using the AOI stored in the primary product metadata."
+        )
+        shp = partial_aoi
 
     # find what subswaths and bursts intersect AOI
     if shp is not None:
@@ -290,7 +323,7 @@ def prepare_insar(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_prm = identify(prm_path)
+    info_prm = identify_safe_product(prm_path, bool(partial_info_prm))
     if isinstance(pol, str):
         if pol == "full":
             pol_ = info_prm.polarizations
@@ -306,8 +339,18 @@ def prepare_insar(
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
+    requested_pols = info_prm.polarizations if pol == "full" else pol_
+    if isinstance(pol, list):
+        requested_pols = pol
+    _validate_partial_selection(
+        partial_info_prm, requested_pols, unique_subswaths, "primary"
+    )
+    _validate_partial_selection(
+        partial_info_sec, requested_pols, unique_subswaths, "secondary"
+    )
+
     # do a check on orbits
-    info_sec = identify(sec_path)
+    info_sec = identify_safe_product(sec_path, bool(partial_info_sec))
     meta_prm = info_prm.scanMetadata()
     meta_sec = info_sec.scanMetadata()
     orbnum = meta_prm["orbitNumber_rel"]
@@ -506,7 +549,9 @@ def preprocess_insar_iw(
                 "At least one requested burst is absent from the partial secondary "
                 "product. Requested offset-mapped secondary bursts "
                 f"{min_burst_sec} to {max_burst_sec}; available secondary bursts "
-                f"are {sec.min_burst} to {sec.max_burst}."
+                f"are {sec.min_burst} to {sec.max_burst}. Partial InSAR processing "
+                "requires every primary burst selected by the stored AOI to have "
+                "an available offset-mapped secondary burst."
             )
 
     naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
@@ -2553,6 +2598,73 @@ def _stitch_bursts(
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
+
+
+def _validate_partial_selection(
+    partial_info: dict,
+    polarizations: list[str],
+    subswaths: list[str],
+    product_role: str,
+) -> None:
+    """Validate requested data against one partial product manifest."""
+    if not partial_info:
+        return
+
+    subsets = partial_info.get("subsets", {})
+    for subswath in subswaths:
+        available_pols = subsets.get(subswath.lower())
+        if available_pols is None:
+            raise ValueError(
+                f"The partial {product_role} product does not contain {subswath}."
+            )
+        missing_pols = [
+            pol for pol in polarizations if pol.lower() not in available_pols
+        ]
+        if missing_pols:
+            raise ValueError(
+                f"The partial {product_role} product does not contain "
+                f"{', '.join(p.upper() for p in missing_pols)} in {subswath}."
+            )
+
+
+def _validate_partial_insar_pair(
+    prm_path: str,
+    sec_path: str,
+    partial_info_prm: dict,
+    partial_info_sec: dict,
+) -> BaseGeometry | None:
+    """Validate the matched-partial InSAR contract and return its stored AOI."""
+    is_partial_prm = bool(partial_info_prm)
+    is_partial_sec = bool(partial_info_sec)
+    if is_partial_prm != is_partial_sec:
+        raise ValueError(
+            "InSAR processing requires either two full products or two compatible "
+            "partial products; mixed full and partial pairs are not supported."
+        )
+    if not is_partial_prm:
+        return None
+
+    partial_aoi_prm = read_partial_aoi(prm_path, partial_info_prm)
+    partial_aoi_sec = read_partial_aoi(sec_path, partial_info_sec)
+    if not partial_aoi_prm.equals(partial_aoi_sec):
+        raise ValueError("Partial InSAR products must contain identical stored AOIs.")
+
+    subsets_prm = partial_info_prm.get("subsets", {})
+    subsets_sec = partial_info_sec.get("subsets", {})
+    if not subsets_prm or set(subsets_prm) != set(subsets_sec):
+        raise ValueError(
+            "Partial InSAR products must contain the same downloaded subswaths."
+        )
+
+    for subswath, pols_prm in subsets_prm.items():
+        pols_sec = subsets_sec[subswath]
+        if set(pols_prm) != set(pols_sec):
+            raise ValueError(
+                "Partial InSAR products must contain the same downloaded "
+                f"polarizations for {subswath.upper()}."
+            )
+
+    return partial_aoi_prm
 
 
 def _child_process(func, args):
