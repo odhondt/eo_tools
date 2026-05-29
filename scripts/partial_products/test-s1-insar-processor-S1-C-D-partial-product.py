@@ -15,15 +15,17 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # print(f"{eo_tools.__file__=}")
 
 import os
+from math import pi
+
+import folium
 import geopandas as gpd
+from folium import LayerControl
+
+from eo_tools.auxils import remove
 
 # from eodag import EODataAccessGateway
 from eo_tools.S1.process import process_insar
-from eo_tools.auxils import remove
-from eo_tools_dev.util import show_cog, serve_map, palette_phi
-from math import pi
-import folium
-from folium import LayerControl
+from eo_tools_dev.util import palette_phi, serve_map, show_cog
 
 # credentials need to be stored in the following file (see EODAG docs)
 # confpath = "/data/eodag_config.yml"
