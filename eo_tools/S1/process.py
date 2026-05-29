@@ -702,7 +702,7 @@ def process_slc(
     """
 
     # prepare pair for interferogram computation
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -719,6 +719,10 @@ def process_slc(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["amp"]
 
@@ -809,7 +813,7 @@ def process_h_alpha_dual(
         Path: Output directory
     """
 
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -826,6 +830,10 @@ def process_h_alpha_dual(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["H", "alpha"]
     if write_vv_amplitude:
@@ -924,7 +932,7 @@ def process_polsar_cov_dual(
         Path: Output directory
     """
 
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -941,6 +949,10 @@ def process_polsar_cov_dual(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["c11", "c22", "c12_real", "c12_imag"]
 
@@ -1002,7 +1014,7 @@ def prepare_slc(
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
     orbit_interpolator: str = "chspline",
-) -> str:
+) -> str | tuple[str, BaseGeometry | None]:
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
     Args:
@@ -1022,8 +1034,15 @@ def prepare_slc(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
+    Note:
+        Partial-product SLC preparation uses the AOI stored in the product
+        metadata instead of `shp`. Requested subswaths and polarizations must be
+        available in `partial_download.yml`.
+
     Returns:
-        str: output directory
+        str | tuple[str, BaseGeometry]: Output directory for regular products.
+        For partial products, returns the output directory and the effective
+        stored AOI so downstream geocoding can use the same shape.
     """
 
     if aoi_name is None:
@@ -1033,6 +1052,18 @@ def prepare_slc(
 
     if not isinstance(subswaths, list):
         raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
+
+    if not os.path.exists(slc_path):
+        raise FileNotFoundError(f"Sentinel-1 SLC product not found: {slc_path}")
+
+    partial_info = read_partial_download_info(slc_path)
+    partial_aoi = read_partial_aoi(slc_path, partial_info)
+    if partial_aoi is not None:
+        log.info(
+            "Partial SLC product detected; ignoring the supplied shp argument "
+            "and using the AOI stored in the product metadata."
+        )
+        shp = partial_aoi
 
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
@@ -1054,7 +1085,7 @@ def prepare_slc(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_prm = identify(slc_path)
+    info_prm = identify_safe_product(slc_path, bool(partial_info))
     if isinstance(pol, str):
         if pol == "full":
             pol_ = info_prm.polarizations
@@ -1069,6 +1100,11 @@ def prepare_slc(
         pol_ = [x for x in pol if x in info_prm.polarizations]
     else:
         raise RuntimeError("polarizations must be of type str or list")
+
+    requested_pols = info_prm.polarizations if pol == "full" else pol_
+    if isinstance(pol, list):
+        requested_pols = pol
+    _validate_partial_selection(partial_info, requested_pols, unique_subswaths, "SLC")
 
     meta_prm = info_prm.scanMetadata()
     # parse dates
@@ -1119,6 +1155,8 @@ def prepare_slc(
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
                 log.info("Skipping preprocessing.")
+    if partial_aoi is not None:
+        return out_dir, shp
     return out_dir
 
 
