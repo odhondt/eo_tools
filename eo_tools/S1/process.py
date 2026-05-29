@@ -288,6 +288,11 @@ def prepare_insar(
     if not isinstance(subswaths, list):
         raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
 
+    if not os.path.exists(prm_path):
+        raise FileNotFoundError(f"Primary Sentinel-1 product not found: {prm_path}")
+    if not os.path.exists(sec_path):
+        raise FileNotFoundError(f"Secondary Sentinel-1 product not found: {sec_path}")
+
     partial_info_prm = read_partial_download_info(prm_path)
     partial_info_sec = read_partial_download_info(sec_path)
 
