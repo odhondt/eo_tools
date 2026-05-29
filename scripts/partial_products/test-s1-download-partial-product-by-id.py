@@ -28,7 +28,7 @@ jobs = [
     (
         "/eo_tools/data/Andorra_tiny.geojson",
         [
-            "S1C_IW_SLC__1SDV_20250401T174601_20250401T174629_001703_002E2A_4DC9",
+            "S1C_IW_SLC__1SDV_20260420T174607_20260420T174635_007303_00ECDF_FA97",
             "S1D_IW_SLC__1SDV_20260421T174617_20260421T174645_002448_00405E_4FF4",
         ],
     ),
@@ -51,7 +51,6 @@ def main() -> None:
     for aoi_file, product_ids in jobs:
         shp = gpd.read_file(aoi_file).geometry[0]
         products = search_products(intersects=shp, ids=product_ids)
-        print(products)
 
         download_partial_products(
             products,
@@ -60,7 +59,7 @@ def main() -> None:
             aws_key=cred["username"],
             aws_secret=cred["password"],
             pol="full",
-            force_overwrite=True,
+            force_overwrite=False,
         )
 
 
