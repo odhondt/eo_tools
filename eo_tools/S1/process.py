@@ -437,7 +437,7 @@ def preprocess_insar_iw(
     output_dir: str,
     iw: int = 1,
     pol: str | list[str] = "vv",
-    min_burst: int = 1,
+    min_burst: int | None = None,
     max_burst: int | None = None,
     apply_fast_esd: bool = True,
     warp_kernel: str = "bicubic",
@@ -458,8 +458,10 @@ def preprocess_insar_iw(
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
-        min_burst (int, optional): first burst to process. Defaults to 1.
-        max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        min_burst (int | None, optional): First primary burst to process. If
+            not set, the first available primary burst is used. Defaults to None.
+        max_burst (int | None, optional): Last primary burst to process. If not
+            set, the last available primary burst is used. Defaults to None.
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
@@ -473,6 +475,10 @@ def preprocess_insar_iw(
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        For partial products, the default primary burst range is the downloaded
+        available range. The corresponding secondary range is obtained through
+        the geometry-derived burst index offset, and unavailable offset-mapped
+        secondary bursts raise an error.
     """
 
     if not os.path.isdir(output_dir):
@@ -522,15 +528,20 @@ def preprocess_insar_iw(
     # intra-product overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
-    if not max_burst:
-        max_burst_ = prm.burst_count
+    if min_burst is None:
+        min_burst_ = prm.min_burst
+    else:
+        min_burst_ = min_burst
+
+    if max_burst is None:
+        max_burst_ = prm.max_burst
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         tmp_prm = f"{output_dir}/tmp_primary.tif"
         tmp_sec = f"{output_dir}/tmp_secondary.tif"
-    elif max_burst_ < min_burst:
+    elif max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
     else:
         tmp_prm = f"{output_dir}/primary.tif"
@@ -539,23 +550,23 @@ def preprocess_insar_iw(
     if (
         max_burst_ > prm.burst_count
         or max_burst_ < 1
-        or min_burst > prm.burst_count
-        or min_burst < 1
+        or min_burst_ > prm.burst_count
+        or min_burst_ < 1
     ):
         raise ValueError(
             f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
         )
 
     if prm.is_partial:
-        if min_burst < prm.min_burst or max_burst_ > prm.max_burst:
+        if min_burst_ < prm.min_burst or max_burst_ > prm.max_burst:
             raise ValueError(
                 "At least one requested burst is absent from the partial primary "
-                f"product. Requested primary bursts {min_burst} to {max_burst_}; "
+                f"product. Requested primary bursts {min_burst_} to {max_burst_}; "
                 f"available primary bursts are {prm.min_burst} to {prm.max_burst}."
             )
 
     if sec.is_partial:
-        min_burst_sec = min_burst + burst_idx_offset
+        min_burst_sec = min_burst_ + burst_idx_offset
         max_burst_sec = max_burst_ + burst_idx_offset
         if min_burst_sec < sec.min_burst or max_burst_sec > sec.max_burst:
             raise ValueError(
@@ -567,7 +578,7 @@ def preprocess_insar_iw(
                 "an available offset-mapped secondary burst."
             )
 
-    naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
+    naz = prm.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = prm.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
@@ -582,7 +593,7 @@ def preprocess_insar_iw(
             dem_dir,
             naz,
             nrg,
-            min_burst,
+            min_burst_,
             max_burst_,
             burst_idx_offset,
             dem_name,
@@ -596,13 +607,13 @@ def preprocess_insar_iw(
         ),
     )
 
-    if (max_burst_ > min_burst) & apply_fast_esd:
+    if (max_burst_ > min_burst_) & apply_fast_esd:
         _child_process(
             _apply_fast_esd,
             (
                 tmp_prm,
                 tmp_sec,
-                min_burst,
+                min_burst_,
                 max_burst_,
                 prm.lines_per_burst,
                 nrg,
@@ -610,14 +621,16 @@ def preprocess_insar_iw(
             ),
         )
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
+        # The secondary is warped to primary SAR geometry, so stitching must use
+        # identical primary burst offsets and overlaps for both rasters.
         _child_process(
             _stitch_bursts,
             (
                 tmp_sec,
                 f"{output_dir}/secondary.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 prm,
             ),
         )
@@ -627,14 +640,14 @@ def preprocess_insar_iw(
             (
                 tmp_prm,
                 f"{output_dir}/primary.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 prm,
             ),
         )
 
     log.info("Cleaning temporary files")
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
@@ -1114,7 +1127,7 @@ def preprocess_slc_iw(
     output_dir: str,
     iw: int = 1,
     pol: str | list[str] = "vv",
-    min_burst: int = 1,
+    min_burst: int | None = None,
     max_burst: int | None = None,
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
@@ -1132,8 +1145,10 @@ def preprocess_slc_iw(
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
-        min_burst (int, optional): first burst to process. Defaults to 1.
-        max_burst (int | None, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        min_burst (int | None, optional): First burst to process. If not set,
+            the first available burst is used. Defaults to None.
+        max_burst (int | None, optional): Last burst to process. If not set,
+            the last available burst is used. Defaults to None.
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_dir (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
@@ -1146,6 +1161,9 @@ def preprocess_slc_iw(
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        For partial products, the default burst range is the downloaded
+        available range. Explicit burst requests outside that range raise an
+        error.
     """
 
     if not os.path.isdir(output_dir):
@@ -1168,14 +1186,19 @@ def preprocess_slc_iw(
 
     overlap = np.round(slc.compute_burst_overlap(2)).astype(int)
 
-    if not max_burst:
-        max_burst_ = slc.burst_count
+    if min_burst is None:
+        min_burst_ = slc.min_burst
+    else:
+        min_burst_ = min_burst
+
+    if max_burst is None:
+        max_burst_ = slc.max_burst
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         tmp_slc = f"{output_dir}/tmp_slc.tif"
-    elif max_burst_ < min_burst:
+    elif max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
     else:
         tmp_slc = f"{output_dir}/slc.tif"
@@ -1183,14 +1206,22 @@ def preprocess_slc_iw(
     if (
         max_burst_ > slc.burst_count
         or max_burst_ < 1
-        or min_burst > slc.burst_count
-        or min_burst < 1
+        or min_burst_ > slc.burst_count
+        or min_burst_ < 1
     ):
         raise ValueError(
             f"min_burst and max_burst must be values between 1 and {slc.burst_count}"
         )
 
-    naz = slc.lines_per_burst * (max_burst_ - min_burst + 1)
+    if slc.is_partial:
+        if min_burst_ < slc.min_burst or max_burst_ > slc.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial SLC "
+                f"product. Requested bursts {min_burst_} to {max_burst_}; "
+                f"available bursts are {slc.min_burst} to {slc.max_burst}."
+            )
+
+    naz = slc.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = slc.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
@@ -1203,7 +1234,7 @@ def preprocess_slc_iw(
             dem_dir,
             naz,
             nrg,
-            min_burst,
+            min_burst_,
             max_burst_,
             dem_name,
             dem_upsampling,
@@ -1215,20 +1246,20 @@ def preprocess_slc_iw(
         ),
     )
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         _child_process(
             _stitch_bursts,
             (
                 tmp_slc,
                 f"{output_dir}/slc.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 slc,
             ),
         )
 
     log.info("Cleaning temporary files")
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         if os.path.isfile(tmp_slc):
             os.remove(tmp_slc)
 
