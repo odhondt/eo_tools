@@ -113,7 +113,7 @@ def process_insar(
         )
 
     # prepare pair for interferogram computation
-    out_dir = prepare_insar(
+    prepare_result = prepare_insar(
         prm_path=prm_path,
         sec_path=sec_path,
         output_dir=output_dir,
@@ -133,6 +133,10 @@ def process_insar(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = []
     if write_coherence:
@@ -237,7 +241,7 @@ def prepare_insar(
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
     orbit_interpolator: str = "chspline",
-) -> str:
+) -> str | tuple[str, BaseGeometry | None]:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
     Args:
@@ -271,7 +275,9 @@ def prepare_insar(
         Identical stored AOIs alone do not guarantee that this condition holds.
 
     Returns:
-        str: output directory
+        str | tuple[str, BaseGeometry]: Output directory for regular products.
+        For partial products, returns the output directory and the effective
+        stored AOI so downstream geocoding can use the same shape.
     """
 
     if aoi_name is None:
@@ -415,6 +421,8 @@ def prepare_insar(
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
                 log.info("Skipping preprocessing.")
+    if partial_aoi is not None:
+        return out_dir, shp
     return out_dir
 
 
