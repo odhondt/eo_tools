@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import warnings
 from datetime import datetime as DateTime
 from pathlib import Path
 from typing import Any, Sequence
@@ -10,6 +11,7 @@ import boto3
 import geopandas as gpd
 import numpy as np
 import rasterio
+from rasterio.errors import NotGeoreferencedWarning
 import yaml
 from dask.diagnostics import ProgressBar
 from pystac_client.client import Client
@@ -169,7 +171,6 @@ def _download_metadata_files(
             log.debug("Skipping directory marker key %s", remote_file)
             continue
         local_path = str(product_dir / Path(*relative_parts))
-        log.info("Metadata key %s -> %s", remote_file, local_path)
         if Path(remote_file).suffix != ".tiff":
             bucket.download_file(remote_file, local_path)
 
@@ -266,22 +267,25 @@ def _download_partial_raster_files(
             profile.pop("blockxsize", None)
             profile.pop("blockysize", None)
             profile.pop("tiled", None)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=NotGeoreferencedWarning
+                )
+                with rasterio.open(tiff_out, "w", **profile) as dst:
+                    with ProgressBar():
+                        dst.write(src.read(window=window))
 
-            with rasterio.open(tiff_out, "w", **profile) as dst:
-                with ProgressBar():
-                    dst.write(src.read(window=window))
-
-                for namespace in src.tag_namespaces():
-                    dst.update_tags(ns=namespace, **src.tags(ns=namespace))
-                dst.update_tags(**src.tags())
-                for band_idx in src.indexes:
-                    for namespace in src.tag_namespaces(band_idx):
-                        dst.update_tags(
-                            band_idx,
-                            ns=namespace,
-                            **src.tags(band_idx, ns=namespace),
-                        )
-                    dst.update_tags(band_idx, **src.tags(band_idx))
+                    for namespace in src.tag_namespaces():
+                        dst.update_tags(ns=namespace, **src.tags(ns=namespace))
+                    dst.update_tags(**src.tags())
+                    for band_idx in src.indexes:
+                        for namespace in src.tag_namespaces(band_idx):
+                            dst.update_tags(
+                                band_idx,
+                                ns=namespace,
+                                **src.tags(band_idx, ns=namespace),
+                            )
+                        dst.update_tags(band_idx, **src.tags(band_idx))
 
 
 # search with pystac client and store in a dataframe
