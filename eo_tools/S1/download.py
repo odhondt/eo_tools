@@ -18,7 +18,7 @@ from rasterio.windows import Window
 from shapely.geometry import Polygon, mapping, shape
 
 from eo_tools.auxils import get_burst_geometry, remove
-from eo_tools.S1.core import read_metadata, read_partial_download_info
+from eo_tools.S1.core import read_metadata
 
 log = logging.getLogger(__name__)
 PARTIAL_AOI_FILENAME = "partial_aoi.geojson"
@@ -61,20 +61,6 @@ def _write_partial_aoi(path: Path, shp: Any) -> None:
     with path.open("w", encoding="utf-8") as f:
         json.dump(geojson, f, indent=2)
         f.write("\n")
-
-
-def _has_matching_partial_aoi(path: Path, shp: Any) -> bool:
-    """Check that a stored partial-product AOI is present and unchanged."""
-    if not path.is_file():
-        return False
-
-    try:
-        with path.open(encoding="utf-8") as f:
-            stored_aoi = json.load(f)
-        features = stored_aoi["features"]
-        return len(features) == 1 and shape(features[0]["geometry"]).equals(shp)
-    except (KeyError, OSError, TypeError, ValueError):
-        return False
 
 
 def _validate_single_polygon(shp: Any, parameter_name: str) -> Polygon:
@@ -172,9 +158,18 @@ def _download_metadata_files(
     files = [it.key for it in list(bucket.objects.filter(Prefix=prefix))]
 
     for remote_file in files:
+        # S3 "folder" markers end with "/" and must not be downloaded as files.
+        if remote_file.endswith("/"):
+            log.debug("Skipping directory marker key %s", remote_file)
+            continue
         parts = Path(remote_file).parts
         idx = parts.index(source_product_root_dir)
-        local_path = str(product_dir / Path(*parts[idx + 1 :]))
+        relative_parts = parts[idx + 1 :]
+        if not relative_parts:
+            log.debug("Skipping directory marker key %s", remote_file)
+            continue
+        local_path = str(product_dir / Path(*relative_parts))
+        log.info("Metadata key %s -> %s", remote_file, local_path)
         if Path(remote_file).suffix != ".tiff":
             bucket.download_file(remote_file, local_path)
 
@@ -289,28 +284,6 @@ def _download_partial_raster_files(
                     dst.update_tags(band_idx, **src.tags(band_idx))
 
 
-def _compare_partial_product_manifest(
-    product_dir: Path,
-    stac_item: Any,
-    selected_pols: Sequence[str],
-    geometry_pol: str,
-    shp: Any,
-) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    """Compare requested partial-product metadata with the on-disk product."""
-    current_info, _ = _build_download_list(
-        product_dir=product_dir,
-        stac_item=stac_item,
-        selected_pols=selected_pols,
-        geometry_pol=geometry_pol,
-        shp=shp,
-    )
-    existing_info = read_partial_download_info(product_dir)
-    has_same_aoi = _has_matching_partial_aoi(
-        product_dir / PARTIAL_AOI_FILENAME, shp
-    )
-    return current_info, existing_info, current_info == existing_info and has_same_aoi
-
-
 # search with pystac client and store in a dataframe
 def search_products(
     intersects: Polygon,
@@ -422,11 +395,18 @@ def download_partial_products(
         aws_secret: Copernicus Data Space S3 secret key.
         pol: Polarization selection. Accepts "vv", "vh", "full", or a
             sequence containing "vv" and/or "vh". Defaults to "full".
-        force_overwrite: When True, overwrite an existing partial product on disk.
-            Defaults to False.
+        force_overwrite: When True, remove and re-download an existing partial
+            product directory. When False, existing directories are left
+            untouched. Defaults to False.
 
     Returns:
         None.
+
+    Note:
+        Existing partial-product directories are not integrity-checked before
+        being skipped. Users are responsible for verifying existing partial
+        products; when in doubt, use force_overwrite=True to remove and
+        re-download them.
     """
     shp = _validate_single_polygon(shp, "shp")
     if not os.path.isdir(out_dir):
@@ -455,46 +435,25 @@ def download_partial_products(
         product_dir, _, source_product_root_dir = _get_partial_product_paths(
             out_dir, it.id
         )
-        if product_dir.exists():
-            current_info, existing_info, is_identical = _compare_partial_product_manifest(
-                product_dir=product_dir,
-                stac_item=it,
-                selected_pols=selected_pols,
-                geometry_pol=geometry_pol,
-                shp=shp,
+        if product_dir.exists() and not product_dir.is_dir():
+            raise FileExistsError(
+                f"Cannot create partial product directory because a non-directory "
+                f"path already exists: {product_dir}"
             )
-            if is_identical:
-                log.warning(
-                    f"Product already on disk with identical partial data: {it.id}.",
-                    stacklevel=1,
-                )
-                if not force_overwrite:
-                    log.warning(
-                        "Use force_overwrite=True to overwrite the current product.",
-                        stacklevel=1,
-                    )
-            else:
-                log.warning(
-                    f"Product already on disk with different partial data: {it.id}.",
-                    stacklevel=1,
-                )
-                log.warning(
-                    f"Incoming partial manifest for {it.id}: {current_info}",
-                    stacklevel=1,
-                )
-                log.warning(
-                    f"On-disk partial manifest for {it.id}: {existing_info}",
-                    stacklevel=1,
-                )
-                if not force_overwrite:
-                    log.warning(
-                        "Use force_overwrite=True to overwrite the current product.",
-                        stacklevel=1,
-                    )
+        if product_dir.is_dir():
+            log.warning("Partial product directory already exists: %s", product_dir)
             if not force_overwrite:
+                log.warning(
+                    "Skipping %s. Use force_overwrite=True to remove and "
+                    "re-download this partial product.",
+                    it.id,
+                    stacklevel=1,
+                )
                 continue
             log.warning(
-                f"force_overwrite=True, overwriting current product: {it.id}",
+                "force_overwrite=True; removing existing partial product directory "
+                "and re-downloading %s.",
+                it.id,
                 stacklevel=1,
             )
             remove(product_dir)
