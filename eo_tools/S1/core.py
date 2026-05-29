@@ -92,12 +92,15 @@ def identify_safe_product(safe_path, is_partial=False):
 
     partial_path = Path(safe_path)
     source_name = partial_path.name.replace(".partial.SAFE", ".SAFE")
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        fake_safe = Path(tmp_dir) / source_name
-        fake_safe.mkdir()
-        shutil.copy2(partial_path / "manifest.safe", fake_safe / "manifest.safe")
-        shutil.copytree(partial_path / "annotation", fake_safe / "annotation")
-        return identify(str(fake_safe))
+    tmp_dir = tempfile.TemporaryDirectory()
+    fake_safe = Path(tmp_dir.name) / source_name
+    fake_safe.mkdir()
+    shutil.copy2(partial_path / "manifest.safe", fake_safe / "manifest.safe")
+    shutil.copytree(partial_path / "annotation", fake_safe / "annotation")
+    product = identify(str(fake_safe))
+    # pyroSAR reopens files through product.scene in scanMetadata/getOSV.
+    product._eo_tools_partial_safe_tmp = tmp_dir
+    return product
 
 
 class S1IWSwath:
