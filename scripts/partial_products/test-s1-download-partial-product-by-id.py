@@ -19,26 +19,33 @@ creds_file = Path("/data/creds_s3.json")
 
 jobs = [
     (
-        "/eo_tools/data/Etna.geojson",
+        "/eo_tools/data/Morocco_tiny.geojson",
         [
-            "S1A_IW_SLC__1SDV_20181228T050448_20181228T050515_025221_02C9BE_1E22",
-            "S1B_IW_SLC__1SDV_20181222T050400_20181222T050427_014150_01A4AE_4A45",
+            "S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1",
+            "S1A_IW_SLC__1SDV_20230916T063730_20230916T063757_050349_060FCD_6814",
         ],
     ),
-    (
-        "/eo_tools/data/Andorra_tiny.geojson",
-        [
-            "S1C_IW_SLC__1SDV_20260420T174607_20260420T174635_007303_00ECDF_FA97",
-            "S1D_IW_SLC__1SDV_20260421T174617_20260421T174645_002448_00405E_4FF4",
-        ],
-    ),
-    (
-        "/eo_tools/data/Berlin.geojson",
-        [
-            "S1A_IW_SLC__1SDV_20240916T165234_20240916T165301_055693_06CD1B_C701",
-            "S1A_IW_SLC__1SDV_20160922T165150_20160922T165217_013168_014EE2_7902",
-        ],
-    ),
+    # (
+    #     "/eo_tools/data/Etna.geojson",
+    #     [
+    #         "S1A_IW_SLC__1SDV_20181228T050448_20181228T050515_025221_02C9BE_1E22",
+    #         "S1B_IW_SLC__1SDV_20181222T050400_20181222T050427_014150_01A4AE_4A45",
+    #     ],
+    # ),
+    # (
+    #     "/eo_tools/data/Andorra_tiny.geojson",
+    #     [
+    #         "S1C_IW_SLC__1SDV_20260420T174607_20260420T174635_007303_00ECDF_FA97",
+    #         "S1D_IW_SLC__1SDV_20260421T174617_20260421T174645_002448_00405E_4FF4",
+    #     ],
+    # ),
+    # (
+    #     "/eo_tools/data/Berlin.geojson",
+    #     [
+    #         "S1A_IW_SLC__1SDV_20240916T165234_20240916T165301_055693_06CD1B_C701",
+    #         "S1A_IW_SLC__1SDV_20160922T165150_20160922T165217_013168_014EE2_7902",
+    #     ],
+    # ),
 ]
 
 
@@ -59,7 +66,7 @@ def main() -> None:
             aws_key=cred["username"],
             aws_secret=cred["password"],
             pol="full",
-            force_overwrite=False,
+            force_overwrite=True,
         )
 
 
