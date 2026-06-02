@@ -1,6 +1,8 @@
 import pytest
 import numpy as np
-from eo_tools.auxils import block_process
+from pathlib import Path
+
+from eo_tools.auxils import block_process, get_burst_geometry
 
 # Example processing function
 def simple_process_fn(block, multiplier=1):
@@ -77,3 +79,14 @@ def test_block_process(input_array, block_size, overlap, multiplier, expected_ou
         print("Expected array:")
         print(expected_output)
         assert np.array_equal(output_array, expected_output)
+
+
+def test_get_burst_geometry_accepts_path_objects():
+    safe_path = Path(
+        "data/S1/S1A_IW_SLC__1SDV_20230904T063730_20230904T063757_050174_0609E3_DAA1.SAFE"
+    )
+
+    burst_geom = get_burst_geometry(safe_path, "IW1", "VH")
+
+    assert not burst_geom.empty
+    assert set(burst_geom["subswath"]) == {"IW1"}

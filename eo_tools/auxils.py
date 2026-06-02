@@ -28,11 +28,13 @@ def remove(path, verb=True):
 # Adapted from S-1 TOPS SPLIT Analyzer (STSA) (https://github.com/pbrotoisworo/s1-tops-split-analyzer)
 # Original license: Apache-2.0
 def load_metadata(zip_path, subswath, polarization):
-    if zip_path.endswith(".zip"):
-        archive = ZipFile(zip_path)
+    product_path = os.fspath(zip_path)
+
+    if product_path.endswith(".zip"):
+        archive = ZipFile(product_path)
         archive_files = archive.namelist()
     else:
-        archive_files = glob(f"{zip_path}/**", recursive=True)
+        archive_files = glob(f"{product_path}/**", recursive=True)
     regex_filter = r"s1(?:a|b|c|d)-iw\d-slc-(?:vv|vh|hh|hv)-.*\.xml"
     metadata_file_list = []
     for item in archive_files:
@@ -45,7 +47,7 @@ def load_metadata(zip_path, subswath, polarization):
     for item in metadata_file_list:
         if subswath.lower() in item and polarization.lower() in item:
             target_file = item
-    if zip_path.endswith(".zip"):
+    if product_path.endswith(".zip"):
         return archive.open(target_file)
     else:
         return open(target_file)
