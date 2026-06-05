@@ -14,8 +14,7 @@
         "ms-python.python",
         "ms-python.isort",
         "ms-python.black-formatter",
-        "ms-toolsai.jupyter",
-        "njpwerner.autodocstring"
+        "ms-toolsai.jupyter"
       ],
       "settings": {
           "isort.importStrategy": "fromEnvironment",

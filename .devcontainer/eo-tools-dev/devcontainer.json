@@ -21,7 +21,8 @@
         "ms-python.isort",
         "ms-python.black-formatter",
         "ms-toolsai.jupyter",
-        "njpwerner.autodocstring"
+        "openai.chatgpt",
+        "mhutchie.git-graph"
       ],
       "settings": {
           "isort.importStrategy": "fromEnvironment",
