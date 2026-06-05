@@ -1,0 +1,41 @@
+{
+  "name": "eo_tools",
+  "dockerComposeFile": [
+    "../../docker-compose.yml",
+    "docker-compose.codex.yml"
+  ],
+  "service": "eo_tools",
+  "workspaceFolder": "/eo_tools",
+  // comment these lines if not using codex 
+  "mounts": [
+    "source=${localEnv:HOME}/.codex-devcontainers/eo_tools,target=/root/.codex,type=bind",
+    "source=${localEnv:HOME}/codex-contexts/eo_tools,target=/codex-context,type=bind"
+  ],
+  "forwardPorts": [
+    "localhost:8085"
+  ],
+ "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.isort",
+        "ms-python.black-formatter",
+        "ms-toolsai.jupyter",
+        "njpwerner.autodocstring"
+      ],
+      "settings": {
+          "isort.importStrategy": "fromEnvironment",
+          "isort.interpreter": ["/opt/conda/envs/eo_tools/bin/python"],
+          "python.defaultInterpreterPath": "/opt/conda/envs/eo_tools/bin/python",
+          "git.ignoreLimitWarning": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        }
+      }
+    }
+  }
+}
