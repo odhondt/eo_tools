@@ -1,16 +1,10 @@
 {
   "name": "eo_tools",
   "dockerComposeFile": [
-    "../../docker-compose.yml",
-    "docker-compose.codex.yml"
+    "../../docker-compose.yml"
   ],
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",
-  // comment these lines if not using codex 
-  "mounts": [
-    "source=${localEnv:HOME}/.codex-devcontainers/eo_tools,target=/root/.codex,type=bind",
-    "source=${localEnv:HOME}/codex-contexts/eo_tools,target=/codex-context,type=bind"
-  ],
   "forwardPorts": [
     "localhost:8085"
   ],
