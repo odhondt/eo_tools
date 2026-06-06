@@ -1,10 +1,16 @@
 {
   "name": "eo_tools",
   "dockerComposeFile": [
-    "../../docker-compose.yml"
+    "../../docker-compose.yml",
+    "docker-compose.codex.yml"
   ],
   "service": "eo_tools",
   "workspaceFolder": "/eo_tools",
+  // comment these lines if not using codex 
+  "mounts": [
+    "source=${localEnv:HOME}/.codex-devcontainers/eo_tools,target=/root/.codex,type=bind",
+    "source=${localEnv:HOME}/codex-contexts/eo_tools,target=/codex-context,type=bind"
+  ],
   "forwardPorts": [
     "localhost:8085"
   ],
@@ -14,7 +20,9 @@
         "ms-python.python",
         "ms-python.isort",
         "ms-python.black-formatter",
-        "ms-toolsai.jupyter"
+        "ms-toolsai.jupyter",
+        "openai.chatgpt",
+        "mhutchie.git-graph"
       ],
       "settings": {
           "isort.importStrategy": "fromEnvironment",
