@@ -8,6 +8,10 @@ from shapely.geometry import box
 from eo_tools.S1.process import (
     _validate_partial_insar_pair,
     _validate_partial_selection,
+    process_h_alpha_dual,
+    process_insar,
+    process_polsar_cov_dual,
+    process_slc,
     preprocess_insar_iw,
     preprocess_slc_iw,
 )
@@ -177,3 +181,65 @@ def test_preprocess_slc_rejects_unavailable_partial_burst(tmp_path):
     with patch("eo_tools.S1.process.S1IWSwath", return_value=slc):
         with pytest.raises(ValueError, match="absent from the partial SLC product"):
             preprocess_slc_iw("slc", str(tmp_path), min_burst=2, max_burst=3)
+
+
+def test_process_insar_uses_effective_partial_aoi_for_geocoding(tmp_path):
+    supplied_aoi = box(10, 10, 11, 11)
+    stored_aoi = box(0, 0, 1, 1)
+    sar_dir = tmp_path / "insar" / "sar"
+
+    with patch(
+        "eo_tools.S1.process.prepare_insar", return_value=(str(sar_dir), stored_aoi)
+    ) as prepare, patch(
+        "eo_tools.S1.process.os.path.isfile", return_value=False
+    ), patch(
+        "eo_tools.S1.process._child_process"
+    ) as child_process:
+        result = process_insar(
+            "primary",
+            "secondary",
+            str(tmp_path),
+            shp=supplied_aoi,
+            pol="vv",
+            subswaths=["IW1"],
+        )
+
+    assert prepare.call_args.kwargs["shp"] is supplied_aoi
+    assert child_process.call_args.args[1]["shp"] is stored_aoi
+    assert result == sar_dir.parent
+
+
+@pytest.mark.parametrize(
+    "processor, expected_vars",
+    [
+        (process_slc, ["amp"]),
+        (process_h_alpha_dual, ["H", "alpha", "amp_vv", "amp_vh"]),
+        (process_polsar_cov_dual, ["c11", "c22", "c12_real", "c12_imag"]),
+    ],
+)
+def test_slc_based_processor_uses_effective_partial_aoi_for_geocoding(
+    tmp_path, processor, expected_vars
+):
+    supplied_aoi = box(10, 10, 11, 11)
+    stored_aoi = box(0, 0, 1, 1)
+    sar_dir = tmp_path / processor.__name__ / "sar"
+
+    with patch(
+        "eo_tools.S1.process.prepare_slc", return_value=(str(sar_dir), stored_aoi)
+    ) as prepare, patch(
+        "eo_tools.S1.process.os.path.isfile", return_value=False
+    ), patch(
+        "eo_tools.S1.process._child_process"
+    ) as child_process:
+        result = processor(
+            "slc",
+            str(tmp_path),
+            shp=supplied_aoi,
+            subswaths=["IW1"],
+        )
+
+    assert prepare.call_args.kwargs["shp"] is supplied_aoi
+    geocode_args = child_process.call_args.args[1]
+    assert geocode_args["shp"] is stored_aoi
+    assert geocode_args["var_names"] == expected_vars
+    assert result == sar_dir.parent
