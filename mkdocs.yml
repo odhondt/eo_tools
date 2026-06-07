@@ -4,16 +4,17 @@ repo_name: 'odhondt/eo_tools'
 nav:
   - Home: index.md
   - Tutorials:
-    - Example 1: s1-discover-insar-pairs.ipynb
-    - Example 2: s1-easy-tops-insar.ipynb
-    - Example 3: s1-easy-slc-geocoding.ipynb
-    - Example 4: s1-easy-h-alpha-dual.ipynb
-    - Example 5: s1-easy-polsar-cov.ipynb
-    - Example 6: s1-easy-terrain-flattening.ipynb
-    - Example 7: s1-custom-pipeline.ipynb
-    - Example 9: s1-goldstein-phase-denoising.ipynb
-    - Example 9: discover-and-process-s2.ipynb
-    - Example 10: download-dem.ipynb
+    - Discover Sentinel-1 InSAR pairs: s1-discover-insar-pairs.ipynb
+    - Download Sentinel-1 partial products: s1-partial-product-download.ipynb
+    - Process a Sentinel-1 InSAR pair: s1-easy-tops-insar.ipynb
+    - Geocode Sentinel-1 SLC products: s1-easy-slc-geocoding.ipynb
+    - Apply Sentinel-1 H-Alpha decomposition: s1-easy-h-alpha-dual.ipynb
+    - Compute Sentinel-1 polarimetric covariance: s1-easy-polsar-cov.ipynb
+    - Apply Sentinel-1 terrain normalization: s1-easy-terrain-flattening.ipynb
+    - Build a custom Sentinel-1 pipeline: s1-custom-pipeline.ipynb
+    - Apply Goldstein InSAR phase filtering: s1-goldstein-phase-denoising.ipynb
+    - Discover and mosaic Sentinel-2 tiles: discover-and-process-s2.ipynb
+    - Download a DEM: download-dem.ipynb
   - API reference: 
     - Sentinel-1 core: s1_core_api.md
     - Sentinel-1 processor: s1_process_api.md
