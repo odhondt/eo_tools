@@ -114,6 +114,10 @@ conda install conda-forge::eo-tools
 - For docker use the notebooks in the `notebooks` directory of the github repository
 - To be able to download products with EODAG on Copernicus Dataspace, a file named `eodag_config.yaml` containing credentials must be created. The file `eodag_config_example.yml` located in the repository root directory may be used for this purpose. Feel free to copy, rename and edit this file with your credentials. It is recommended to store the file in a secure location outside of the local repository.
 
+### Documentation
+
+Documentation is available at https://eo-tools.readthedocs.io/en/latest/
+
 ## Notice
 
 - This project was originally forked from: https://github.com/eo2cube/s1_processor/, however since 99% of the code is now original, I have detached the fork.
