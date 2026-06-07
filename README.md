@@ -116,7 +116,7 @@ conda install conda-forge::eo-tools
 
 ### Documentation
 
-Documentation is available at https://eo-tools.readthedocs.io/en/latest/
+Documentation is available on [Read the Docs](https://eo-tools.readthedocs.io/en/latest/).
 
 ## Notice
 
