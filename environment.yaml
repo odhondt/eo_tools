@@ -15,6 +15,8 @@ dependencies:
   - pip
   - pystac
   - pystac-client
+  - boto3
+  - pyyaml
   - geopandas
   - pandas
   - eodag=3.10.0
@@ -34,7 +36,5 @@ dependencies:
   - dask
   - bottleneck
   - planetary-computer
-  - zarr
-  - s3fs
   # - memory_profiler
   # - numexpr

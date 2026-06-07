@@ -17,6 +17,8 @@ dependencies:
   - pip
   - pystac
   - pystac-client
+  - boto3
+  - pyyaml
   - geopandas
   - pandas
   - eodag=2.12.1
