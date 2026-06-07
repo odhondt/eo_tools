@@ -1,3 +1,14 @@
+# 2026.6.0
+
+## New features
+- Added Sentinel-1 SLC partial-product download from the Copernicus Data Space Ecosystem. The downloader writes SAFE-like `<product-id>.partial.SAFE` directories containing only the consecutive bursts intersecting an AOI, together with the required `partial_download.yml` manifest and `partial_aoi.geojson`.
+- Existing Sentinel-1 InSAR, SLC geocoding, H-Alpha, and dual-polarimetric covariance processors now recognize valid partial products and automatically use their stored AOI and downloaded burst/subswath/polarization availability.
+
+## Documentation and tests
+- Added partial-product download and processing tutorials for Docker, conda-forge, and Read the Docs, plus focused partial-product API documentation.
+- Added focused unit tests for partial-product core metadata/range behavior and processor selection/error/AOI-propagation contracts.
+
+
 # 2026.3.0
 
 ## New features
