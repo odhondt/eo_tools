@@ -19,7 +19,7 @@ Partial products provide several advantages:
 - The download AOI, available subswaths, polarizations, and burst ranges are stored with the product for reproducible processing.
 - Existing high-level InSAR, SLC geocoding, H-Alpha, and polarimetric covariance processing APIs automatically recognize valid partial products.
 
-See the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-download/) and [Sentinel-1 InSAR processing tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-easy-tops-insar/) to get started.
+See the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-processing/) to get started.
 
 ## Examples
 
@@ -122,4 +122,5 @@ Documentation is available on [Read the Docs](https://eo-tools.readthedocs.io/en
 
 - This project was originally forked from: https://github.com/eo2cube/s1_processor/, however since 99% of the code is now original, I have detached the fork.
 - Visualization functions are using TiTiler https://developmentseed.org/titiler/
-- Product discovery and download are using EODAG https://github.com/CS-SI/eodag
+- Full-product discovery and download use EODAG https://github.com/CS-SI/eodag
+- Sentinel-1 partial-product discovery and download use the Copernicus Data Space Ecosystem STAC and S3 services
