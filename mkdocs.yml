@@ -6,6 +6,7 @@ nav:
   - Tutorials:
     - Discover Sentinel-1 InSAR pairs: s1-discover-insar-pairs.ipynb
     - Download Sentinel-1 partial products: s1-partial-product-download.ipynb
+    - Process Sentinel-1 partial products: s1-partial-product-processing.ipynb
     - Process a Sentinel-1 InSAR pair: s1-easy-tops-insar.ipynb
     - Geocode Sentinel-1 SLC products: s1-easy-slc-geocoding.ipynb
     - Apply Sentinel-1 H-Alpha decomposition: s1-easy-h-alpha-dual.ipynb
