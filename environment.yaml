@@ -10,11 +10,13 @@ dependencies:
   - gdal
   - libgdal-jp2openjpeg
   - rasterio
-  - pyrosar=0.35
+  - pyrosar=0.36.2
   - spatialist
   - pip
   - pystac
   - pystac-client
+  - boto3
+  - pyyaml
   - geopandas
   - pandas
   - eodag=3.10.0

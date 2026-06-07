@@ -3,12 +3,14 @@ FROM mambaorg/micromamba:latest
 USER root
 
 RUN apt-get update && apt-get install -y \
+    bubblewrap \
     git \
     python3-pip \
     wget \
     libpq-dev \
     procps \
     gdal-bin \
+    && chmod u+s /usr/bin/bwrap \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp/conda_init

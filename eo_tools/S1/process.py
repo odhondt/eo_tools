@@ -1,33 +1,40 @@
-from eo_tools.S1.core import S1IWSwath, coregister, align
-from eo_tools.S1.util import presum, boxcar, remap
-from eo_tools.auxils import get_burst_geometry
-from eo_tools.auxils import remove
-import numpy as np
-import xarray as xr
-import rasterio as rio
-from rasterio.windows import Window
-import rioxarray as riox
-from rioxarray.merge import merge_arrays
-import warnings
-import os
 import concurrent
-import dask.array as da
-from rasterio.errors import NotGeoreferencedWarning
 import logging
-from pyroSAR import identify
+import os
+import re
+import warnings
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from shapely.geometry.base import BaseGeometry
-from osgeo import gdal
-from rasterio.features import geometry_window
+
+import dask.array as da
+import numpy as np
+import rasterio as rio
+import rioxarray as riox
+import xarray as xr
 from affine import Affine
 from numpy.fft import fft2, fftshift, ifft2, ifftshift
+from osgeo import gdal
+from pyroSAR import identify
+from rasterio.errors import NotGeoreferencedWarning
+from rasterio.features import geometry_window
+from rasterio.windows import Window
+from rioxarray.merge import merge_arrays
 from scipy.ndimage import uniform_filter as uflt
-from eo_tools.auxils import block_process
-from eo_tools.util import _has_overlap
+from shapely.geometry.base import BaseGeometry
 from skimage.morphology import erosion
-import re
+
+from eo_tools.auxils import block_process, get_burst_geometry, remove
+from eo_tools.S1.core import (
+    S1IWSwath,
+    align,
+    coregister,
+    identify_safe_product,
+    read_partial_aoi,
+    read_partial_download_info,
+)
+from eo_tools.S1.util import boxcar, presum, remap
+from eo_tools.util import _has_overlap
 
 # use child processes
 # USE_CP = True
@@ -106,7 +113,7 @@ def process_insar(
         )
 
     # prepare pair for interferogram computation
-    out_dir = prepare_insar(
+    prepare_result = prepare_insar(
         prm_path=prm_path,
         sec_path=sec_path,
         output_dir=output_dir,
@@ -126,6 +133,10 @@ def process_insar(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = []
     if write_coherence:
@@ -230,7 +241,7 @@ def prepare_insar(
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
     orbit_interpolator: str = "chspline",
-) -> str:
+) -> str | tuple[str, BaseGeometry | None]:
     """Produce a coregistered pair of Single Look Complex images and associated lookup tables.
 
     Args:
@@ -253,8 +264,20 @@ def prepare_insar(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
+    Note:
+        Partial-product InSAR processing requires both input products to be
+        partial products generated for the same AOI, with matching downloaded
+        subswaths and polarizations. In this case, the stored partial-product
+        AOI is used instead of `shp`. Per-IW spatial overlap, burst offset, and
+        downloaded burst availability are validated by `preprocess_insar_iw(...)`.
+        In particular, each primary burst selected by the stored AOI must map,
+        through the derived burst index offset, to an available secondary burst.
+        Identical stored AOIs alone do not guarantee that this condition holds.
+
     Returns:
-        str: output directory
+        str | tuple[str, BaseGeometry]: Output directory for regular products.
+        For partial products, returns the output directory and the effective
+        stored AOI so downstream geocoding can use the same shape.
     """
 
     if aoi_name is None:
@@ -265,6 +288,14 @@ def prepare_insar(
     if not isinstance(subswaths, list):
         raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
 
+    if not os.path.exists(prm_path):
+        raise FileNotFoundError(f"Primary Sentinel-1 product not found: {prm_path}")
+    if not os.path.exists(sec_path):
+        raise FileNotFoundError(f"Secondary Sentinel-1 product not found: {sec_path}")
+
+    partial_info_prm = read_partial_download_info(prm_path)
+    partial_info_sec = read_partial_download_info(sec_path)
+
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
         prm_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
@@ -272,6 +303,19 @@ def prepare_insar(
     gdf_burst_sec = get_burst_geometry(
         sec_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
     )
+
+    partial_aoi = _validate_partial_insar_pair(
+        prm_path,
+        sec_path,
+        partial_info_prm,
+        partial_info_sec,
+    )
+    if partial_aoi is not None:
+        log.info(
+            "Compatible partial InSAR products detected; ignoring the supplied "
+            "shp argument and using the AOI stored in the primary product metadata."
+        )
+        shp = partial_aoi
 
     # find what subswaths and bursts intersect AOI
     if shp is not None:
@@ -290,7 +334,7 @@ def prepare_insar(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_prm = identify(prm_path)
+    info_prm = identify_safe_product(prm_path, bool(partial_info_prm))
     if isinstance(pol, str):
         if pol == "full":
             pol_ = info_prm.polarizations
@@ -306,8 +350,18 @@ def prepare_insar(
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
+    requested_pols = info_prm.polarizations if pol == "full" else pol_
+    if isinstance(pol, list):
+        requested_pols = pol
+    _validate_partial_selection(
+        partial_info_prm, requested_pols, unique_subswaths, "primary"
+    )
+    _validate_partial_selection(
+        partial_info_sec, requested_pols, unique_subswaths, "secondary"
+    )
+
     # do a check on orbits
-    info_sec = identify(sec_path)
+    info_sec = identify_safe_product(sec_path, bool(partial_info_sec))
     meta_prm = info_prm.scanMetadata()
     meta_sec = info_sec.scanMetadata()
     orbnum = meta_prm["orbitNumber_rel"]
@@ -372,6 +426,8 @@ def prepare_insar(
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
                 log.info("Skipping preprocessing.")
+    if partial_aoi is not None:
+        return out_dir, shp
     return out_dir
 
 
@@ -381,7 +437,7 @@ def preprocess_insar_iw(
     output_dir: str,
     iw: int = 1,
     pol: str | list[str] = "vv",
-    min_burst: int = 1,
+    min_burst: int | None = None,
     max_burst: int | None = None,
     apply_fast_esd: bool = True,
     warp_kernel: str = "bicubic",
@@ -402,8 +458,10 @@ def preprocess_insar_iw(
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
-        min_burst (int, optional): first burst to process. Defaults to 1.
-        max_burst (int, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        min_burst (int | None, optional): First primary burst to process. If
+            not set, the first available primary burst is used. Defaults to None.
+        max_burst (int | None, optional): Last primary burst to process. If not
+            set, the last available primary burst is used. Defaults to None.
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
@@ -417,6 +475,10 @@ def preprocess_insar_iw(
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        For partial products, the default primary burst range is the downloaded
+        available range. The corresponding secondary range is obtained through
+        the geometry-derived burst index offset, and unavailable offset-mapped
+        secondary bursts raise an error.
     """
 
     if not os.path.isdir(output_dir):
@@ -466,15 +528,20 @@ def preprocess_insar_iw(
     # intra-product overlap
     overlap = np.round(prm.compute_burst_overlap(2)).astype(int)
 
-    if not max_burst:
-        max_burst_ = prm.burst_count
+    if min_burst is None:
+        min_burst_ = prm.min_burst
+    else:
+        min_burst_ = min_burst
+
+    if max_burst is None:
+        max_burst_ = prm.max_burst
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         tmp_prm = f"{output_dir}/tmp_primary.tif"
         tmp_sec = f"{output_dir}/tmp_secondary.tif"
-    elif max_burst_ < min_burst:
+    elif max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
     else:
         tmp_prm = f"{output_dir}/primary.tif"
@@ -483,14 +550,35 @@ def preprocess_insar_iw(
     if (
         max_burst_ > prm.burst_count
         or max_burst_ < 1
-        or min_burst > prm.burst_count
-        or min_burst < 1
+        or min_burst_ > prm.burst_count
+        or min_burst_ < 1
     ):
         raise ValueError(
             f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
         )
 
-    naz = prm.lines_per_burst * (max_burst_ - min_burst + 1)
+    if prm.is_partial:
+        if min_burst_ < prm.min_burst or max_burst_ > prm.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial primary "
+                f"product. Requested primary bursts {min_burst_} to {max_burst_}; "
+                f"available primary bursts are {prm.min_burst} to {prm.max_burst}."
+            )
+
+    if sec.is_partial:
+        min_burst_sec = min_burst_ + burst_idx_offset
+        max_burst_sec = max_burst_ + burst_idx_offset
+        if min_burst_sec < sec.min_burst or max_burst_sec > sec.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial secondary "
+                "product. Requested offset-mapped secondary bursts "
+                f"{min_burst_sec} to {max_burst_sec}; available secondary bursts "
+                f"are {sec.min_burst} to {sec.max_burst}. Partial InSAR processing "
+                "requires every primary burst selected by the stored AOI to have "
+                "an available offset-mapped secondary burst."
+            )
+
+    naz = prm.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = prm.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
@@ -505,7 +593,7 @@ def preprocess_insar_iw(
             dem_dir,
             naz,
             nrg,
-            min_burst,
+            min_burst_,
             max_burst_,
             burst_idx_offset,
             dem_name,
@@ -519,13 +607,13 @@ def preprocess_insar_iw(
         ),
     )
 
-    if (max_burst_ > min_burst) & apply_fast_esd:
+    if (max_burst_ > min_burst_) & apply_fast_esd:
         _child_process(
             _apply_fast_esd,
             (
                 tmp_prm,
                 tmp_sec,
-                min_burst,
+                min_burst_,
                 max_burst_,
                 prm.lines_per_burst,
                 nrg,
@@ -533,14 +621,16 @@ def preprocess_insar_iw(
             ),
         )
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
+        # The secondary is warped to primary SAR geometry, so stitching must use
+        # identical primary burst offsets and overlaps for both rasters.
         _child_process(
             _stitch_bursts,
             (
                 tmp_sec,
                 f"{output_dir}/secondary.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 prm,
             ),
         )
@@ -550,14 +640,14 @@ def preprocess_insar_iw(
             (
                 tmp_prm,
                 f"{output_dir}/primary.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 prm,
             ),
         )
 
     log.info("Cleaning temporary files")
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         if os.path.isfile(tmp_prm):
             os.remove(tmp_prm)
         if os.path.isfile(tmp_sec):
@@ -612,7 +702,7 @@ def process_slc(
     """
 
     # prepare pair for interferogram computation
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -629,6 +719,10 @@ def process_slc(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["amp"]
 
@@ -719,7 +813,7 @@ def process_h_alpha_dual(
         Path: Output directory
     """
 
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -736,6 +830,10 @@ def process_h_alpha_dual(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["H", "alpha"]
     if write_vv_amplitude:
@@ -834,7 +932,7 @@ def process_polsar_cov_dual(
         Path: Output directory
     """
 
-    out_dir = prepare_slc(
+    prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
         aoi_name=aoi_name,
@@ -851,6 +949,10 @@ def process_polsar_cov_dual(
         orb_dir=orb_dir,
         orbit_interpolator=orbit_interpolator,
     )
+    if isinstance(prepare_result, tuple):
+        out_dir, shp = prepare_result
+    else:
+        out_dir = prepare_result
 
     var_names = ["c11", "c22", "c12_real", "c12_imag"]
 
@@ -912,7 +1014,7 @@ def prepare_slc(
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
     orbit_interpolator: str = "chspline",
-) -> str:
+) -> str | tuple[str, BaseGeometry | None]:
     """Pre-process a Sentinel-1 SLC product with the ability to select subswaths polarizations and an area of interest.  Apply radiometric calibration, stitch the selected bursts and compute lookup tables for each subswath of interest, which can be used to project the data in the DEM geometry.
 
     Args:
@@ -932,8 +1034,15 @@ def prepare_slc(
         orb_dir (str, optional): Directory containing orbit files (automatic download). Defaults to "/tmp".
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
+    Note:
+        Partial-product SLC preparation uses the AOI stored in the product
+        metadata instead of `shp`. Requested subswaths and polarizations must be
+        available in `partial_download.yml`.
+
     Returns:
-        str: output directory
+        str | tuple[str, BaseGeometry]: Output directory for regular products.
+        For partial products, returns the output directory and the effective
+        stored AOI so downstream geocoding can use the same shape.
     """
 
     if aoi_name is None:
@@ -943,6 +1052,18 @@ def prepare_slc(
 
     if not isinstance(subswaths, list):
         raise ValueError("Subswaths must be a list like ['IW1', 'IW2'].")
+
+    if not os.path.exists(slc_path):
+        raise FileNotFoundError(f"Sentinel-1 SLC product not found: {slc_path}")
+
+    partial_info = read_partial_download_info(slc_path)
+    partial_aoi = read_partial_aoi(slc_path, partial_info)
+    if partial_aoi is not None:
+        log.info(
+            "Partial SLC product detected; ignoring the supplied shp argument "
+            "and using the AOI stored in the product metadata."
+        )
+        shp = partial_aoi
 
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
@@ -964,7 +1085,7 @@ def prepare_slc(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
-    info_prm = identify(slc_path)
+    info_prm = identify_safe_product(slc_path, bool(partial_info))
     if isinstance(pol, str):
         if pol == "full":
             pol_ = info_prm.polarizations
@@ -979,6 +1100,11 @@ def prepare_slc(
         pol_ = [x for x in pol if x in info_prm.polarizations]
     else:
         raise RuntimeError("polarizations must be of type str or list")
+
+    requested_pols = info_prm.polarizations if pol == "full" else pol_
+    if isinstance(pol, list):
+        requested_pols = pol
+    _validate_partial_selection(partial_info, requested_pols, unique_subswaths, "SLC")
 
     meta_prm = info_prm.scanMetadata()
     # parse dates
@@ -1029,6 +1155,8 @@ def prepare_slc(
                 os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
             else:
                 log.info("Skipping preprocessing.")
+    if partial_aoi is not None:
+        return out_dir, shp
     return out_dir
 
 
@@ -1037,7 +1165,7 @@ def preprocess_slc_iw(
     output_dir: str,
     iw: int = 1,
     pol: str | list[str] = "vv",
-    min_burst: int = 1,
+    min_burst: int | None = None,
     max_burst: int | None = None,
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
@@ -1055,8 +1183,10 @@ def preprocess_slc_iw(
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
         pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
-        min_burst (int, optional): first burst to process. Defaults to 1.
-        max_burst (int | None, optional): fast burst to process. If not set, last burst of the subswath. Defaults to None.
+        min_burst (int | None, optional): First burst to process. If not set,
+            the first available burst is used. Defaults to None.
+        max_burst (int | None, optional): Last burst to process. If not set,
+            the last available burst is used. Defaults to None.
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_dir (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
@@ -1069,6 +1199,9 @@ def preprocess_slc_iw(
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        For partial products, the default burst range is the downloaded
+        available range. Explicit burst requests outside that range raise an
+        error.
     """
 
     if not os.path.isdir(output_dir):
@@ -1091,14 +1224,19 @@ def preprocess_slc_iw(
 
     overlap = np.round(slc.compute_burst_overlap(2)).astype(int)
 
-    if not max_burst:
-        max_burst_ = slc.burst_count
+    if min_burst is None:
+        min_burst_ = slc.min_burst
+    else:
+        min_burst_ = min_burst
+
+    if max_burst is None:
+        max_burst_ = slc.max_burst
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         tmp_slc = f"{output_dir}/tmp_slc.tif"
-    elif max_burst_ < min_burst:
+    elif max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
     else:
         tmp_slc = f"{output_dir}/slc.tif"
@@ -1106,14 +1244,22 @@ def preprocess_slc_iw(
     if (
         max_burst_ > slc.burst_count
         or max_burst_ < 1
-        or min_burst > slc.burst_count
-        or min_burst < 1
+        or min_burst_ > slc.burst_count
+        or min_burst_ < 1
     ):
         raise ValueError(
             f"min_burst and max_burst must be values between 1 and {slc.burst_count}"
         )
 
-    naz = slc.lines_per_burst * (max_burst_ - min_burst + 1)
+    if slc.is_partial:
+        if min_burst_ < slc.min_burst or max_burst_ > slc.max_burst:
+            raise ValueError(
+                "At least one requested burst is absent from the partial SLC "
+                f"product. Requested bursts {min_burst_} to {max_burst_}; "
+                f"available bursts are {slc.min_burst} to {slc.max_burst}."
+            )
+
+    naz = slc.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = slc.samples_per_burst
 
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
@@ -1126,7 +1272,7 @@ def preprocess_slc_iw(
             dem_dir,
             naz,
             nrg,
-            min_burst,
+            min_burst_,
             max_burst_,
             dem_name,
             dem_upsampling,
@@ -1138,20 +1284,20 @@ def preprocess_slc_iw(
         ),
     )
 
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         _child_process(
             _stitch_bursts,
             (
                 tmp_slc,
                 f"{output_dir}/slc.tif",
-                max_burst_ - min_burst + 1,
-                min_burst,
+                max_burst_ - min_burst_ + 1,
+                min_burst_,
                 slc,
             ),
         )
 
     log.info("Cleaning temporary files")
-    if max_burst_ > min_burst:
+    if max_burst_ > min_burst_:
         if os.path.isfile(tmp_slc):
             os.remove(tmp_slc)
 
@@ -2534,6 +2680,73 @@ def _stitch_bursts(
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
+
+
+def _validate_partial_selection(
+    partial_info: dict,
+    polarizations: list[str],
+    subswaths: list[str],
+    product_role: str,
+) -> None:
+    """Validate requested data against one partial product manifest."""
+    if not partial_info:
+        return
+
+    subsets = partial_info.get("subsets", {})
+    for subswath in subswaths:
+        available_pols = subsets.get(subswath.lower())
+        if available_pols is None:
+            raise ValueError(
+                f"The partial {product_role} product does not contain {subswath}."
+            )
+        missing_pols = [
+            pol for pol in polarizations if pol.lower() not in available_pols
+        ]
+        if missing_pols:
+            raise ValueError(
+                f"The partial {product_role} product does not contain "
+                f"{', '.join(p.upper() for p in missing_pols)} in {subswath}."
+            )
+
+
+def _validate_partial_insar_pair(
+    prm_path: str,
+    sec_path: str,
+    partial_info_prm: dict,
+    partial_info_sec: dict,
+) -> BaseGeometry | None:
+    """Validate the matched-partial InSAR contract and return its stored AOI."""
+    is_partial_prm = bool(partial_info_prm)
+    is_partial_sec = bool(partial_info_sec)
+    if is_partial_prm != is_partial_sec:
+        raise ValueError(
+            "InSAR processing requires either two full products or two compatible "
+            "partial products; mixed full and partial pairs are not supported."
+        )
+    if not is_partial_prm:
+        return None
+
+    partial_aoi_prm = read_partial_aoi(prm_path, partial_info_prm)
+    partial_aoi_sec = read_partial_aoi(sec_path, partial_info_sec)
+    if not partial_aoi_prm.equals(partial_aoi_sec):
+        raise ValueError("Partial InSAR products must contain identical stored AOIs.")
+
+    subsets_prm = partial_info_prm.get("subsets", {})
+    subsets_sec = partial_info_sec.get("subsets", {})
+    if not subsets_prm or set(subsets_prm) != set(subsets_sec):
+        raise ValueError(
+            "Partial InSAR products must contain the same downloaded subswaths."
+        )
+
+    for subswath, pols_prm in subsets_prm.items():
+        pols_sec = subsets_sec[subswath]
+        if set(pols_prm) != set(pols_sec):
+            raise ValueError(
+                "Partial InSAR products must contain the same downloaded "
+                f"polarizations for {subswath.upper()}."
+            )
+
+    return partial_aoi_prm
 
 
 def _child_process(func, args):

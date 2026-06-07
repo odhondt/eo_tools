@@ -21,8 +21,11 @@ def explore_products(products, aoi=None):
         Hover on the map to see the product characteristics. Overlapping products are grouped for better visibility. Indices can be used to select products to download. For instance for InSAR pairs, select two products with nearly identical footprints.
     """
     # Convert results to geodataframe
-    gj = products.as_geojson_object()
-    gdf = gpd.read_file(json.dumps(gj))
+    if isinstance(products, gpd.GeoDataFrame):
+        gdf = products
+    else:
+        gj = products.as_geojson_object()
+        gdf = gpd.read_file(json.dumps(gj))
 
     ll = gdf.total_bounds.reshape(2, 2)
     # folium inverts coordinates
@@ -55,7 +58,7 @@ def explore_products(products, aoi=None):
             orbit_conf = sel.iloc[0]["orbitDirection"]
             orbit_num = sel.iloc[0]["relativeOrbitNumber"]
             folium_products = folium.GeoJson(
-                geom, name=f"Orbit {orbit_num}, group {i+1}"
+                geom, name=f"Orbit {orbit_num}, group {i+1} ({len(sel)})"
             ).add_to(m)
             # folium_products = folium.GeoJson(geom).add_to(m)
             date_ts = sel["startTimeFromAscendingNode"].dt.strftime("%Y-%m-%d %X")

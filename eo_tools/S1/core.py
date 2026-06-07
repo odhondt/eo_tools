@@ -1,9 +1,11 @@
+import json
 import os
 from pathlib import Path
 import xmltodict
 import numpy as np
 import rasterio
 import hashlib
+import yaml
 from scipy.interpolate import CubicHermiteSpline, RegularGridInterpolator
 from scipy.interpolate import BarycentricInterpolator
 from numpy.polynomial import Polynomial
@@ -11,7 +13,7 @@ from dateutil.parser import isoparse
 from eo_tools.dem import retrieve_dem
 from eo_tools.S1.util import remap
 from eo_tools.auxils import get_burst_geometry
-from shapely.geometry import box
+from shapely.geometry import Polygon, box, shape
 from rasterio.enums import Resampling
 from numba import njit, prange
 from rasterio.windows import Window
@@ -26,11 +28,79 @@ from pyproj.sync import get_proj_endpoint
 from pyroSAR import identify
 from xmltodict import parse
 import zipfile
+import tempfile
+import shutil
 
 
 import logging
 
 log = logging.getLogger(__name__)
+
+
+def read_partial_download_info(safe_path):
+    """Read partial product download metadata if it exists."""
+    if Path(safe_path).suffix == ".zip":
+        return {}
+
+    partial_file = Path(safe_path) / "partial_download.yml"
+    if not partial_file.is_file():
+        return {}
+
+    with partial_file.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def read_partial_aoi(safe_path, partial_download=None):
+    """Read and validate the AOI stored with a partial product."""
+    if partial_download is None:
+        partial_download = read_partial_download_info(safe_path)
+    if not partial_download:
+        return None
+
+    aoi_filename = partial_download.get("aoi_file")
+    if not aoi_filename:
+        raise ValueError(
+            f"Partial product {safe_path} does not specify required AOI metadata."
+        )
+
+    aoi_path = Path(safe_path) / aoi_filename
+    if not aoi_path.is_file():
+        raise FileNotFoundError(
+            f"Partial product AOI metadata file is missing: {aoi_path}."
+        )
+
+    with aoi_path.open(encoding="utf-8") as f:
+        geojson = json.load(f)
+    features = geojson.get("features", [])
+    if len(features) != 1:
+        raise ValueError(
+            "Partial product AOI metadata must contain exactly one feature: "
+            f"{aoi_path}."
+        )
+    partial_aoi = shape(features[0]["geometry"])
+    if not isinstance(partial_aoi, Polygon) or partial_aoi.is_empty:
+        raise ValueError(
+            f"Partial product AOI metadata must contain one non-empty Polygon: {aoi_path}."
+        )
+    return partial_aoi
+
+
+def identify_safe_product(safe_path, is_partial=False):
+    """Identify an S1 product, normalizing partial SAFE names for pyroSAR."""
+    if not is_partial:
+        return identify(safe_path)
+
+    partial_path = Path(safe_path)
+    source_name = partial_path.name.replace(".partial.SAFE", ".SAFE")
+    tmp_dir = tempfile.TemporaryDirectory()
+    fake_safe = Path(tmp_dir.name) / source_name
+    fake_safe.mkdir()
+    shutil.copy2(partial_path / "manifest.safe", fake_safe / "manifest.safe")
+    shutil.copytree(partial_path / "annotation", fake_safe / "annotation")
+    product = identify(str(fake_safe))
+    # pyroSAR reopens files through product.scene in scanMetadata/getOSV.
+    product._eo_tools_partial_safe_tmp = tmp_dir
+    return product
 
 
 class S1IWSwath:
@@ -64,6 +134,19 @@ class S1IWSwath:
 
         self.is_zip = Path(safe_path).suffix == ".zip"
         self.product = zipfile.Path(safe_path) if self.is_zip else Path(safe_path)
+        self.partial_download = read_partial_download_info(safe_path)
+        self.is_partial = bool(self.partial_download)
+        self.partial_aoi = read_partial_aoi(safe_path, self.partial_download)
+        self.partial_subset = (
+            self.partial_download.get("subsets", {})
+            .get(f"iw{iw}", {})
+            .get(pol)
+        )
+        if self.is_partial and self.partial_subset is None:
+            raise ValueError(
+                f"Partial product does not contain subswath IW{iw} "
+                f"and polarization {pol}."
+            )
 
         # check product type using dir name
         parts = self.product.stem.split("_")
@@ -74,8 +157,11 @@ class S1IWSwath:
 
         # raster path
         try:
-            str_tiff = f"**/measurement/*iw{iw}*{pol}*.tiff"
-            pth_tiff = list(self.product.glob(str_tiff))[0]
+            if self.partial_subset:
+                pth_tiff = Path(safe_path) / self.partial_subset["file"]
+            else:
+                str_tiff = f"**/measurement/*iw{iw}*{pol}*.tiff"
+                pth_tiff = list(self.product.glob(str_tiff))[0]
         except IndexError:
             raise FileNotFoundError("Tiff file is missing.")
         self.pth_tiff = f"zip://{pth_tiff}" if self.is_zip else pth_tiff
@@ -101,6 +187,21 @@ class S1IWSwath:
         self.lines_per_burst = int(burst_info["linesPerBurst"])
         self.samples_per_burst = int(burst_info["samplesPerBurst"])
         self.burst_count = int(burst_info["burstList"]["@count"])
+        if self.partial_subset:
+            self.min_burst = int(self.partial_subset["min_burst"])
+            self.max_burst = int(self.partial_subset["max_burst"])
+            self.raster_line_offset = int(self.partial_subset["line_start"])
+            log.info(
+                "Partial product detected for IW%s/%s: available bursts %s to %s.",
+                iw,
+                pol,
+                self.min_burst,
+                self.max_burst,
+            )
+        else:
+            self.min_burst = 1
+            self.max_burst = self.burst_count
+            self.raster_line_offset = 0
 
         # extract calibration LUT to rescale data
         calinfo = read_metadata(pth_cal)
@@ -124,7 +225,7 @@ class S1IWSwath:
         log.info(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors (orbit)
-        product = identify(safe_path)
+        product = identify_safe_product(safe_path, self.is_partial)
         zip_orb = product.getOSV(orb_dir, osvType=["POE", "RES"], returnMatch=True)
         if not zip_orb:
             raise RuntimeError("No orbit file available for this product")
@@ -185,18 +286,12 @@ class S1IWSwath:
         """
 
         if not max_burst:
-            max_burst_ = self.burst_count
+            max_burst_ = self.max_burst
         else:
             max_burst_ = max_burst
 
-        if min_burst < 1 or min_burst > self.burst_count:
-            raise ValueError(
-                f"Invalid min burst index (must be between 1 and {self.burst_count})"
-            )
-        if max_burst_ < 1 or max_burst_ > self.burst_count:
-            raise ValueError(
-                f"Invalid max burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(min_burst)
+        self._validate_available_burst(max_burst_)
         if max_burst_ < min_burst:
             raise ValueError("max_burst must be >= min_burst")
         if dem_name not in ["nasadem", "cop-dem-glo-30", "cop-dem-glo-90", "alos-dem"]:
@@ -295,10 +390,7 @@ class S1IWSwath:
             (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         if dem_upsampling < 0:
             raise ValueError("dem_upsampling must be > 0")
@@ -319,8 +411,6 @@ class S1IWSwath:
 
         # look for burst info
         burst_info = meta["product"]["swathTiming"]
-        if burst_idx > self.burst_count or burst_idx < 1:
-            raise ValueError(f"Burst index must be between 1 and {self.burst_count}")
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
 
@@ -452,10 +542,7 @@ class S1IWSwath:
             array: phase correction to apply to the SLC burst.
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         meta = self.meta
         meta_image = meta["product"]["imageAnnotation"]
@@ -556,6 +643,8 @@ class S1IWSwath:
         Returns:
             cal_fac: Calibration factor to apply to the raster burst. Array for sigma nought, float for beta nought.
         """
+        self._validate_available_burst(burst_idx)
+
         naz = self.lines_per_burst
         nrg = self.samples_per_burst
         first_line = (burst_idx - 1) * self.lines_per_burst
@@ -589,6 +678,12 @@ class S1IWSwath:
             )
         return cal_fac
 
+    def _validate_available_burst(self, burst_idx):
+        if burst_idx < self.min_burst or burst_idx > self.max_burst:
+            raise ValueError(
+                f"Invalid burst index (must be between {self.min_burst} and {self.max_burst})"
+            )
+
     def read_burst(self, burst_idx=1, remove_invalid=True):
         """Reads raster SLC burst.
 
@@ -600,16 +695,13 @@ class S1IWSwath:
             array: Complex raster
         """
 
-        if burst_idx < 1 or burst_idx > self.burst_count:
-            raise ValueError(
-                f"Invalid burst index (must be between 1 and {self.burst_count})"
-            )
+        self._validate_available_burst(burst_idx)
 
         meta = self.meta
         burst_info = meta["product"]["swathTiming"]
         burst_data = burst_info["burstList"]["burst"][burst_idx - 1]
 
-        first_line = (burst_idx - 1) * self.lines_per_burst
+        first_line = (burst_idx - self.min_burst) * self.lines_per_burst
 
         nodataval = np.nan + 1j * np.nan
         arr = read_chunk(self.pth_tiff, first_line, self.lines_per_burst).astype(

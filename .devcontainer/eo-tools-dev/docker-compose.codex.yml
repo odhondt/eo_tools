@@ -1,0 +1,11 @@
+services:
+  eo_tools:
+    # Required for Codex to create its nested Bubblewrap sandbox in Docker.
+    cap_add:
+      - SYS_ADMIN
+      - SYS_CHROOT
+      - SETUID
+      - SETGID
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
