@@ -8,6 +8,9 @@
 - Added partial-product download and processing tutorials for Docker, conda-forge, and Read the Docs, plus focused partial-product API documentation.
 - Added focused unit tests for partial-product core metadata/range behavior and processor selection/error/AOI-propagation contracts.
 
+## Maintenance
+- Removed all support, configuration, and examples for the legacy Sentinel-1 processor.
+
 
 # 2026.3.0
 
