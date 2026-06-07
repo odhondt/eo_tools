@@ -20,6 +20,8 @@ Partial products provide several advantages:
 
 See the [partial-product download tutorial](notebooks-cf/s1-partial-product-download.ipynb) and [partial-product processing tutorial](notebooks-cf/s1-partial-product-processing.ipynb) to get started.
 
+## Examples
+
 Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco,
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" target="_blank">
