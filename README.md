@@ -18,7 +18,7 @@ Partial products provide several advantages:
 - The download AOI, available subswaths, polarizations, and burst ranges are stored with the product for reproducible processing.
 - Existing high-level InSAR, SLC geocoding, H-Alpha, and polarimetric covariance processing APIs automatically recognize valid partial products.
 
-See the [partial-product download tutorial](notebooks-cf/s1-partial-product-download.ipynb) and [partial-product processing tutorial](notebooks-cf/s1-partial-product-processing.ipynb) to get started.
+See the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-download/) and [Sentinel-1 InSAR processing tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-easy-tops-insar/) to get started.
 
 ## Examples
 
