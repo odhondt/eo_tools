@@ -7,3 +7,4 @@ __pycache__/
 .DS_Store
 *.EOF
 notebooks/scratchpad.ipynb
+.codex/S1_PARTIAL_TODO.md
