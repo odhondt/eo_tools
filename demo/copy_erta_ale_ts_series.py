@@ -39,6 +39,12 @@ def classify_folder(folder_name: str, timestamps: list[str]) -> dict[str, str]:
     return {}
 
 
+def build_timestamp_suffix(timestamps: list[str]) -> str:
+    if len(timestamps) >= 2:
+        return "_".join(timestamps)
+    return timestamps[0]
+
+
 def copy_series_files() -> None:
     if not ROOT_DIR.is_dir():
         raise FileNotFoundError(f"Source root does not exist: {ROOT_DIR}")
@@ -58,7 +64,7 @@ def copy_series_files() -> None:
             skipped += 1
             continue
 
-        timestamp = timestamps[0]
+        timestamp_suffix = build_timestamp_suffix(timestamps)
         files_to_copy = classify_folder(folder.name, timestamps)
         if not files_to_copy:
             print(f"Skipping {folder.name}: no matching folder rule")
@@ -72,7 +78,7 @@ def copy_series_files() -> None:
                 skipped += 1
                 continue
 
-            destination = SERIES_DIR / f"{output_stem}_{timestamp}.tif"
+            destination = SERIES_DIR / f"{output_stem}_{timestamp_suffix}.tif"
             shutil.copy2(source_file, destination)
             print(f"Copied {source_file} -> {destination}")
             copied += 1
