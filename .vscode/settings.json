@@ -1,0 +1,31 @@
+{
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "editor.formatOnSave": true,
+    "remote.autoForwardPortsSource": "hybrid",
+    "remote.autoForwardPortsFallback": 0,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#555fac",
+        "titleBar.border": "#555fac",
+        "titleBar.activeForeground": "#ffffff",
+        "titleBar.inactiveBackground": "#555fac",
+        "titleBar.inactiveForeground": "#bbbbbb",
+        "activityBar.background": "#555fac",
+        "activityBar.foreground": "#ffffff",
+        "activityBar.inactiveForeground": "#bbbbbb"
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": [
+        {
+            "path": ".",
+            "envManager": "ms-python.python:system",
+            "packageManager": "ms-python.python:pip"
+        }
+    ]
+}
