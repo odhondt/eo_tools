@@ -4,8 +4,24 @@
 
 # A python Earth Observation toolbox
 
-[![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo_tools.svg)](https://anaconda.org/conda-forge/eo_tools)  
+[![Conda Version](https://img.shields.io/conda/vn/conda-forge/eo-tools.svg)](https://anaconda.org/conda-forge/eo-tools) [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/eo_tools.svg)](https://anaconda.org/conda-forge/eo_tools)
+
 EO-Tools is a pure python toolbox that is currently able to search, download and process Sentinel-1 InSAR pairs, geocode and apply terrain correction to Sentinel-1 SLC products, download and mosaic Sentinel-2 tiles and download various publicly available DEM (Digital Elevation Models). The S1 processor can compute phase, amplitude and coherence in the SAR geometry and reproject them in a geographic coordinate system. Example notebooks demonstrating the different features are located in the notebooks-cf folder of the github repository.
+
+## **New**
+
+EO-Tools can now download and process Sentinel-1 SLC **partial products**. Instead of downloading an entire Sentinel-1 product, the partial-product downloader retrieves the metadata and only the consecutive bursts intersecting an area of interest. The result is stored as a SAFE-like `<product-id>.partial.SAFE` directory and can be passed directly to the existing Sentinel-1 processors.
+
+Partial products provide several advantages:
+
+- Smaller downloads and reduced local storage requirements.
+- Faster access to the Sentinel-1 data needed for a specific area.
+- The download AOI, available subswaths, polarizations, and burst ranges are stored with the product for reproducible processing.
+- Existing high-level InSAR, SLC geocoding, H-Alpha, and polarimetric covariance processing APIs automatically recognize valid partial products.
+
+See the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-processing/) to get started.
+
+## Examples
 
 Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco,
 <p float="left">
@@ -98,8 +114,13 @@ conda install conda-forge::eo-tools
 - For docker use the notebooks in the `notebooks` directory of the github repository
 - To be able to download products with EODAG on Copernicus Dataspace, a file named `eodag_config.yaml` containing credentials must be created. The file `eodag_config_example.yml` located in the repository root directory may be used for this purpose. Feel free to copy, rename and edit this file with your credentials. It is recommended to store the file in a secure location outside of the local repository.
 
+### Documentation
+
+Documentation is available on [Read the Docs](https://eo-tools.readthedocs.io/en/latest/).
+
 ## Notice
 
 - This project was originally forked from: https://github.com/eo2cube/s1_processor/, however since 99% of the code is now original, I have detached the fork.
 - Visualization functions are using TiTiler https://developmentseed.org/titiler/
-- Product discovery and download are using EODAG https://github.com/CS-SI/eodag
+- Full-product discovery and download use EODAG https://github.com/CS-SI/eodag
+- Sentinel-1 partial-product discovery and download use the Copernicus Data Space Ecosystem STAC and S3 services

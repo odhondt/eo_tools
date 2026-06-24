@@ -7,6 +7,5 @@ __pycache__/
 .DS_Store
 *.EOF
 notebooks/scratchpad.ipynb
-.vscode
 .agents/
 .codex/

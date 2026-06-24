@@ -1,0 +1,52 @@
+{
+  "name": "eo_tools conda-forge package test",
+  "dockerComposeFile": [
+    "docker-compose.yml"
+  ],
+  "service": "eo_tools_package_test",
+  "runServices": [
+    "eo_tools_package_test",
+    "titiler"
+  ],
+  "workspaceFolder": "/eo_tools",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [
+    8000,
+    8085
+  ],
+  "portsAttributes": {
+    "8000": {
+      "label": "Folium serve_map",
+      "onAutoForward": "openBrowser"
+    },
+    "8085": {
+      "label": "TiTiler",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.isort",
+        "ms-python.black-formatter",
+        "ms-toolsai.jupyter"
+      ],
+      "settings": {
+        "isort.importStrategy": "fromEnvironment",
+        "isort.interpreter": [
+          "/opt/conda/envs/eo_tools_package_test/bin/python"
+        ],
+        "python.defaultInterpreterPath": "/opt/conda/envs/eo_tools_package_test/bin/python",
+        "git.ignoreLimitWarning": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        }
+      }
+    }
+  }
+}
