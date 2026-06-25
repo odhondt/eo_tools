@@ -55,7 +55,8 @@ def explore_products(products, aoi=None):
             sel = gdf.loc[g]
             geom = mapping(sel.unary_union)
 
-            orbit_conf = sel.iloc[0]["orbitDirection"]
+            orbit_conf = ""
+            # orbit_conf = sel.iloc[0]["orbitDirection"]
             orbit_num = sel.iloc[0]["relativeOrbitNumber"]
             folium_products = folium.GeoJson(
                 geom, name=f"Orbit {orbit_num}, group {i+1} ({len(sel)})"
