@@ -1,0 +1,44 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "Nepal-Tibet Border Landslide and Glacial Collapse Impact Zone",
+                "date": "2026-08-26",
+                "description": "Bounding box covering the catastrophic landslide, glacial collapse, and flash flooding areas along Lhende Khola and Bhote Koshi river valleys (Rasuwa District / Gyirong County).",
+                "min_latitude": 27.95,
+                "max_latitude": 28.45,
+                "min_longitude": 85.15,
+                "max_longitude": 85.6
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            85.15,
+                            27.95
+                        ],
+                        [
+                            85.6,
+                            27.95
+                        ],
+                        [
+                            85.6,
+                            28.45
+                        ],
+                        [
+                            85.15,
+                            28.45
+                        ],
+                        [
+                            85.15,
+                            27.95
+                        ]
+                    ]
+                ]
+            }
+        }
+    ]
+}
