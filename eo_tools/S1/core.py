@@ -856,10 +856,10 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
 def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     # barycentric coordinates in a triangle
-    def bary(p, a, b, c):
+    def bary(p0, p1, a, b, c):
         det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
-        l1 = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / det
-        l2 = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / det
+        l1 = ((b[1] - c[1]) * (p0 - c[0]) + (c[0] - b[0]) * (p1 - c[1])) / det
+        l2 = ((c[1] - a[1]) * (p0 - c[0]) + (a[0] - c[0]) * (p1 - c[1])) / det
         l3 = 1 - l1 - l2
         return l1, l2, l3
 
@@ -875,7 +875,6 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
 
     az_s2p = np.full((naz, nrg), np.nan)
     rg_s2p = np.full((naz, nrg), np.nan)
-    p = np.zeros(2)
     nl, nc = azp.shape
     # - loop on DEM
     for i in prange(0, nl - 1):
@@ -903,14 +902,11 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
                     # - separate into 2 triangles
                     # - test if each point falls into triangle 1 or 2
                     # - interpolate the secondary range and azimuth using triangle vertices
-                    # p = np.array([a, r])
-                    p[0] = a
-                    p[1] = r
-                    l1, l2, l3 = bary(p, xx[0], xx[1], xx[2])
+                    l1, l2, l3 = bary(a, r, xx[0], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         az_s2p[a, r] = interp(aas[0], aas[1], aas[2], l1, l2, l3)
                         rg_s2p[a, r] = interp(rrs[0], rrs[1], rrs[2], l1, l2, l3)
-                    l1, l2, l3 = bary(p, xx[3], xx[1], xx[2])
+                    l1, l2, l3 = bary(a, r, xx[3], xx[1], xx[2])
                     if is_in_tri(l1, l2):
                         az_s2p[a, r] = interp(aas[3], aas[1], aas[2], l1, l2, l3)
                         rg_s2p[a, r] = interp(rrs[3], rrs[1], rrs[2], l1, l2, l3)

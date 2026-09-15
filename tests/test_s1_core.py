@@ -1,6 +1,7 @@
 import pytest
 import os
 from eo_tools.S1.core import S1IWSwath
+from eo_tools.S1.core import coregister
 from eo_tools.S1.core import load_dem_coords
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
@@ -104,6 +105,18 @@ def test_dem_coord_transform(tmp_path):
     )
     np.testing.assert_allclose(lat, np.array(expected_lat).reshape(alt.shape))
     np.testing.assert_allclose(lon, np.array(expected_lon).reshape(alt.shape))
+
+
+def test_coregister_parallel():
+    """Parallel coregistration preserves lookup coordinates."""
+    azp, rgp = np.indices((64, 64), dtype="float64")
+    azs = 2 * azp + 1
+    rgs = 3 * rgp - 2
+
+    az_s2p, rg_s2p = coregister(np.empty((64, 64)), azp, rgp, azs, rgs)
+
+    np.testing.assert_allclose(az_s2p[1:, :-1], azs[1:, :-1])
+    np.testing.assert_allclose(rg_s2p[1:, :-1], rgs[1:, :-1])
 
 
 def test_read_burst_valid_burst(create_swath):
