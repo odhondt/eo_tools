@@ -1194,8 +1194,8 @@ def load_dem_coords(dem_file, upscale_factor=1):
     else:
         # much faster
         ix, iy = np.arange(width), np.arange(height)
-        lat_ = dem_trans[0] * ix + dem_trans[2]
-        lon_ = dem_trans[4] * iy + dem_trans[5]
+        lat_ = dem_trans[0] * (ix + 0.5) + dem_trans[2]
+        lon_ = dem_trans[4] * (iy + 0.5) + dem_trans[5]
         lon = lon_[:, None] + np.zeros_like(alt)
         lat = lat_[None, :] + np.zeros_like(alt)
 

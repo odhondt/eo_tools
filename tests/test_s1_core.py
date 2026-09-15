@@ -1,6 +1,7 @@
 import pytest
 import os
 from eo_tools.S1.core import S1IWSwath
+from eo_tools.S1.core import load_dem_coords
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
 from eo_tools.S1.process import sar2geo
@@ -74,6 +75,35 @@ def test_sar2geo_cog(tmp_path):
         assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
         assert result.dtypes == ("float32",)
         assert np.allclose(result.read(1), phases)
+
+
+def test_dem_coord_transform(tmp_path):
+    """Vectorized no-rotation coordinates match Rasterio transform outputs."""
+    dem_file = tmp_path / "dem.tif"
+    transform = Affine(0.01, 0, 1.5, 0, -0.02, 48.5)
+    with rasterio.open(
+        dem_file,
+        "w",
+        driver="GTiff",
+        width=4,
+        height=3,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
+    ) as dst:
+        dst.write(np.zeros((3, 4), dtype="float32"), 1)
+        dst.update_tags(COMPOSITE_CRS="EPSG:4326+5773")
+
+    lat, lon, alt, dem_prof, _ = load_dem_coords(dem_file)
+    dem_trans = dem_prof["transform"]
+
+    rows, cols = np.indices(alt.shape)
+    expected_lat, expected_lon = rasterio.transform.xy(
+        dem_trans, rows.ravel(), cols.ravel()
+    )
+    np.testing.assert_allclose(lat, np.array(expected_lat).reshape(alt.shape))
+    np.testing.assert_allclose(lon, np.array(expected_lon).reshape(alt.shape))
 
 
 def test_read_burst_valid_burst(create_swath):
