@@ -5,6 +5,7 @@ import webbrowser
 import os
 import numpy as np
 import json
+from functools import partial
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import to_hex
 from eo_tools.S2 import make_s2_rgb, make_s2_color
@@ -346,42 +347,30 @@ def show_cog(url, folium_map=None, port=8085, **kwargs):
 
 
 def serve_map(map_object, port=8000):
-    """Opens folium map in a browser by starting a local server.
+    """Open a Folium map in a browser using a local server.
 
     Args:
-        map_object (folim.Map): map to display
-        port (int, optional): port on localhost. Defaults to 8000.
+        map_object (folium.Map): Map to display.
+        port (int, optional): Port on localhost. Defaults to 8000.
     """
-    # temporary file to store the html map
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp_file:
-        map_filename = tmp_file.name
-        map_dir = os.path.dirname(map_filename)  # Directory of the temp file
+    with tempfile.TemporaryDirectory() as map_dir:
+        map_filename = os.path.join(map_dir, "map.html")
         map_object.save(map_filename)
 
-    def start_server():
-        os.chdir(map_dir)
+        handler = partial(SimpleHTTPRequestHandler, directory=map_dir)
+        httpd = HTTPServer(("127.0.0.1", port), handler)
+        url = f"http://localhost:{port}/map.html"
+        print(f"Serving map on {url}")
 
-        handler = SimpleHTTPRequestHandler
-        httpd = HTTPServer(("", port), handler)
-        print(
-            f"Serving map on http://localhost:{port}/{os.path.basename(map_filename)}"
-        )
+        webbrowser.open(url)
 
-        # Open the map in the default web browser
-        webbrowser.open(f"http://localhost:{port}/{os.path.basename(map_filename)}")
-
-        # hit ctrl-c to serve
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nServer stopped by user.")
         finally:
-            # delete the temporary file after server stops
-            os.remove(map_filename)
             httpd.server_close()
             print("Temporary file deleted and server closed.")
-
-    start_server()
 
 
 # TODO: Other band combinations ( NDVI, ...)
