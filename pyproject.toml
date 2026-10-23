@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eo_tools"
-version = "2026.6.0"
+version = "2026.10.0"
 description = "A toolbox for easily searching, downloading & processing remote sensing imagery from various public sources. "
 
 requires-python = ">=3.12,<3.13"

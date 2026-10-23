@@ -1,3 +1,18 @@
+# 2026.10.0
+
+## Bugfixes and improvements
+
+- Fixed a parallel coregistration race caused by shared mutable coordinates during lookup interpolation.
+- Corrected DEM coordinate generation to use pixel centers, fixing a half-pixel offset in Sentinel-1 geocoding.
+- Adapted COG writing to the updated Rasterio/GDAL stack by using an intermediate GeoTIFF to preserve floating-point phase and coherence values.
+- Local Folium map serving now binds to localhost and no longer changes the working directory. Remote access can use a tunnel.
+
+## Dependencies and maintenance
+
+- Updated and validated the development environment with an unpinned pyroSAR dependency. Constrained SQLAlchemy below 2.1 for compatibility with pyroSAR's SQLAlchemy-Utils dependency.
+- Added a snapshot of the pre-upgrade environment in `environment-lock.yml` and removed the unused `environment-cf.yaml` configuration.
+- Added regression tests for COG phase output, DEM pixel-center coordinates, and parallel coregistration.
+
 # 2026.6.0
 
 ## New features
