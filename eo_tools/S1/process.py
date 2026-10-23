@@ -18,6 +18,8 @@ from osgeo import gdal
 from pyroSAR import identify
 from rasterio.errors import NotGeoreferencedWarning
 from rasterio.features import geometry_window
+from rasterio.io import MemoryFile
+from rasterio.shutil import copy as rio_copy
 from rasterio.windows import Window
 from rioxarray.merge import merge_arrays
 from scipy.ndimage import uniform_filter as uflt
@@ -1443,14 +1445,17 @@ def geocode_and_merge_iw(
                     ).rio.clip([shp], all_touched=True)
                 else:
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
-                merged.rio.to_raster(
-                    out_file,
-                    driver="COG",
-                    compress="zstd",
-                    num_threads="all_cpus",
-                    resampling="nearest",
-                    overview_resampling="nearest",
-                )
+                with MemoryFile() as tmp_file:
+                    merged.rio.to_raster(tmp_file.name, driver="GTiff")
+                    rio_copy(
+                        tmp_file.name,
+                        out_file,
+                        driver="COG",
+                        compress="zstd",
+                        num_threads="all_cpus",
+                        resampling="nearest",
+                        overview_resampling="nearest",
+                    )
                 # clean tmp files
             for file in tmp_files:
                 remove(file)
@@ -1511,7 +1516,6 @@ def sar2geo(
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
 
     cog_dict = dict(
-        driver="COG",
         compress="zstd",
         num_threads="all_cpus",
         resampling="nearest",
@@ -1526,27 +1530,36 @@ def sar2geo(
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
-        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata, **cog_dict})
-        with rio.open(out_file, "w", **prof_dst) as dst:
-            dst.write(phi, 1)
+        prof_dst.update({"dtype": phi.dtype.name, "nodata": nodata})
+        arr_out = phi
+        write_cog = True
     else:
         if magnitude_only:
             mag = np.abs(arr_out)
             nodata = 0
             mag[np.isnan(mag)] = nodata
-            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata, **cog_dict})
-            with rio.open(out_file, "w", **prof_dst) as dst:
-                dst.write(mag, 1)
+            prof_dst.update({"dtype": mag.dtype.name, "nodata": nodata})
+            arr_out = mag
+            write_cog = True
         else:
             # Using COG only if real-valued
-            if not np.iscomplexobj(arr_out):
+            write_cog = not np.iscomplexobj(arr_out)
+            if write_cog:
                 nodata = 0
-                prof_dst.update({"driver": "COG", "nodata": nodata, **cog_dict})
+                prof_dst.update({"nodata": nodata})
                 arr_out[np.isnan(arr_out)] = nodata
             else:
                 prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
-            with rio.open(out_file, "w", **prof_dst) as dst:
+
+    if write_cog:
+        prof_dst["driver"] = "GTiff"
+        with MemoryFile() as tmp_file:
+            with tmp_file.open(**prof_dst) as dst:
                 dst.write(arr_out, 1)
+            rio_copy(tmp_file.name, out_file, driver="COG", **cog_dict)
+    else:
+        with rio.open(out_file, "w", **prof_dst) as dst:
+            dst.write(arr_out, 1)
 
 
 def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:

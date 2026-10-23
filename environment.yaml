@@ -10,7 +10,9 @@ dependencies:
   - gdal
   - libgdal-jp2openjpeg
   - rasterio
-  - pyrosar=0.36.2
+  - pyrosar
+  # SQLAlchemy-Utils <0.42 (required by pyroSAR) is incompatible with SQLAlchemy 2.1.
+  - sqlalchemy<2.1
   - spatialist
   - pip
   - pystac

@@ -1,8 +1,11 @@
 import pytest
 import os
 from eo_tools.S1.core import S1IWSwath
+from eo_tools.S1.core import coregister
+from eo_tools.S1.core import load_dem_coords
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
+from eo_tools.S1.process import sar2geo
 import hashlib
 from shapely.geometry import box
 from unittest.mock import patch
@@ -10,6 +13,7 @@ import numpy as np
 import rioxarray as riox
 import rasterio
 from rasterio import MemoryFile
+from affine import Affine
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +35,88 @@ def test_s1iwswath_init(create_swath):
     assert swath.samples_per_burst == 23055
     assert swath.burst_count == 9
     assert swath.beta_nought == 2.370000e02
+
+
+def test_sar2geo_cog(tmp_path):
+    """COG conversion preserves float phase values."""
+    phases = np.array([[-3.0, -1.5], [0.5, 3.0]], dtype="float32")
+    sar_file = tmp_path / "sar.tif"
+    lut_file = tmp_path / "lut.tif"
+    out_file = tmp_path / "phase.tif"
+
+    sar_profile = {
+        "driver": "GTiff",
+        "width": 2,
+        "height": 2,
+        "count": 1,
+        "dtype": "complex64",
+        "nodata": np.nan,
+        "transform": Affine.identity(),
+    }
+    with rasterio.open(sar_file, "w", **sar_profile) as dst:
+        dst.write(np.exp(1j * phases).astype("complex64"), 1)
+
+    lut_profile = {
+        "driver": "GTiff",
+        "width": 2,
+        "height": 2,
+        "count": 2,
+        "dtype": "float64",
+        "nodata": np.nan,
+        "transform": Affine.identity(),
+        "crs": "EPSG:4326",
+    }
+    rows, cols = np.indices((2, 2), dtype="float64")
+    with rasterio.open(lut_file, "w", **lut_profile) as dst:
+        dst.write(np.stack([rows, cols]))
+
+    sar2geo(sar_file, lut_file, out_file, kernel="nearest", write_phase=True)
+
+    with rasterio.open(out_file) as result:
+        assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
+        assert result.dtypes == ("float32",)
+        assert np.allclose(result.read(1), phases)
+
+
+def test_dem_coord_transform(tmp_path):
+    """Vectorized no-rotation coordinates match Rasterio transform outputs."""
+    dem_file = tmp_path / "dem.tif"
+    transform = Affine(0.01, 0, 1.5, 0, -0.02, 48.5)
+    with rasterio.open(
+        dem_file,
+        "w",
+        driver="GTiff",
+        width=4,
+        height=3,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
+    ) as dst:
+        dst.write(np.zeros((3, 4), dtype="float32"), 1)
+        dst.update_tags(COMPOSITE_CRS="EPSG:4326+5773")
+
+    lat, lon, alt, dem_prof, _ = load_dem_coords(dem_file)
+    dem_trans = dem_prof["transform"]
+
+    rows, cols = np.indices(alt.shape)
+    expected_lat, expected_lon = rasterio.transform.xy(
+        dem_trans, rows.ravel(), cols.ravel()
+    )
+    np.testing.assert_allclose(lat, np.array(expected_lat).reshape(alt.shape))
+    np.testing.assert_allclose(lon, np.array(expected_lon).reshape(alt.shape))
+
+
+def test_coregister_parallel():
+    """Parallel coregistration preserves lookup coordinates."""
+    azp, rgp = np.indices((64, 64), dtype="float64")
+    azs = 2 * azp + 1
+    rgs = 3 * rgp - 2
+
+    az_s2p, rg_s2p = coregister(np.empty((64, 64)), azp, rgp, azs, rgs)
+
+    np.testing.assert_allclose(az_s2p[1:, :-1], azs[1:, :-1])
+    np.testing.assert_allclose(rg_s2p[1:, :-1], rgs[1:, :-1])
 
 
 def test_read_burst_valid_burst(create_swath):
