@@ -10,9 +10,10 @@ The reference is compiled from the current official implementation with exactly
 one change: sinc is normalized. The candidate precomputes axis weights, uses
 separable accumulation, tightens radius-six support, and handles complex data
 in one pass. Optional LUTs use linearly interpolated, normalized float64 phase
-vectors (4096 intervals by default). No fastmath is used. Nonfinite sources
-fall back to the reference to preserve its zero-weight NaN/Inf propagation.
-That source scan is included in candidate timings. Coordinate arrays are float64.
+vectors (4096 intervals by default). No fastmath is used. NaN/Inf values
+propagate through the candidate stencil without a whole-image fallback.
+Tighter support can change boundary coverage; nonfinite-source validation
+compares common finite outputs. Coordinate arrays are float64.
 """
 
 from __future__ import annotations
@@ -53,8 +54,6 @@ def remap_optimized(
     img: np.ndarray, rr: np.ndarray, cc: np.ndarray, kernel: str = "bicubic"
 ) -> np.ndarray:
     """Run the separable candidate with real or complex dtype specialization."""
-    if not np.isfinite(img).all():
-        return remap_reference(img, rr, cc, kernel)
     zero = np.complex128(0) if np.iscomplexobj(img) else np.float64(0)
     missing = complex(np.nan, np.nan) if np.iscomplexobj(img) else np.nan
     return _optimized(img, rr, cc, kernel, zero, missing)
@@ -69,8 +68,6 @@ def remap_lut(
 ) -> np.ndarray:
     """Interpolate with a cached normalized fractional-phase coefficient LUT."""
     table = _phase_table(kernel, phases)
-    if not np.isfinite(img).all():
-        return remap_reference(img, rr, cc, kernel)
     zero = np.complex128(0) if np.iscomplexobj(img) else np.float64(0)
     missing = complex(np.nan, np.nan) if np.iscomplexobj(img) else np.nan
     return _lut(img, rr, cc, table, zero, missing)
@@ -133,7 +130,18 @@ def validate_lut(args: argparse.Namespace) -> None:
                     remap_reference(source, rr, cc, kernel),
                     remap_lut(source, rr, cc, kernel, args.lut_phases),
                     dtype,
+                    (args.lut_rtol, args.lut_atol),
+                    finite_only=True,
                 )
+            error, rms = _check_border(
+                image,
+                kernel,
+                lambda img, rr, cc, kernel: remap_lut(
+                    img, rr, cc, kernel, args.lut_phases
+                ),
+                (args.lut_rtol, args.lut_atol),
+            )
+            max_error, max_rms = max(max_error, error), max(max_rms, rms)
             try:
                 remap_lut(image, rr, cc[:-1], kernel, args.lut_phases)
             except ValueError:
@@ -195,7 +203,8 @@ def validate(kernels: list[str], dtypes: list[str]) -> None:
             identity = remap_optimized(image, rows, cols, kernel)
             np.testing.assert_allclose(identity, image, rtol=rtol, atol=atol)
 
-            # Exercise NaN/Inf component masks and the compatibility fallback.
+            # Nonfinite propagation may differ with the tighter stencil.
+            # Compare only outputs finite in both implementations.
             for bad in (
                 (np.nan, np.inf, complex(1, np.nan)) if is_complex else (np.nan, np.inf)
             ):
@@ -205,7 +214,13 @@ def validate(kernels: list[str], dtypes: list[str]) -> None:
                     remap_reference(source, rr, cc, kernel),
                     remap_optimized(source, rr, cc, kernel),
                     dtype,
+                    finite_only=True,
                 )
+                cases += 1
+
+            if kernel in ("sinc", "lanczos6"):
+                error, _ = _check_border(image, kernel, remap_optimized)
+                worst[dtype] = max(worst[dtype], error)
                 cases += 1
 
             # Independent finite-stencil frequency response (including near Nyquist).
@@ -239,7 +254,7 @@ def benchmark(args: argparse.Namespace) -> None:
     print(f"NumPy {np.__version__}; Numba {numba.__version__}")
     print(
         f"threads={numba.get_num_threads()}, source/target={args.size}x{args.size}, "
-        f"repeats={args.repeats}; compilation excluded, source scan included"
+        f"repeats={args.repeats}; compilation excluded, no source scan or fallback"
     )
     print("Times are median [min, max]; throughput is candidate megapixels/second.")
     for dtype in args.dtypes:
@@ -486,19 +501,42 @@ def _tolerance(dtype: str) -> tuple[float, float]:
     return (1e-5, 1e-6) if dtype in ("float32", "complex64") else (1e-12, 1e-12)
 
 
+def _check_border(
+    image: np.ndarray,
+    kernel: str,
+    remapper: Callable,
+    tolerance: tuple[float, float] | None = None,
+) -> tuple[float, float]:
+    """Check that border NaNs stay local and do not disable the fast path."""
+    source = image.copy()
+    source[:2] = complex(np.nan, np.nan) if np.iscomplexobj(source) else np.nan
+    rr = np.array([7.25, 8.25, 15.25])
+    cc = np.full(rr.shape, 15.25)
+    expected = remap_reference(source, rr, cc, kernel)
+    actual = remapper(source, rr, cc, kernel)
+    # The original visits a zero-weight NaN in row 1 for the first target;
+    # the tighter candidate stencil starts at row 2 and stays finite.
+    assert not np.isfinite(expected[0])
+    assert np.isfinite(actual).all()
+    assert np.isfinite(expected[1:]).all()
+    return _compare(expected, actual, str(image.dtype), tolerance, finite_only=True)
+
+
 def _compare(
     expected: np.ndarray,
     actual: np.ndarray,
     dtype: str,
     tolerance: tuple[float, float] | None = None,
+    finite_only: bool = False,
 ) -> tuple[float, float]:
     assert actual.shape == expected.shape
     assert actual.dtype == expected.dtype
-    # Check components separately: a complex sample can have only one NaN component.
-    for left, right in ((expected.real, actual.real), (expected.imag, actual.imag)):
-        np.testing.assert_array_equal(np.isnan(left), np.isnan(right))
-        np.testing.assert_array_equal(np.isposinf(left), np.isposinf(right))
-        np.testing.assert_array_equal(np.isneginf(left), np.isneginf(right))
+    if not finite_only:
+        # A complex sample can have only one nonfinite component.
+        for left, right in ((expected.real, actual.real), (expected.imag, actual.imag)):
+            np.testing.assert_array_equal(np.isnan(left), np.isnan(right))
+            np.testing.assert_array_equal(np.isposinf(left), np.isposinf(right))
+            np.testing.assert_array_equal(np.isneginf(left), np.isneginf(right))
     valid = np.isfinite(expected) & np.isfinite(actual)
     rtol, atol = _tolerance(dtype) if tolerance is None else tolerance
     np.testing.assert_allclose(actual[valid], expected[valid], rtol=rtol, atol=atol)
