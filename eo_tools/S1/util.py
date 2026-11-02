@@ -97,7 +97,6 @@ def presum(img, m, n):
         return img
 
 
-# TODO: add truncated sinc
 @cfunc("double(double)")
 def _ker_near(x):
     ax = np.abs(x)
@@ -147,6 +146,39 @@ def _ker_cub6(x):
         return 0.0
 
 
+@cfunc("double(double)")
+def _ker_sinc(x):
+    """Truncated sinc interpolation kernel.
+
+    Uses a symmetric window with a fixed number of lobes (samples)
+    for truncation, defined internally.
+    """
+    ax = np.abs(x)
+    n_lobes = 6  # number of lobes on each side (truncation half-width)
+
+    if ax > n_lobes:
+        return 0.0
+
+    if ax < 1e-8:
+        return 1.0  # avoid division by zero near the origin
+
+    # Standard sinc(x) = sin(pi*x)/(pi*x)
+    return np.sin(np.pi * x) / (np.pi * x)
+
+
+@cfunc("double(double)")
+def _ker_lanczos6(x):
+    """Lanczos-windowed sinc kernel with six-pixel support."""
+    ax = np.abs(x)
+    if ax >= 6:
+        return 0.0
+    if ax < 1e-8:
+        return 1.0
+
+    pix = np.pi * x
+    return (np.sin(pix) / pix) * (np.sin(pix / 6) / (pix / 6))
+
+
 def remap(img, rr, cc, kernel="bicubic"):
     """Resample an image using row, column lookup tables
 
@@ -154,7 +186,9 @@ def remap(img, rr, cc, kernel="bicubic"):
         img (array): image to resample (complex is allowed)
         rr (array): lookup table for row positions
         cc (array): lookup table for column positions
-        kernel (str, optional): Kernel type ("nearest", "bilinear", "bicubic" -- 4 point, "bicubic6" -- 6 point). Defaults to "bicubic".
+        kernel: Kernel type: ``"nearest"``, ``"bilinear"``, ``"bicubic"``,
+            ``"bicubic6"``, ``"sinc"``, or ``"lanczos6"``. Defaults to
+            ``"bicubic"``.
 
     Returns:
         array: Resampled image with same dimensions as rr and cc.
@@ -172,6 +206,7 @@ def _remap(img, rr, cc, kernel="bicubic"):
         raise ValueError("Coordinate arrays must have the same shape.")
 
     arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
+    normalize = False
     if kernel == "nearest":
         ker = _ker_near
         H = 0
@@ -184,6 +219,13 @@ def _remap(img, rr, cc, kernel="bicubic"):
     elif kernel == "bicubic6":
         ker = _ker_cub6
         H = 2
+    elif kernel == "sinc":
+        ker = _ker_sinc
+        H = 6
+    elif kernel == "lanczos6":
+        ker = _ker_lanczos6
+        H = 6
+        normalize = True
     else:
         raise ValueError("Unknown interpolation type.")
 
@@ -203,11 +245,16 @@ def _remap(img, rr, cc, kernel="bicubic"):
         if not is_in_image:
             continue
         val = 0.0
+        weight_sum = 0.0
         for i in range(int(rmin), int(rmax) + 1):
             for j in range(int(cmin), int(cmax) + 1):
                 # using nearest neighbor on image border
                 i2 = min(max(0, i), img.shape[0] - 1)
                 j2 = min(max(0, j), img.shape[1] - 1)
-                val += ker(r - i) * ker(c - j) * img[i2, j2]
+                weight = ker(r - i) * ker(c - j)
+                val += weight * img[i2, j2]
+                weight_sum += weight
+        if normalize:
+            val /= weight_sum
         arr_out.flat[idx] = val
     return arr_out
