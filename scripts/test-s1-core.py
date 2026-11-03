@@ -84,7 +84,7 @@ for burst_idx in range(min_burst, max_burst + 1):
     az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
     # warp raster slave and deramping phase
-    arr_s2p = align(arr_s_de, az_s2p, rg_s2p, kernel="bicubic")
+    arr_s2p = align(arr_s_de, az_s2p, rg_s2p, kernel="lanczos")
     pdb_s2p = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
 
     # reramp slave
