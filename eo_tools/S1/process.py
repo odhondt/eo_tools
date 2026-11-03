@@ -641,6 +641,7 @@ def preprocess_insar_iw(
             warp_kernel,
             cal_type,
             orbit_interpolator,
+            iw,
         ),
     )
 
@@ -657,6 +658,7 @@ def preprocess_insar_iw(
                         prm.lines_per_burst,
                         nrg,
                         overlap,
+                        p,
                     ),
                 )
 
@@ -1315,6 +1317,7 @@ def preprocess_slc_iw(
             dem_force_download,
             cal_type,
             orbit_interpolator,
+            iw,
         ),
     )
 
@@ -2278,6 +2281,7 @@ def _process_bursts_insar(
     warp_kernel: str,
     cal_type: str,
     orbit_interpolator: str,
+    iw: int,
 ) -> None:
     prm = next(iter(primaries.values()))
     sec = next(iter(secondaries.values()))
@@ -2341,7 +2345,7 @@ def _process_bursts_insar(
             primary_grid = np.broadcast_to(np.complex64(0), (prm.lines_per_burst, nrg))
             pht_p = prm.phi_topo(np.arange(nrg))[None, :]
             for burst_idx in range(min_burst, max_burst + 1):
-                log.info(f"---- Processing burst {burst_idx} ----")
+                log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
                 burst_offset = round(
                     prm.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
                 )
@@ -2448,6 +2452,7 @@ def _process_bursts_slc(
     dem_force_download: bool,
     cal_type: str,
     orbit_interpolator: str,
+    iw: int,
 ) -> None:
     slc = next(iter(swaths.values()))
     prof_tmp = dict(
@@ -2500,7 +2505,7 @@ def _process_bursts_slc(
             }
             ds_dem = stack.enter_context(rio.open(dem_file))
             for burst_idx in range(min_burst, max_burst + 1):
-                log.info(f"---- Processing burst {burst_idx} ----")
+                log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
                 # position of the burst in the stitched SLC
                 burst_offset = round(
                     slc.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
@@ -2582,8 +2587,15 @@ def _process_bursts_slc(
 
 
 def _apply_fast_esd(
-    tmp_prm_file, tmp_sec_file, min_burst, max_burst, naz, nrg, overlap
-):
+    tmp_prm_file: str,
+    tmp_sec_file: str,
+    min_burst: int,
+    max_burst: int,
+    naz: int,
+    nrg: int,
+    overlap: int,
+    pol: str,
+) -> None:
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Based on ideas introduced in:
     Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
@@ -2606,7 +2618,7 @@ def _apply_fast_esd(
     with rio.open(tmp_prm_file, "r") as ds_prm:
         with rio.open(tmp_sec_file, "r+") as ds_sec:
             # computing cross interferograms in overlapping areas
-            log.info("Fast ESD: computing cross interferograms")
+            log.info("Fast ESD (%s): computing cross interferograms", pol.upper())
             phase_diffs = []
             for burst_idx in range(min_burst, max_burst):
                 first_line_tail = (burst_idx - min_burst + 1) * naz - overlap
@@ -2634,7 +2646,7 @@ def _apply_fast_esd(
                 phase_diffs.append(np.angle(dphi_clx.mean()))
 
             # making phase ramps and applying to secondary
-            log.info("Fast ESD: applying phase corrections")
+            log.info("Fast ESD (%s): applying phase corrections", pol.upper())
             for burst_idx in range(min_burst, max_burst + 1):
                 first_line = (burst_idx - min_burst) * naz
                 arr_s = ds_sec.read(
