@@ -33,8 +33,11 @@ from eo_tools.S1.core import (
     align,
     coregister,
     identify_safe_product,
+    lla_to_ecef,
+    load_dem_coords,
     read_partial_aoi,
     read_partial_download_info,
+    simulate_terrain,
 )
 from eo_tools.S1.util import boxcar, presum, remap
 from eo_tools.util import _has_overlap
@@ -2374,17 +2377,21 @@ def _process_bursts_insar(
                     creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
                 )
 
-                # this implementation upsamples DEM at download, not during geocoding
+                # The DEM is already upsampled at download. Prepare this window once.
+                lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
+                dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
                 az_p2g, rg_p2g = prm.geocode_burst(
-                    dem_file_burst,
+                    dem_x,
+                    dem_y,
+                    dem_z,
                     burst_idx=burst_idx,
-                    dem_upsampling=1,
                     orbit_interpolator=orbit_interpolator,
                 )
                 az_s2g, rg_s2g = sec.geocode_burst(
-                    dem_file_burst,
+                    dem_x,
+                    dem_y,
+                    dem_z,
                     burst_idx=burst_idx + burst_idx_offset,
-                    dem_upsampling=1,
                     orbit_interpolator=orbit_interpolator,
                 )
 
@@ -2535,24 +2542,42 @@ def _process_bursts_slc(
                     creationOptions=["BLOCKXSIZE=512", "BLOCKYSIZE=512"],
                 )
 
-                # this implementation upsamples DEM at download, not during geocoding
+                # The DEM is already upsampled at download. Prepare this window once.
+                lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
+                dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
                 if cal_type != "terrain":
                     az_p2g, rg_p2g = slc.geocode_burst(
-                        dem_file_burst,
+                        dem_x,
+                        dem_y,
+                        dem_z,
                         burst_idx=burst_idx,
-                        dem_upsampling=1,
                         orbit_interpolator=orbit_interpolator,
                     )
                 else:
-                    az_p2g, rg_p2g, gamma_t = slc.geocode_burst(
-                        dem_file_burst,
+                    az_p2g, rg_p2g, dx, dy, dz = slc.geocode_burst(
+                        dem_x,
+                        dem_y,
+                        dem_z,
                         burst_idx=burst_idx,
-                        dem_upsampling=1,
-                        simulate_terrain=True,
+                        return_vectors=True,
                         orbit_interpolator=orbit_interpolator,
                     )
 
                 if cal_type == "terrain":
+                    gamma_t = simulate_terrain(
+                        lat,
+                        lon,
+                        composite_crs,
+                        dem_x,
+                        dem_y,
+                        dem_z,
+                        az_p2g,
+                        rg_p2g,
+                        dx,
+                        dy,
+                        dz,
+                        sar_shape=(slc.lines_per_burst, slc.samples_per_burst),
+                    )
                     valid_terrain = ~np.isnan(gamma_t)
                     terrain_scale = np.sqrt(gamma_t[valid_terrain])
 

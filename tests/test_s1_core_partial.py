@@ -117,7 +117,7 @@ def test_validate_available_burst_uses_partial_range():
     "method_name, args",
     [
         ("read_burst", (2,)),
-        ("geocode_burst", ("dem.tif", 2)),
+        ("geocode_burst", (None, None, None, 2)),
         ("deramp_burst", (2,)),
         ("calibration_factor", (2,)),
     ],

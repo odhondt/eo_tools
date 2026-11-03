@@ -2,7 +2,7 @@ import pytest
 import os
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import coregister
-from eo_tools.S1.core import load_dem_coords
+from eo_tools.S1.core import load_dem_coords, lla_to_ecef, simulate_terrain
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
 from eo_tools.S1.process import sar2geo
@@ -420,81 +420,97 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
-def test_burst_geocoding(create_swath):
+@pytest.mark.parametrize("interpolator", ["chspline", "bary", "poly"])
+@pytest.mark.parametrize("vectors", [False, True])
+def test_geocode_coords(interpolator: str, vectors: bool) -> None:
+    """A straight orbit gives analytic indices/vectors without changing shared DEM arrays."""
+    from datetime import datetime, timezone
+
+    swath = object.__new__(S1IWSwath)
+    swath.min_burst = swath.max_burst = 1
+    swath.lines_per_burst = 10
+    swath.samples_per_burst = 20
+    swath.meta = {
+        "product": {
+            "imageAnnotation": {
+                "imageInformation": {
+                    "azimuthTimeInterval": 1,
+                    "slantRangeTime": 0,
+                }
+            },
+            "generalAnnotation": {
+                "productInformation": {"rangeSamplingRate": 299792458 / 2}
+            },
+            "swathTiming": {
+                "burstList": {"burst": [{"azimuthTime": "2026-01-01T00:00:00+00:00"}]}
+            },
+        }
+    }
+    times = np.arange(10, dtype=float)
+    swath.state_vectors = dict(
+        t0=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        t=times,
+        x=1000000 + times - 5,
+        y=np.zeros_like(times),
+        z=np.full_like(times, 10),
+        vx=np.ones_like(times),
+        vy=np.zeros_like(times),
+        vz=np.zeros_like(times),
+    )
+    dem_x = 1000000 + np.array([[-1.0, 0.0], [20.0, 1.0]])
+    dem_y = np.array([[0.0, 1.0], [0.0, 30.0]])
+    dem_z = np.zeros((2, 2))
+    original = [a.copy() for a in (dem_x, dem_y, dem_z)]
+
+    result = swath.geocode_burst(
+        dem_x, dem_y, dem_z, return_vectors=vectors, orbit_interpolator=interpolator
+    )
+
+    assert len(result) == (5 if vectors else 2)
+    np.testing.assert_allclose(result[0][0], [4, 5], atol=1e-7)
+    np.testing.assert_allclose(result[1][0], [10, np.sqrt(101)], atol=1e-7)
+    if vectors:
+        for actual, expected in zip(result[2:], [[0, 0], [0, 1], [-10, -10]]):
+            np.testing.assert_allclose(actual[0], expected, atol=1e-7)
+    for array in result:
+        assert array.shape == dem_x.shape
+        assert np.isnan(array[1]).all()
+    for actual, expected in zip((dem_x, dem_y, dem_z), original):
+        np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("interpolator", ["chspline", "bary", "poly"])
+def test_burst_geocoding(create_swath, interpolator: str) -> None:
     swath = create_swath
     dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
-    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
-    )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
-    )
-
-    assert (
-        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
-    )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
-    assert gamma_t.shape == raster_shape
-
-
-def test_burst_geocoding_bary(create_swath):
-    swath = create_swath
-    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
-    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file,
+    lat, lon, alt, _, composite_crs = load_dem_coords(dem_file, 0.1)
+    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+    geometry = swath.geocode_burst(
+        dem_x,
+        dem_y,
+        dem_z,
         burst_idx=3,
-        dem_upsampling=dem_upsampling,
-        simulate_terrain=True,
-        orbit_interpolator="bary",
+        return_vectors=True,
+        orbit_interpolator=interpolator,
     )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
-    )
-
-    assert (
-        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
-    )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
-    assert gamma_t.shape == raster_shape
-
-def test_burst_geocoding_poly(create_swath):
-    swath = create_swath
-    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
+    az, rg = geometry[:2]
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file,
-        burst_idx=3,
-        dem_upsampling=dem_upsampling,
-        simulate_terrain=True,
-        orbit_interpolator="poly",
-    )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
+    gamma_t = simulate_terrain(
+        lat,
+        lon,
+        composite_crs,
+        dem_x,
+        dem_y,
+        dem_z,
+        *geometry,
+        sar_shape=raster_shape,
     )
 
     assert (
         np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
     )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
+    assert az.shape == alt.shape and rg.shape == alt.shape
     assert gamma_t.shape == raster_shape
-
 
 
 def test_burst_deramping(create_swath):

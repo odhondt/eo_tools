@@ -511,8 +511,8 @@ def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
     def geocode(*args, **kwargs) -> tuple:
         coordinates = (rows.copy(), cols.copy())
         return (
-            (*coordinates, gamma.copy())
-            if kwargs.get("simulate_terrain")
+            (*coordinates, rows.copy(), cols.copy(), rows.copy())
+            if kwargs.get("return_vectors")
             else coordinates
         )
 
@@ -535,7 +535,17 @@ def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
     secondary.geocode_burst = Mock(side_effect=geocode)
     secondary.read_burst = lambda *args: vh_image.copy()
     secondary.calibration_factor = Mock(return_value=4)
-    with patch("eo_tools.S1.process.S1IWSwath", side_effect=[primary, secondary]):
+    with (
+        patch("eo_tools.S1.process.S1IWSwath", side_effect=[primary, secondary]),
+        patch(
+            "eo_tools.S1.process.load_dem_coords",
+            return_value=(rows, cols, gamma, {}, "EPSG:4326"),
+        ) as load,
+        patch(
+            "eo_tools.S1.process.lla_to_ecef", return_value=(rows, cols, gamma)
+        ) as ecef,
+        patch("eo_tools.S1.process.simulate_terrain", return_value=gamma) as terrain,
+    ):
         preprocess_slc_iw(
             "product",
             str(tmp_path),
@@ -544,6 +554,9 @@ def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
             dem_buffer_arc_sec=0,
         )
 
+    assert load.call_count == burst_count
+    assert ecef.call_count == burst_count
+    assert terrain.call_count == (burst_count if cal_type == "terrain" else 0)
     assert primary.fetch_dem.call_count == 1
     assert primary.geocode_burst.call_count == burst_count
     secondary.geocode_burst.assert_not_called()

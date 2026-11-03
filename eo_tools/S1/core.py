@@ -371,29 +371,35 @@ class S1IWSwath:
 
     def geocode_burst(
         self,
-        dem_file,
-        burst_idx=1,
-        dem_upsampling=1,
-        simulate_terrain=False,
-        orbit_interpolator="chspline",
-    ):
-        """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
+        dem_x: np.ndarray,
+        dem_y: np.ndarray,
+        dem_z: np.ndarray,
+        burst_idx: int = 1,
+        return_vectors: bool = False,
+        orbit_interpolator: str = "chspline",
+    ) -> tuple[np.ndarray, ...]:
+        """Solve Range-Doppler geometry for prepared DEM coordinates.
 
         Args:
-            dem_file (str): path to the DEM
-            burst_idx (int, optional): Burst index. Defaults to 1.
-            dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
-            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
-            orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
+            dem_x: Absolute ECEF x coordinates on a two-dimensional DEM grid.
+            dem_y: Absolute ECEF y coordinates on the same grid.
+            dem_z: Absolute ECEF z coordinates on the same grid.
+            burst_idx: Original burst index. Defaults to 1.
+            return_vectors: Also return the satellite-to-terrain displacement
+                components dx, dy, dz used by terrain simulation. Defaults to False.
+            orbit_interpolator: Orbit interpolation method: "chspline", "bary",
+                or "poly". Defaults to "chspline".
 
         Returns:
-            (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
+            Azimuth and range indices with the DEM grid shape. If return_vectors
+            is True, also returns dx, dy, dz with the same shape. Indices and
+            vectors outside the burst are masked with NaN.
         """
 
         self._validate_available_burst(burst_idx)
 
-        if dem_upsampling < 0:
-            raise ValueError("dem_upsampling must be > 0")
+        if dem_x.ndim != 2 or dem_x.shape != dem_y.shape or dem_x.shape != dem_z.shape:
+            raise ValueError("DEM ECEF coordinates must share a two-dimensional shape")
 
         if orbit_interpolator not in ["chspline", "bary", "poly"]:
             raise ValueError(
@@ -413,21 +419,6 @@ class S1IWSwath:
         burst_info = meta["product"]["swathTiming"]
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
-
-        # state vectors
-        # orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
-        # state_vectors = orbit_list["orbit"]
-
-        if dem_upsampling != 1:
-            log.info("Resample DEM and extract coordinates")
-        else:
-            log.info("Extract DEM coordinates")
-        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
-            dem_file, dem_upsampling
-        )
-
-        log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
-        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
 
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -458,28 +449,16 @@ class S1IWSwath:
         vel = interp_vel(t_arr)
 
         log.info("Range-Doppler terrain correction (LUT computation)")
-        if simulate_terrain:
-            az_geo, dist_geo, dx, dy, dz = range_doppler(
-                # Removing first pos to get more precision. Is this useful?
-                dem_x.ravel() - pos[0, 0],
-                dem_y.ravel() - pos[0, 1],
-                dem_z.ravel() - pos[0, 2],
-                pos - pos[0],
-                vel,
-                tol=1e-8,
-                maxiter=10000,
-            )
-        else:
-            az_geo, dist_geo, _, _, _ = range_doppler(
-                # Removing first pos to get more precision. Is this useful?
-                dem_x.ravel() - pos[0, 0],
-                dem_y.ravel() - pos[0, 1],
-                dem_z.ravel() - pos[0, 2],
-                pos - pos[0],
-                vel,
-                tol=1e-8,
-                maxiter=10000,
-            )
+        az_geo, dist_geo, dx, dy, dz = range_doppler(
+            # Translate both DEM and orbit coordinates by the same origin.
+            dem_x.ravel() - pos[0, 0],
+            dem_y.ravel() - pos[0, 1],
+            dem_z.ravel() - pos[0, 2],
+            pos - pos[0],
+            vel,
+            tol=1e-8,
+            maxiter=10000,
+        )
 
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
@@ -495,42 +474,21 @@ class S1IWSwath:
         az_geo[~valid] = np.nan
 
         # reshape to DEM dimensions
-        rg_geo = rg_geo.reshape(alt.shape)
-        az_geo = az_geo.reshape(alt.shape)
+        rg_geo = rg_geo.reshape(dem_x.shape)
+        az_geo = az_geo.reshape(dem_x.shape)
 
-        if simulate_terrain:
+        if return_vectors:
             dx[~valid] = np.nan
             dy[~valid] = np.nan
             dz[~valid] = np.nan
-
-            # reshape to DEM dimensions
-            dx = dx.reshape(alt.shape)
-            dy = dy.reshape(alt.shape)
-            dz = dz.reshape(alt.shape)
-
-            # finding occluded shadow pixels
-            log.info("Shadow detection")
-            # compute ero altitude coordinates (use DEM reference height)
-            dem_xg, dem_yg, dem_zg = lla_to_ecef(
-                lat,
-                lon,
-                np.zeros_like(lat),
-                composite_crs,
+            return (
+                az_geo,
+                rg_geo,
+                dx.reshape(dem_x.shape),
+                dy.reshape(dem_x.shape),
+                dz.reshape(dem_x.shape),
             )
-
-            shadow_mask = detect_active_shadow(
-                az_geo, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
-            )
-
-            # simulating terrain backscatter
-            log.info("Terrain simulation")
-            gamma_t = simulate_terrain_backscatter(
-                naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
-            )
-
-            return az_geo, rg_geo, gamma_t
-        else:
-            return az_geo, rg_geo
+        return az_geo, rg_geo
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -1376,6 +1334,51 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
 
     return i_zd, r_zd, dx, dy, dz
+
+
+def simulate_terrain(
+    lat: np.ndarray,
+    lon: np.ndarray,
+    composite_crs: str,
+    dem_x: np.ndarray,
+    dem_y: np.ndarray,
+    dem_z: np.ndarray,
+    az: np.ndarray,
+    rg: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    dz: np.ndarray,
+    sar_shape: tuple[int, int],
+) -> np.ndarray:
+    """Simulate terrain backscatter from prepared DEM and burst geometry.
+
+    Args:
+        lat: DEM latitude coordinates from load_dem_coords().
+        lon: DEM longitude coordinates from load_dem_coords().
+        composite_crs: DEM horizontal and vertical CRS from load_dem_coords().
+        dem_x: Absolute DEM ECEF x coordinates.
+        dem_y: Absolute DEM ECEF y coordinates.
+        dem_z: Absolute DEM ECEF z coordinates.
+        az: Azimuth indices on the DEM grid.
+        rg: Range indices on the DEM grid.
+        dx: Displacement x component returned by geocode_burst().
+        dy: Displacement y component returned by geocode_burst().
+        dz: Displacement z component returned by geocode_burst().
+        sar_shape: Output burst dimensions in azimuth and range.
+
+    Returns:
+        Simulated terrain gamma nought in the SAR grid, including shadow masking.
+    """
+    # Compute zero altitude coordinates (use DEM reference height).
+    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), composite_crs)
+    log.info("Shadow detection")
+    shadow_mask = detect_active_shadow(
+        az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
+    )
+    log.info("Terrain simulation")
+    return simulate_terrain_backscatter(
+        *sar_shape, az, rg, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+    )
 
 
 @njit(nogil=True, parallel=True, cache=True)

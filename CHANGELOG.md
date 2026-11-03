@@ -4,12 +4,15 @@
 
 - InSAR and SLC preprocessing now handle all requested polarizations in one call per IW, computing geocoding LUTs once for all channels. InSAR also reuses coregistration coordinates, deramping phase, and topographic phase corrections. Calibration, signal warping, validity masks, and ESD remain polarization-specific.
 - SLC terrain normalization is also computed once per burst and reused across polarizations.
+- DEM coordinates and their ECEF conversion are prepared outside burst geocoding and reused for both InSAR acquisitions. Terrain shadow detection and backscatter simulation are now provided by the standalone core function `simulate_terrain()`.
 - Prepared products now use one shared geocoding LUT per IW, avoiding duplicate LUT files across polarizations.
 
 ### Breaking changes
 
 - Sentinel-1 preparation now writes one shared geocoding LUT per IW as `sar/lut_iw1.tif`, `sar/lut_iw2.tif`, or `sar/lut_iw3.tif`. Geocoding no longer accepts polarization-specific names such as `lut_vv_iw1.tif` or `lut_vh_iw1.tif`. Regenerate existing intermediate outputs with `skip_preprocessing=False`, or manually rename one existing LUT per IW to the new name (for example, `lut_vv_iw1.tif` to `lut_iw1.tif`) before reusing outputs with `skip_preprocessing=True`. Only one LUT is needed for each IW.
 - Direct calls to `preprocess_insar_iw()` now write `primary_{pol}.tif` and `secondary_{pol}.tif`, including single-polarization calls. Update custom readers that expect `primary.tif` and `secondary.tif`; the shared output remains `lut.tif`. Direct calls to `preprocess_slc_iw()` likewise write `slc_{pol}.tif` instead of `slc.tif`.
+
+- `S1IWSwath.geocode_burst()` now accepts prepared `dem_x`, `dem_y`, and `dem_z` arrays instead of a DEM filename. Call `load_dem_coords()` and `lla_to_ecef()` beforehand; DEM upsampling belongs in `load_dem_coords()`. Use `return_vectors=True` to obtain indices plus `dx`, `dy`, `dz`, then call `simulate_terrain()` separately when terrain normalization is needed. The `dem_upsampling` and `simulate_terrain` arguments have been removed from `geocode_burst()`.
 
 ## Warping improvements
 

@@ -21,6 +21,7 @@ import numpy as np
 import rasterio as rio
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from eo_tools.S1.core import lla_to_ecef, load_dem_coords
 from eo_tools.S1.core import S1IWSwath, coregister
 from eo_tools.S1.process import amplitude, coherence, sar2geo
 from eo_tools.S1.util import remap
@@ -67,8 +68,10 @@ def main() -> None:
     prm = S1IWSwath(primary_path, iw=iw, pol=pol)
     sec = S1IWSwath(secondary_path, iw=iw, pol=pol)
     dem_file = prm.fetch_dem_burst(burst, dem_dir="/data/tmp", force_download=False)
-    az_p2g, rg_p2g = prm.geocode_burst(dem_file, burst_idx=burst, dem_upsampling=up)
-    az_s2g, rg_s2g = sec.geocode_burst(dem_file, burst_idx=burst, dem_upsampling=up)
+    lat, lon, alt, _, composite_crs = load_dem_coords(dem_file, up)
+    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+    az_p2g, rg_p2g = prm.geocode_burst(dem_x, dem_y, dem_z, burst_idx=burst)
+    az_s2g, rg_s2g = sec.geocode_burst(dem_x, dem_y, dem_z, burst_idx=burst)
     arr_p = prm.read_burst(burst, True)
     arr_s = sec.read_burst(burst, True)
     arr_p /= prm.calibration_factor(burst, cal_type="beta")
