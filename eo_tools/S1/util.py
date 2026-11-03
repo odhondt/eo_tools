@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import numpy as np
 
 from scipy.ndimage import convolve
@@ -44,6 +46,7 @@ def boxcar(img, dimaz, dimrg):
         return imgout
     else:
         return img
+
 
 def presum(img, m, n):
     """
@@ -95,6 +98,47 @@ def presum(img, m, n):
         return t / float(m * n)
     else:
         return img
+
+
+def remap(
+    img: np.ndarray, rr: np.ndarray, cc: np.ndarray, kernel: str = "bicubic"
+) -> np.ndarray:
+    """Resample a real or complex image using row and column lookup tables.
+
+    Args:
+        img: Source image. Supports float32, float64, complex64 and complex128.
+        rr: Row coordinates in the source image.
+        cc: Column coordinates, with the same shape as rr.
+        kernel: One of nearest, bilinear, bicubic (four-point), bicubic6
+            (six-point), sinc, or lanczos6. Defaults to bicubic.
+
+    Returns:
+        Resampled image with the coordinates' shape and the source dtype.
+        Nonfinite or out-of-image coordinates produce NaN. Stencil samples
+        beyond the image boundary use the nearest edge pixel.
+
+    Notes:
+        Sinc is a normalized rectangular-window sinc; lanczos6 is normalized
+        Lanczos-windowed sinc with radius six, not six taps. Both use 12-tap
+        float64 coefficient tables with 4096 fractional-phase intervals and
+        linear interpolation, so results approximate direct kernel evaluation.
+        Tables are built lazily and cached per process. No fastmath is used.
+
+        Real inputs use real arithmetic; complex inputs are processed in one
+        pass. Source NaNs propagate through the interpolation stencil without
+        a whole-image fallback. The tighter sinc/Lanczos stencil can leave
+        more border pixels finite than the original wider implementation.
+    """
+    zero = np.complex128(0) if np.iscomplexobj(img) else np.float64(0)
+    missing = complex(np.nan, np.nan) if np.iscomplexobj(img) else np.nan
+    if kernel in ("sinc", "lanczos6"):
+        return _remap_lut(img, rr, cc, _phase_table(kernel, 4096), zero, missing)
+    return _remap(img, rr, cc, kernel, zero, missing)
+
+
+# -----------------------------------------------------------------------------
+# Private helpers
+# -----------------------------------------------------------------------------
 
 
 @cfunc("double(double)")
@@ -179,82 +223,131 @@ def _ker_lanczos6(x):
     return (np.sin(pix) / pix) * (np.sin(pix / 6) / (pix / 6))
 
 
-def remap(img, rr, cc, kernel="bicubic"):
-    """Resample an image using row, column lookup tables
-
-    Args:
-        img (array): image to resample (complex is allowed)
-        rr (array): lookup table for row positions
-        cc (array): lookup table for column positions
-        kernel: Kernel type: ``"nearest"``, ``"bilinear"``, ``"bicubic"``,
-            ``"bicubic6"``, ``"sinc"``, or ``"lanczos6"``. Defaults to
-            ``"bicubic"``.
-
-    Returns:
-        array: Resampled image with same dimensions as rr and cc.
-    """
-    if np.iscomplexobj(img):
-        return _remap(img.real, rr, cc, kernel) + 1j * _remap(img.imag, rr, cc, kernel)
-    else:
-        return _remap(img, rr, cc, kernel)
-
-
 @njit(parallel=True, nogil=True)
-def _remap(img, rr, cc, kernel="bicubic"):
-
+def _remap(
+    img: np.ndarray,
+    rr: np.ndarray,
+    cc: np.ndarray,
+    kernel: str,
+    zero: float | complex,
+    missing: float | complex,
+) -> np.ndarray:
+    """Apply direct axis weights using separable, dtype-specialized sums."""
     if rr.shape != cc.shape:
         raise ValueError("Coordinate arrays must have the same shape.")
-
-    arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
     normalize = False
     if kernel == "nearest":
         ker = _ker_near
-        H = 0
+        half_width = 0
     elif kernel == "bilinear":
         ker = _ker_lin
-        H = 0
+        half_width = 0
     elif kernel == "bicubic":
         ker = _ker_cub
-        H = 1
+        half_width = 1
     elif kernel == "bicubic6":
         ker = _ker_cub6
-        H = 2
+        half_width = 2
     elif kernel == "sinc":
         ker = _ker_sinc
-        H = 6
+        half_width = 6
+        normalize = True
     elif kernel == "lanczos6":
         ker = _ker_lanczos6
-        H = 6
+        half_width = 6
         normalize = True
     else:
         raise ValueError("Unknown interpolation type.")
-
-    for idx in prange(len(rr.flat)):
-        r = rr.flat[idx]
-        c = cc.flat[idx]
-
-        # change boundaries if using other kernels
-        rmin = np.floor(r) - H
-        rmax = np.ceil(r) + H
-        cmin = np.floor(c) - H
-        cmax = np.ceil(c) + H
-
-        if np.isnan(r) | np.isnan(c):
+    output = np.full(rr.shape, missing, dtype=img.dtype)
+    for index in prange(rr.size):
+        r, c = rr.flat[index], cc.flat[index]
+        if not (0 <= r < img.shape[0] and 0 <= c < img.shape[1]):
             continue
-        is_in_image = (r >= 0) & (r < img.shape[0]) & (c >= 0) & (c < img.shape[1])
-        if not is_in_image:
-            continue
-        val = 0.0
-        weight_sum = 0.0
-        for i in range(int(rmin), int(rmax) + 1):
-            for j in range(int(cmin), int(cmax) + 1):
-                # using nearest neighbor on image border
-                i2 = min(max(0, i), img.shape[0] - 1)
-                j2 = min(max(0, j), img.shape[1] - 1)
-                weight = ker(r - i) * ker(c - j)
-                val += weight * img[i2, j2]
-                weight_sum += weight
+        if half_width == 6:
+            rmin, rmax = int(np.ceil(r - 6)), int(np.floor(r + 6))
+            cmin, cmax = int(np.ceil(c - 6)), int(np.floor(c + 6))
+        else:
+            rmin = int(np.floor(r)) - half_width
+            rmax = int(np.ceil(r)) + half_width
+            cmin = int(np.floor(c)) - half_width
+            cmax = int(np.ceil(c)) + half_width
+        rw = np.empty(14, dtype=np.float64)
+        cw = np.empty(14, dtype=np.float64)
+        rsum, csum = 0.0, 0.0
+        for i in range(rmax - rmin + 1):
+            rw[i] = ker(r - (rmin + i))
+            rsum += rw[i]
+        for j in range(cmax - cmin + 1):
+            cw[j] = ker(c - (cmin + j))
+            csum += cw[j]
         if normalize:
-            val /= weight_sum
-        arr_out.flat[idx] = val
-    return arr_out
+            for i in range(rmax - rmin + 1):
+                rw[i] /= rsum
+            for j in range(cmax - cmin + 1):
+                cw[j] /= csum
+        value = zero
+        for i in range(rmax - rmin + 1):
+            row = min(max(rmin + i, 0), img.shape[0] - 1)
+            row_value = zero
+            for j in range(cmax - cmin + 1):
+                col = min(max(cmin + j, 0), img.shape[1] - 1)
+                row_value += cw[j] * img[row, col]
+            value += rw[i] * row_value
+        output.flat[index] = value
+    return output
+
+
+@lru_cache(maxsize=8)
+def _phase_table(kernel: str, phases: int) -> np.ndarray:
+    """Build normalized 12-tap vectors over the closed fractional interval [0, 1]."""
+    if kernel not in ("sinc", "lanczos6") or phases < 2:
+        raise ValueError("LUT requires sinc/lanczos6 and at least two phase intervals")
+    # Fixed indices floor(u)-5 ... floor(u)+6; the omitted integer endpoint
+    # contributes only a floating-point sinc residue in the direct implementation.
+    distances = np.linspace(0, 1, phases + 1)[:, None] - np.arange(-5, 7)
+    weights = np.sinc(distances)
+    if kernel == "lanczos6":
+        weights *= np.sinc(distances / 6)
+        weights[np.abs(distances) >= 6] = 0
+    weights /= weights.sum(axis=1, keepdims=True)
+    weights.setflags(write=False)
+    return weights
+
+
+@njit(parallel=True, nogil=True)
+def _remap_lut(
+    img: np.ndarray,
+    rr: np.ndarray,
+    cc: np.ndarray,
+    table: np.ndarray,
+    zero: float | complex,
+    missing: float | complex,
+) -> np.ndarray:
+    """Apply linearly interpolated axis vectors using dtype-specialized sums."""
+    if rr.shape != cc.shape:
+        raise ValueError("Coordinate arrays must have the same shape.")
+    output = np.full(rr.shape, missing, dtype=img.dtype)
+    phases = table.shape[0] - 1
+    for index in prange(rr.size):
+        r, c = rr.flat[index], cc.flat[index]
+        if not (0 <= r < img.shape[0] and 0 <= c < img.shape[1]):
+            continue
+        rbase, cbase = int(np.floor(r)), int(np.floor(c))
+        rp, cp = (r - rbase) * phases, (c - cbase) * phases
+        ri, ci = min(int(rp), phases - 1), min(int(cp), phases - 1)
+        rf, cf = rp - ri, cp - ci
+        rw = np.empty(12, dtype=np.float64)
+        cw = np.empty(12, dtype=np.float64)
+        for tap in range(12):
+            rw[tap] = table[ri, tap] + rf * (table[ri + 1, tap] - table[ri, tap])
+            cw[tap] = table[ci, tap] + cf * (table[ci + 1, tap] - table[ci, tap])
+        value = zero
+        for i in range(12):
+            row = min(max(rbase - 5 + i, 0), img.shape[0] - 1)
+            row_value = zero
+            for j in range(12):
+                col = min(max(cbase - 5 + j, 0), img.shape[1] - 1)
+                row_value += cw[j] * img[row, col]
+            value += rw[i] * row_value
+        output.flat[index] = value
+    return output

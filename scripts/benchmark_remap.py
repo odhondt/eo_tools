@@ -1,4 +1,4 @@
-"""Validate and benchmark experimental remappers without changing S1.util.
+"""Validate and benchmark remappers against the original production algorithm.
 
 Run from the repository root, for example::
 
@@ -6,10 +6,10 @@ Run from the repository root, for example::
     python scripts/benchmark_remap.py --check-only
     python scripts/benchmark_remap.py --lut --kernels sinc lanczos6
 
-The reference is compiled from the current official implementation with exactly
-one change: sinc is normalized. The candidate precomputes axis weights, uses
-separable accumulation, tightens radius-six support, and handles complex data
-in one pass. Optional LUTs use linearly interpolated, normalized float64 phase
+The reference retains the original production algorithm with sinc normalized.
+The candidate precomputes axis weights, uses separable accumulation, tightens
+radius-six support, and handles complex data in one pass. Optional LUTs use
+linearly interpolated, normalized float64 phase
 vectors (4096 intervals by default). No fastmath is used. NaN/Inf values
 propagate through the candidate stencil without a whole-image fallback.
 Tighter support can change boundary coverage; nonfinite-source validation
@@ -19,11 +19,8 @@ compares common finite outputs. Coordinate arrays are float64.
 from __future__ import annotations
 
 import argparse
-import inspect
 import sys
-import textwrap
 from collections.abc import Callable
-from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
 
@@ -357,23 +354,71 @@ def main() -> None:
 # -----------------------------------------------------------------------------
 
 
-def _build_reference() -> Callable:
-    """Compile the current official source with only sinc normalization changed."""
-    source = textwrap.dedent(inspect.getsource(util._remap.py_func))
-    source = source[source.index("def _remap(") :]
-    old = 'elif kernel == "sinc":\n        ker = _ker_sinc\n        H = 6'
-    if source.count(old) != 1:
-        raise RuntimeError("Official remap changed; review the reference adaptation")
-    source = source.replace(old, old + "\n        normalize = True", 1)
-    namespace = vars(util).copy()
-    exec(compile(source, "<normalized-sinc-reference>", "exec"), namespace)
-    return njit(parallel=True, nogil=True)(namespace["_remap"])
+# Original production algorithm, retained as an independent normalized baseline.
+@njit(parallel=True, nogil=True)
+def _reference(
+    img: np.ndarray, rr: np.ndarray, cc: np.ndarray, kernel: str = "bicubic"
+) -> np.ndarray:
+
+    if rr.shape != cc.shape:
+        raise ValueError("Coordinate arrays must have the same shape.")
+
+    arr_out = np.full_like(rr, np.nan, dtype=img.dtype)
+    normalize = False
+    if kernel == "nearest":
+        ker = util._ker_near
+        H = 0
+    elif kernel == "bilinear":
+        ker = util._ker_lin
+        H = 0
+    elif kernel == "bicubic":
+        ker = util._ker_cub
+        H = 1
+    elif kernel == "bicubic6":
+        ker = util._ker_cub6
+        H = 2
+    elif kernel == "sinc":
+        ker = util._ker_sinc
+        H = 6
+        normalize = True
+    elif kernel == "lanczos6":
+        ker = util._ker_lanczos6
+        H = 6
+        normalize = True
+    else:
+        raise ValueError("Unknown interpolation type.")
+
+    for idx in prange(len(rr.flat)):
+        r = rr.flat[idx]
+        c = cc.flat[idx]
+
+        # change boundaries if using other kernels
+        rmin = np.floor(r) - H
+        rmax = np.ceil(r) + H
+        cmin = np.floor(c) - H
+        cmax = np.ceil(c) + H
+
+        if np.isnan(r) | np.isnan(c):
+            continue
+        is_in_image = (r >= 0) & (r < img.shape[0]) & (c >= 0) & (c < img.shape[1])
+        if not is_in_image:
+            continue
+        val = 0.0
+        weight_sum = 0.0
+        for i in range(int(rmin), int(rmax) + 1):
+            for j in range(int(cmin), int(cmax) + 1):
+                # using nearest neighbor on image border
+                i2 = min(max(0, i), img.shape[0] - 1)
+                j2 = min(max(0, j), img.shape[1] - 1)
+                weight = ker(r - i) * ker(c - j)
+                val += weight * img[i2, j2]
+                weight_sum += weight
+        if normalize:
+            val /= weight_sum
+        arr_out.flat[idx] = val
+    return arr_out
 
 
-_reference = _build_reference()
-
-
-@njit
 def _kernel(kernel: str) -> tuple[Callable[[float], float], int, bool]:
     if kernel == "nearest":
         return util._ker_near, 0, False
@@ -390,111 +435,9 @@ def _kernel(kernel: str) -> tuple[Callable[[float], float], int, bool]:
     raise ValueError("Unknown interpolation type.")
 
 
-@njit(parallel=True, nogil=True)
-def _optimized(
-    img: np.ndarray,
-    rr: np.ndarray,
-    cc: np.ndarray,
-    kernel: str,
-    zero: float | complex,
-    missing: float | complex,
-) -> np.ndarray:
-    if rr.shape != cc.shape:
-        raise ValueError("Coordinate arrays must have the same shape.")
-    ker, half_width, normalize = _kernel(kernel)
-    output = np.full(rr.shape, missing, dtype=img.dtype)
-    for index in prange(rr.size):
-        r, c = rr.flat[index], cc.flat[index]
-        if not (0 <= r < img.shape[0] and 0 <= c < img.shape[1]):
-            continue
-        if half_width == 6:
-            rmin, rmax = int(np.ceil(r - 6)), int(np.floor(r + 6))
-            cmin, cmax = int(np.ceil(c - 6)), int(np.floor(c + 6))
-        else:
-            rmin = int(np.floor(r)) - half_width
-            rmax = int(np.ceil(r)) + half_width
-            cmin = int(np.floor(c)) - half_width
-            cmax = int(np.ceil(c)) + half_width
-        rw = np.empty(14, dtype=np.float64)
-        cw = np.empty(14, dtype=np.float64)
-        rsum, csum = 0.0, 0.0
-        for i in range(rmax - rmin + 1):
-            rw[i] = ker(r - (rmin + i))
-            rsum += rw[i]
-        for j in range(cmax - cmin + 1):
-            cw[j] = ker(c - (cmin + j))
-            csum += cw[j]
-        if normalize:
-            for i in range(rmax - rmin + 1):
-                rw[i] /= rsum
-            for j in range(cmax - cmin + 1):
-                cw[j] /= csum
-        value = zero
-        for i in range(rmax - rmin + 1):
-            row = min(max(rmin + i, 0), img.shape[0] - 1)
-            row_value = zero
-            for j in range(cmax - cmin + 1):
-                col = min(max(cmin + j, 0), img.shape[1] - 1)
-                row_value += cw[j] * img[row, col]
-            value += rw[i] * row_value
-        output.flat[index] = value
-    return output
-
-
-@lru_cache(maxsize=8)
-def _phase_table(kernel: str, phases: int) -> np.ndarray:
-    """Build normalized 12-tap vectors over the closed fractional interval [0, 1]."""
-    if kernel not in ("sinc", "lanczos6") or phases < 2:
-        raise ValueError("LUT requires sinc/lanczos6 and at least two phase intervals")
-    # Fixed indices floor(u)-5 ... floor(u)+6; the omitted integer endpoint
-    # contributes only a floating-point sinc residue in the direct implementation.
-    distances = np.linspace(0, 1, phases + 1)[:, None] - np.arange(-5, 7)
-    weights = np.sinc(distances)
-    if kernel == "lanczos6":
-        weights *= np.sinc(distances / 6)
-        weights[np.abs(distances) >= 6] = 0
-    weights /= weights.sum(axis=1, keepdims=True)
-    weights.setflags(write=False)
-    return weights
-
-
-@njit(parallel=True, nogil=True)
-def _lut(
-    img: np.ndarray,
-    rr: np.ndarray,
-    cc: np.ndarray,
-    table: np.ndarray,
-    zero: float | complex,
-    missing: float | complex,
-) -> np.ndarray:
-    """Apply linearly interpolated axis vectors using dtype-specialized sums."""
-    if rr.shape != cc.shape:
-        raise ValueError("Coordinate arrays must have the same shape.")
-    output = np.full(rr.shape, missing, dtype=img.dtype)
-    phases = table.shape[0] - 1
-    for index in prange(rr.size):
-        r, c = rr.flat[index], cc.flat[index]
-        if not (0 <= r < img.shape[0] and 0 <= c < img.shape[1]):
-            continue
-        rbase, cbase = int(np.floor(r)), int(np.floor(c))
-        rp, cp = (r - rbase) * phases, (c - cbase) * phases
-        ri, ci = min(int(rp), phases - 1), min(int(cp), phases - 1)
-        rf, cf = rp - ri, cp - ci
-        rw = np.empty(12, dtype=np.float64)
-        cw = np.empty(12, dtype=np.float64)
-        for tap in range(12):
-            rw[tap] = table[ri, tap] + rf * (table[ri + 1, tap] - table[ri, tap])
-            cw[tap] = table[ci, tap] + cf * (table[ci + 1, tap] - table[ci, tap])
-        value = zero
-        for i in range(12):
-            row = min(max(rbase - 5 + i, 0), img.shape[0] - 1)
-            row_value = zero
-            for j in range(12):
-                col = min(max(cbase - 5 + j, 0), img.shape[1] - 1)
-                row_value += cw[j] * img[row, col]
-            value += rw[i] * row_value
-        output.flat[index] = value
-    return output
+_optimized = util._remap
+_phase_table = util._phase_table
+_lut = util._remap_lut
 
 
 def _tolerance(dtype: str) -> tuple[float, float]:

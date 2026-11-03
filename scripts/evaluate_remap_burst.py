@@ -21,11 +21,11 @@ import numpy as np
 import rasterio as rio
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from eo_tools.S1.core import S1IWSwath, align, coregister
+from eo_tools.S1.core import S1IWSwath, coregister
 from eo_tools.S1.process import amplitude, coherence, sar2geo
 from eo_tools.S1.util import remap
 from eo_tools_dev.util import palette_phi, serve_map, show_cog
-from scripts.benchmark_remap import remap_lut, remap_optimized, remap_reference
+from scripts.benchmark_remap import remap_reference
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -45,12 +45,12 @@ up = 1.8
 threads = 4
 
 variants = {
-    "bicubic-original": (remap, "bicubic"),
-    "bicubic-optimized": (remap_optimized, "bicubic"),
+    "bicubic-original": (remap_reference, "bicubic"),
+    "bicubic-optimized": (remap, "bicubic"),
     "sinc-original": (remap_reference, "sinc"),
-    "sinc-lut": (remap_lut, "sinc"),
-    "lanczos6-original": (remap, "lanczos6"),
-    "lanczos6-lut": (remap_lut, "lanczos6"),
+    "sinc-lut": (remap, "sinc"),
+    "lanczos6-original": (remap_reference, "lanczos6"),
+    "lanczos6-lut": (remap, "lanczos6"),
 }
 baselines = {
     "bicubic": "bicubic-original",
@@ -78,7 +78,7 @@ def main() -> None:
     az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
     # These operations are identical for every variant.
-    pdb_s2p = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
+    pdb_s2p = remap_reference(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
     reramp = np.exp(-1j * pdb_s2p).astype(np.complex64)
     rg_p = np.broadcast_to(np.arange(arr_p.shape[1]), arr_p.shape)
     pht_p = prm.phi_topo(rg_p)
@@ -137,8 +137,8 @@ def main() -> None:
         "Each variant is timed once after small-array JIT warm-up. "
         "Variant wall time includes alignment, reramping, "
         "writing the secondary, coherence and phase/coherence geocoding; shared preparation, "
-        "error comparisons and map display are excluded. Geocoding and phase warping use "
-        "original bicubic. No ESD or spectral filtering.\n\n"
+        "error comparisons and map display are excluded. Geocoding uses production "
+        "bicubic; phase warping uses original bicubic. No ESD or spectral filtering.\n\n"
         "Errors and speedups use each kernel's original implementation as the baseline; "
         "there are no cross-kernel error comparisons. Sinc is normalized in both its "
         "original reference and LUT implementations. Errors are RMS / max absolute "
