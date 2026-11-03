@@ -1207,7 +1207,8 @@ def preprocess_slc_iw(
         slc_path (str): directory or zip file containing the SLC input product.
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
-        pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
+        pol (str | list[str], optional): Polarization or list of polarizations
+            ("vv", "vh"). Defaults to "vv".
         min_burst (int | None, optional): First burst to process. If not set,
             the first available burst is used. Defaults to None.
         max_burst (int | None, optional): Last burst to process. If not set,
@@ -1222,6 +1223,9 @@ def preprocess_slc_iw(
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
+        Outputs are slc_{pol}.tif for each requested polarization and one
+        shared lut.tif. Geometry and terrain normalization are computed using
+        the first requested polarization and reused across channels.
         A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
         For partial products, the default burst range is the downloaded
         available range. Explicit burst requests outside that range raise an
@@ -1234,19 +1238,24 @@ def preprocess_slc_iw(
     if iw not in [1, 2, 3]:
         raise ValueError("iw must be 1, 2 or 3")
 
-    if pol not in ["vv", "vh"]:
-        raise ValueError("pol must be 'vv' or 'vh'")
+    polarizations = [pol] if isinstance(pol, str) else pol
+    if (
+        not isinstance(polarizations, list)
+        or not polarizations
+        or any(p not in ["vv", "vh"] for p in polarizations)
+    ):
+        raise ValueError("pol must be 'vv', 'vh' or a non-empty list of these")
+    polarizations = list(dict.fromkeys(polarizations))
 
     if cal_type not in ["beta", "sigma", "terrain"]:
         raise ValueError(
             "Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain."
         )
 
-    slc = S1IWSwath(slc_path, iw=iw, pol=pol, orb_dir=orb_dir)
-
-    prm_burst_info = slc.meta["product"]["swathTiming"]["burstList"]["burst"]
-
-    overlap = np.round(slc.compute_burst_overlap(2)).astype(int)
+    swaths = {
+        p: S1IWSwath(slc_path, iw=iw, pol=p, orb_dir=orb_dir) for p in polarizations
+    }
+    slc = swaths[polarizations[0]]
 
     if min_burst is None:
         min_burst_ = slc.min_burst
@@ -1258,30 +1267,32 @@ def preprocess_slc_iw(
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst_:
-        tmp_slc = f"{output_dir}/tmp_slc.tif"
-    elif max_burst_ < min_burst_:
+    if max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
-    else:
-        tmp_slc = f"{output_dir}/slc.tif"
 
-    if (
-        max_burst_ > slc.burst_count
-        or max_burst_ < 1
-        or min_burst_ > slc.burst_count
-        or min_burst_ < 1
-    ):
-        raise ValueError(
-            f"min_burst and max_burst must be values between 1 and {slc.burst_count}"
-        )
+    prefix = "tmp_" if max_burst_ > min_burst_ else ""
+    tmp_slc = {p: f"{output_dir}/{prefix}slc_{p}.tif" for p in polarizations}
 
-    if slc.is_partial:
-        if min_burst_ < slc.min_burst or max_burst_ > slc.max_burst:
+    for slc in swaths.values():
+        if (
+            max_burst_ > slc.burst_count
+            or max_burst_ < 1
+            or min_burst_ > slc.burst_count
+            or min_burst_ < 1
+        ):
             raise ValueError(
-                "At least one requested burst is absent from the partial SLC "
-                f"product. Requested bursts {min_burst_} to {max_burst_}; "
-                f"available bursts are {slc.min_burst} to {slc.max_burst}."
+                f"min_burst and max_burst must be values between 1 and {slc.burst_count}"
             )
+
+        if slc.is_partial:
+            if min_burst_ < slc.min_burst or max_burst_ > slc.max_burst:
+                raise ValueError(
+                    "At least one requested burst is absent from the partial SLC "
+                    f"product. Requested bursts {min_burst_} to {max_burst_}; "
+                    f"available bursts are {slc.min_burst} to {slc.max_burst}."
+                )
+
+    slc = swaths[polarizations[0]]
 
     naz = slc.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = slc.samples_per_burst
@@ -1290,7 +1301,7 @@ def preprocess_slc_iw(
     _child_process(
         _process_bursts_slc,
         (
-            slc,
+            swaths,
             tmp_slc,
             output_dir,
             dem_dir,
@@ -1302,28 +1313,28 @@ def preprocess_slc_iw(
             dem_upsampling,
             dem_buffer_arc_sec,
             dem_force_download,
-            overlap,
             cal_type,
             orbit_interpolator,
         ),
     )
 
     if max_burst_ > min_burst_:
-        _child_process(
-            _stitch_bursts,
-            (
-                tmp_slc,
-                f"{output_dir}/slc.tif",
-                max_burst_ - min_burst_ + 1,
-                min_burst_,
-                slc,
-            ),
-        )
+        for p in polarizations:
+            _child_process(
+                _stitch_bursts,
+                (
+                    tmp_slc[p],
+                    f"{output_dir}/slc_{p}.tif",
+                    max_burst_ - min_burst_ + 1,
+                    min_burst_,
+                    slc,
+                ),
+            )
 
-    log.info("Cleaning temporary files")
-    if max_burst_ > min_burst_:
-        if os.path.isfile(tmp_slc):
-            os.remove(tmp_slc)
+        log.info("Cleaning temporary files")
+        for source in tmp_slc.values():
+            if os.path.isfile(source):
+                os.remove(source)
 
 
 def geocode_and_merge_iw(
@@ -2423,23 +2434,22 @@ def _process_bursts_insar(
 
 
 def _process_bursts_slc(
-    slc,
-    tmp_slc,
-    output_dir,
-    dem_dir,
-    naz,
-    nrg,
-    min_burst,
-    max_burst,
-    dem_name,
-    dem_upsampling,
-    dem_buffer_arc_sec,
-    dem_force_download,
-    overlap,
-    cal_type,
-    orbit_interpolator,
-):
-
+    swaths: dict[str, S1IWSwath],
+    tmp_slc: dict[str, str],
+    output_dir: str,
+    dem_dir: str,
+    naz: int,
+    nrg: int,
+    min_burst: int,
+    max_burst: int,
+    dem_name: str,
+    dem_upsampling: float,
+    dem_buffer_arc_sec: float,
+    dem_force_download: bool,
+    cal_type: str,
+    orbit_interpolator: str,
+) -> None:
+    slc = next(iter(swaths.values()))
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -2483,7 +2493,12 @@ def _process_bursts_slc(
 
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
     with rio.Env(GDAL_CACHEMAX=512) as env:
-        with rio.open(tmp_slc, "w", **prof_tmp) as ds_prm, rio.open(dem_file) as ds_dem:
+        with ExitStack() as stack:
+            datasets = {
+                p: stack.enter_context(rio.open(path, "w", **prof_tmp))
+                for p, path in tmp_slc.items()
+            }
+            ds_dem = stack.enter_context(rio.open(dem_file))
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
                 # position of the burst in the stitched SLC
@@ -2495,7 +2510,6 @@ def _process_bursts_slc(
                     slc.compute_burst_overlap(burst_idx=burst_idx, min_burst=min_burst)
                 )
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
-                dem_file_burst = f"{output_dir}/dem_burst.tif"
                 burst_geoms = slc.gdf_burst_geom
                 burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
                 shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
@@ -2533,29 +2547,21 @@ def _process_bursts_slc(
                         orbit_interpolator=orbit_interpolator,
                     )
 
-                # read primary and secondary burst rasters
-                arr_p = slc.read_burst(burst_idx, True)
+                if cal_type == "terrain":
+                    valid_terrain = ~np.isnan(gamma_t)
+                    terrain_scale = np.sqrt(gamma_t[valid_terrain])
 
-                # radiometric calibration (beta, sigma nought or terrain)
-                if cal_type != "terrain":
-                    cal_p = slc.calibration_factor(burst_idx, cal_type=cal_type)
-                    log.info("Apply calibration factor")
-                    arr_p /= cal_p
-                else:
-                    # we use beta as a normalization reference
-                    cal_p = slc.calibration_factor(burst_idx, cal_type="beta")
-                    log.info("Apply calibration factor and terrain flattening")
-                    arr_p /= cal_p
-                    arr_p[~np.isnan(gamma_t)] /= np.sqrt(gamma_t[~np.isnan(gamma_t)])
-                    arr_p[np.isnan(gamma_t)] = np.nan
-
-                # read primary and secondary burst raster
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
-
-                # write the coregistered SLCs
-                ds_prm.write(
-                    arr_p, 1, window=Window(0, first_line, nrg, slc.lines_per_burst)
-                )
+                window = Window(0, first_line, nrg, slc.lines_per_burst)
+                for p, swath in swaths.items():
+                    log.info("Process %s polarization", p.upper())
+                    arr = swath.read_burst(burst_idx, True)
+                    calibration = "beta" if cal_type == "terrain" else cal_type
+                    arr /= swath.calibration_factor(burst_idx, cal_type=calibration)
+                    if cal_type == "terrain":
+                        arr[valid_terrain] /= terrain_scale
+                        arr[~valid_terrain] = np.nan
+                    datasets[p].write(arr, 1, window=window)
 
                 # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
                 H = burst_overlap // 2

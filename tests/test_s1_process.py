@@ -21,7 +21,7 @@ from tempfile import NamedTemporaryFile
 from eo_tools.S1.process import multilook
 from eo_tools.S1.process import goldstein
 import tempfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 multiprocessing.set_start_method("forkserver", force=True)
 import warnings
@@ -466,3 +466,93 @@ def test_geocode_iw_lut(tmp_path, shared: bool) -> None:
     for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
         with rio.open(tmp_path / f"{name}.tif") as result:
             np.testing.assert_array_equal(result.read(1), np.full((4, 4), value))
+
+
+@pytest.mark.parametrize("cal_type", ["beta", "sigma", "terrain"])
+@pytest.mark.parametrize("burst_count", [1, 2])
+def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
+    """Reuse burst geometry and terrain factors while retaining channel masks."""
+    from types import SimpleNamespace
+
+    from eo_tools.S1.process import preprocess_slc_iw
+
+    rows, cols = np.indices((4, 4), dtype=float)
+    gamma = np.full((4, 4), 4.0)
+    gamma[0, 0] = np.nan
+    image = np.full((4, 4), 2 + 3j, dtype=np.complex64)
+    vh_image = image.copy()
+    vh_image[2, 2] = np.nan
+    geometry = gpd.GeoDataFrame(
+        {"burst": range(1, burst_count + 1)},
+        geometry=[box(0, 4 * i, 4, 4 * (i + 1)) for i in range(burst_count)],
+        crs="EPSG:4326",
+    )
+    dem = tmp_path / "dem.tif"
+    with rio.open(
+        dem,
+        "w",
+        driver="GTiff",
+        width=4,
+        height=4 * burst_count,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=Affine(1, 0, 0, 0, -1, 4 * burst_count),
+    ) as dst:
+        dst.write(np.zeros((4 * burst_count, 4), dtype=np.float32), 1)
+
+    def geocode(*args, **kwargs) -> tuple:
+        coordinates = (rows.copy(), cols.copy())
+        return (
+            (*coordinates, gamma.copy())
+            if kwargs.get("simulate_terrain")
+            else coordinates
+        )
+
+    primary = SimpleNamespace(
+        is_partial=False,
+        min_burst=1,
+        max_burst=burst_count,
+        burst_count=burst_count,
+        lines_per_burst=4,
+        samples_per_burst=4,
+        gdf_burst_geom=geometry,
+        fetch_dem=Mock(return_value=str(dem)),
+        geocode_burst=Mock(side_effect=geocode),
+        compute_burst_overlap=lambda *args, **kwargs: 0,
+        compute_burst_offset=lambda burst_idx, min_burst: 4 * (burst_idx - min_burst),
+        read_burst=lambda *args: image.copy(),
+        calibration_factor=Mock(return_value=2),
+    )
+    secondary = SimpleNamespace(**vars(primary))
+    secondary.geocode_burst = Mock(side_effect=geocode)
+    secondary.read_burst = lambda *args: vh_image.copy()
+    secondary.calibration_factor = Mock(return_value=4)
+    with patch("eo_tools.S1.process.S1IWSwath", side_effect=[primary, secondary]):
+        preprocess_slc_iw(
+            "product",
+            str(tmp_path),
+            pol=["vv", "vh"],
+            cal_type=cal_type,
+            dem_buffer_arc_sec=0,
+        )
+
+    assert primary.fetch_dem.call_count == 1
+    assert primary.geocode_burst.call_count == burst_count
+    secondary.geocode_burst.assert_not_called()
+    assert (tmp_path / "lut.tif").is_file()
+    for p, source, factor, swath in [
+        ("vv", image, 2, primary),
+        ("vh", vh_image, 4, secondary),
+    ]:
+        expected = source / factor
+        if cal_type == "terrain":
+            expected /= np.sqrt(gamma)
+        assert swath.calibration_factor.call_count == burst_count
+        assert swath.calibration_factor.call_args.kwargs["cal_type"] == (
+            "beta" if cal_type == "terrain" else cal_type
+        )
+        with rio.open(tmp_path / f"slc_{p}.tif") as result:
+            np.testing.assert_allclose(
+                result.read(1), np.tile(expected, (burst_count, 1))
+            )
