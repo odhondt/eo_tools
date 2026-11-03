@@ -962,6 +962,9 @@ def resample(
         )
 
     out_prof.update({"width": dst_width, "height": dst_height, "transform": dst_trans})
+    if not out_prof.get("tiled", False):
+        out_prof.pop("blockxsize", None)
+        out_prof.pop("blockysize", None)
 
     log.info("Warp to match DEM geometry")
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)

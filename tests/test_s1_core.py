@@ -1,7 +1,10 @@
 import pytest
 import os
+import logging
+from pathlib import Path
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import coregister
+from eo_tools.S1.core import resample
 from eo_tools.S1.core import load_dem_coords
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
@@ -533,3 +536,51 @@ def test_burst_offset(create_swath):
 
 if __name__ == "__main__":
     pytest.main()
+
+
+@pytest.mark.parametrize("tiled", [False, True])
+@pytest.mark.parametrize("kind", ["real", "complex", "phase"])
+def test_resample_profile(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, tiled: bool, kind: str
+) -> None:
+    """Preserve storage layout and georeferencing without invalid block options."""
+    dem_file, out_file = tmp_path / "dem.tif", tmp_path / "resampled.tif"
+    profile = dict(
+        driver="GTiff",
+        width=24,
+        height=16,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=rasterio.transform.from_origin(0, 16, 1, 1),
+        tiled=tiled,
+    )
+    if tiled:
+        profile.update(blockxsize=16, blockysize=16)
+    with rasterio.open(dem_file, "w", **profile) as ds:
+        ds.write(np.zeros((16, 24), dtype=np.float32), 1)
+    image = (
+        np.full((16, 24), 2, dtype=np.float32)
+        if kind == "real"
+        else np.full((16, 24), 2 + 3j, dtype=np.complex64)
+    )
+    rr, cc = np.indices((8, 12), dtype=float) * 2
+    rr[0, 0] = np.nan
+    with caplog.at_level(logging.WARNING, logger="rasterio._env"):
+        resample(image, dem_file, out_file, rr, cc, write_phase=kind == "phase")
+    assert "CPLE_IllegalArg" not in caplog.text
+    with rasterio.open(out_file) as ds:
+        assert ds.shape == (8, 12)
+        assert ds.profile["tiled"] == tiled
+        assert ds.crs == rasterio.crs.CRS.from_epsg(4326)
+        assert ds.transform == rasterio.transform.from_origin(0, 16, 2, 2)
+        actual = ds.read(masked=True)
+    expected = {
+        "real": [2],
+        "complex": [2, 3],
+        "phase": [np.angle(np.complex64(2 + 3j))],
+    }[kind]
+    assert actual.shape[0] == len(expected)
+    assert actual.mask[:, 0, 0].all()
+    for band, value in zip(actual, expected):
+        np.testing.assert_allclose(band.compressed(), value, rtol=1e-6, atol=1e-6)
