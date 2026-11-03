@@ -4,6 +4,7 @@ import os
 import re
 import warnings
 from collections.abc import Callable
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
@@ -471,7 +472,8 @@ def preprocess_insar_iw(
         sec_path (str): directory or zip file containing the secondary SLC product of the pair.
         output_dir (str): output directory (creating it if does not exist).
         iw (int, optional): subswath index. Defaults to 1.
-        pol (str, optional): polarization ('vv','vh'). Defaults to "vv".
+        pol (str | list[str], optional): Polarization or list of polarizations
+            ("vv", "vh"). Defaults to "vv".
         min_burst (int | None, optional): First primary burst to process. If
             not set, the first available primary burst is used. Defaults to None.
         max_burst (int | None, optional): Last primary burst to process. If not
@@ -494,6 +496,9 @@ def preprocess_insar_iw(
 
     Note:
         DEM-assisted coregistration is performed to align the secondary with the primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        Outputs are primary_{pol}.tif and secondary_{pol}.tif for each
+        requested polarization, plus one shared lut.tif. Geometry is computed
+        using the first requested polarization and reused across channels.
         For partial products, the default primary burst range is the downloaded
         available range. The corresponding secondary range is obtained through
         the geometry-derived burst index offset, and unavailable offset-mapped
@@ -506,24 +511,34 @@ def preprocess_insar_iw(
     if iw not in [1, 2, 3]:
         raise ValueError("iw must be 1, 2 or 3")
 
-    if pol not in ["vv", "vh"]:
-        raise ValueError("pol must be 'vv' or 'vh'")
+    polarizations = [pol] if isinstance(pol, str) else pol
+    if (
+        not isinstance(polarizations, list)
+        or not polarizations
+        or any(p not in ["vv", "vh"] for p in polarizations)
+    ):
+        raise ValueError("pol must be 'vv', 'vh' or a non-empty list of these")
+    polarizations = list(dict.fromkeys(polarizations))
 
     if cal_type not in ["beta", "sigma"]:
         raise ValueError(
             "Invalid calibration factor. Possible values are 'beta', 'sigma'."
         )
 
-    prm = S1IWSwath(prm_path, iw=iw, pol=pol, orb_dir=orb_dir)
-    sec = S1IWSwath(sec_path, iw=iw, pol=pol, orb_dir=orb_dir)
+    primaries = {}
+    secondaries = {}
+    for p in polarizations:
+        primaries[p] = S1IWSwath(prm_path, iw=iw, pol=p, orb_dir=orb_dir)
+        secondaries[p] = S1IWSwath(sec_path, iw=iw, pol=p, orb_dir=orb_dir)
+    prm = primaries[polarizations[0]]
 
     # retrieve burst geometries
     sub_str = f"IW{iw}"
     gdf_burst_prm = get_burst_geometry(
-        prm_path, target_subswaths=[sub_str], polarization="VV"
+        prm_path, target_subswaths=[sub_str], polarization=polarizations[0].upper()
     )
     gdf_burst_sec = get_burst_geometry(
-        sec_path, target_subswaths=[sub_str], polarization="VV"
+        sec_path, target_subswaths=[sub_str], polarization=polarizations[0].upper()
     )
 
     # here we deal with partial overlap
@@ -557,45 +572,48 @@ def preprocess_insar_iw(
     else:
         max_burst_ = max_burst
 
-    if max_burst_ > min_burst_:
-        tmp_prm = f"{output_dir}/tmp_primary.tif"
-        tmp_sec = f"{output_dir}/tmp_secondary.tif"
-    elif max_burst_ < min_burst_:
+    if max_burst_ < min_burst_:
         raise ValueError("max_burst must be >= min_burst")
-    else:
-        tmp_prm = f"{output_dir}/primary.tif"
-        tmp_sec = f"{output_dir}/secondary.tif"
 
-    if (
-        max_burst_ > prm.burst_count
-        or max_burst_ < 1
-        or min_burst_ > prm.burst_count
-        or min_burst_ < 1
-    ):
-        raise ValueError(
-            f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
-        )
+    prefix = "tmp_" if max_burst_ > min_burst_ else ""
+    tmp_prm = {p: f"{output_dir}/{prefix}primary_{p}.tif" for p in polarizations}
+    tmp_sec = {p: f"{output_dir}/{prefix}secondary_{p}.tif" for p in polarizations}
 
-    if prm.is_partial:
-        if min_burst_ < prm.min_burst or max_burst_ > prm.max_burst:
+    for p in polarizations:
+        prm = primaries[p]
+        sec = secondaries[p]
+        if (
+            max_burst_ > prm.burst_count
+            or max_burst_ < 1
+            or min_burst_ > prm.burst_count
+            or min_burst_ < 1
+        ):
             raise ValueError(
-                "At least one requested burst is absent from the partial primary "
-                f"product. Requested primary bursts {min_burst_} to {max_burst_}; "
-                f"available primary bursts are {prm.min_burst} to {prm.max_burst}."
+                f"min_burst and max_burst must be values between 1 and {prm.burst_count}"
             )
 
-    if sec.is_partial:
-        min_burst_sec = min_burst_ + burst_idx_offset
-        max_burst_sec = max_burst_ + burst_idx_offset
-        if min_burst_sec < sec.min_burst or max_burst_sec > sec.max_burst:
-            raise ValueError(
-                "At least one requested burst is absent from the partial secondary "
-                "product. Requested offset-mapped secondary bursts "
-                f"{min_burst_sec} to {max_burst_sec}; available secondary bursts "
-                f"are {sec.min_burst} to {sec.max_burst}. Partial InSAR processing "
-                "requires every primary burst selected by the stored AOI to have "
-                "an available offset-mapped secondary burst."
-            )
+        if prm.is_partial:
+            if min_burst_ < prm.min_burst or max_burst_ > prm.max_burst:
+                raise ValueError(
+                    "At least one requested burst is absent from the partial primary "
+                    f"product. Requested primary bursts {min_burst_} to {max_burst_}; "
+                    f"available primary bursts are {prm.min_burst} to {prm.max_burst}."
+                )
+
+        if sec.is_partial:
+            min_burst_sec = min_burst_ + burst_idx_offset
+            max_burst_sec = max_burst_ + burst_idx_offset
+            if min_burst_sec < sec.min_burst or max_burst_sec > sec.max_burst:
+                raise ValueError(
+                    "At least one requested burst is absent from the partial secondary "
+                    "product. Requested offset-mapped secondary bursts "
+                    f"{min_burst_sec} to {max_burst_sec}; available secondary bursts "
+                    f"are {sec.min_burst} to {sec.max_burst}. Partial InSAR processing "
+                    "requires every primary burst selected by the stored AOI to have "
+                    "an available offset-mapped secondary burst."
+                )
+
+    prm = primaries[polarizations[0]]
 
     naz = prm.lines_per_burst * (max_burst_ - min_burst_ + 1)
     nrg = prm.samples_per_burst
@@ -604,8 +622,8 @@ def preprocess_insar_iw(
     _child_process(
         _process_bursts_insar,
         (
-            prm,
-            sec,
+            primaries,
+            secondaries,
             tmp_prm,
             tmp_sec,
             output_dir,
@@ -620,57 +638,44 @@ def preprocess_insar_iw(
             dem_buffer_arc_sec,
             dem_force_download,
             warp_kernel,
-            overlap,
             cal_type,
             orbit_interpolator,
         ),
     )
 
-    if (max_burst_ > min_burst_) & apply_fast_esd:
-        _child_process(
-            _apply_fast_esd,
-            (
-                tmp_prm,
-                tmp_sec,
-                min_burst_,
-                max_burst_,
-                prm.lines_per_burst,
-                nrg,
-                overlap,
-            ),
-        )
-
     if max_burst_ > min_burst_:
-        # The secondary is warped to primary SAR geometry, so stitching must use
-        # identical primary burst offsets and overlaps for both rasters.
-        _child_process(
-            _stitch_bursts,
-            (
-                tmp_sec,
-                f"{output_dir}/secondary.tif",
-                max_burst_ - min_burst_ + 1,
-                min_burst_,
-                prm,
-            ),
-        )
+        for p in polarizations:
+            if apply_fast_esd:
+                _child_process(
+                    _apply_fast_esd,
+                    (
+                        tmp_prm[p],
+                        tmp_sec[p],
+                        min_burst_,
+                        max_burst_,
+                        prm.lines_per_burst,
+                        nrg,
+                        overlap,
+                    ),
+                )
 
-        _child_process(
-            _stitch_bursts,
-            (
-                tmp_prm,
-                f"{output_dir}/primary.tif",
-                max_burst_ - min_burst_ + 1,
-                min_burst_,
-                prm,
-            ),
-        )
+            # Both rasters use the same primary geometry for stitching.
+            for source, role in [(tmp_prm[p], "primary"), (tmp_sec[p], "secondary")]:
+                _child_process(
+                    _stitch_bursts,
+                    (
+                        source,
+                        f"{output_dir}/{role}_{p}.tif",
+                        max_burst_ - min_burst_ + 1,
+                        min_burst_,
+                        prm,
+                    ),
+                )
 
-    log.info("Cleaning temporary files")
-    if max_burst_ > min_burst_:
-        if os.path.isfile(tmp_prm):
-            os.remove(tmp_prm)
-        if os.path.isfile(tmp_sec):
-            os.remove(tmp_sec)
+        log.info("Cleaning temporary files")
+        for source in [*tmp_prm.values(), *tmp_sec.values()]:
+            if os.path.isfile(source):
+                os.remove(source)
 
 
 def process_slc(
@@ -2250,28 +2255,27 @@ def apply_to_patterns_for_single(
 
 
 def _process_bursts_insar(
-    prm,
-    sec,
-    tmp_prm,
-    tmp_sec,
-    output_dir,
-    dem_dir,
-    naz,
-    nrg,
-    min_burst,
-    max_burst,
-    burst_idx_offset,
-    dem_name,
-    dem_upsampling,
-    dem_buffer_arc_sec,
-    dem_force_download,
-    warp_kernel,
-    overlap,
-    cal_type,
-    orbit_interpolator,
-):
-
-    # H = int(overlap / 2)
+    primaries: dict[str, S1IWSwath],
+    secondaries: dict[str, S1IWSwath],
+    tmp_prm: dict[str, str],
+    tmp_sec: dict[str, str],
+    output_dir: str,
+    dem_dir: str,
+    naz: int,
+    nrg: int,
+    min_burst: int,
+    max_burst: int,
+    burst_idx_offset: int,
+    dem_name: str,
+    dem_upsampling: float,
+    dem_buffer_arc_sec: float,
+    dem_force_download: bool,
+    warp_kernel: str,
+    cal_type: str,
+    orbit_interpolator: str,
+) -> None:
+    prm = next(iter(primaries.values()))
+    sec = next(iter(secondaries.values()))
     prof_tmp = dict(
         width=nrg,
         height=naz,
@@ -2318,12 +2322,19 @@ def _process_bursts_insar(
     gdal_cachemax = 512
     arr_lut = np.full((2, height_lut, width_lut), fill_value=np.nan)
     with rio.Env(GDAL_CACHEMAX=gdal_cachemax) as env:
-        with (
-            rio.open(tmp_prm, "w", **prof_tmp) as ds_prm,
-            rio.open(tmp_sec, "w", **prof_tmp) as ds_sec,
-            rio.open(dem_file) as ds_dem,
-        ):
-            off_az = 0
+        with ExitStack() as stack:
+            ds_prm = {
+                p: stack.enter_context(rio.open(path, "w", **prof_tmp))
+                for p, path in tmp_prm.items()
+            }
+            ds_sec = {
+                p: stack.enter_context(rio.open(path, "w", **prof_tmp))
+                for p, path in tmp_sec.items()
+            }
+            ds_dem = stack.enter_context(rio.open(dem_file))
+            # coregister only uses the primary array's shape.
+            primary_grid = np.broadcast_to(np.complex64(0), (prm.lines_per_burst, nrg))
+            pht_p = prm.phi_topo(np.arange(nrg))[None, :]
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info(f"---- Processing burst {burst_idx} ----")
                 burst_offset = round(
@@ -2334,7 +2345,6 @@ def _process_bursts_insar(
                     prm.compute_burst_overlap(burst_idx=burst_idx, min_burst=min_burst)
                 )
                 # compute geocoding LUTs (lookup tables) for primary and secondary bursts
-                dem_file_burst = f"{output_dir}/dem_burst.tif"
                 burst_geoms = prm.gdf_burst_geom
                 burst_geom = burst_geoms[burst_geoms["burst"] == burst_idx].iloc[0]
                 shp = burst_geom.geometry.buffer(dem_buffer_arc_sec / 3600)
@@ -2369,54 +2379,36 @@ def _process_bursts_insar(
                     orbit_interpolator=orbit_interpolator,
                 )
 
-                # read primary and secondary burst rasters
-                arr_p = prm.read_burst(burst_idx, True)
-                arr_s = sec.read_burst(burst_idx + burst_idx_offset, True)
-
-                # radiometric calibration (beta or sigma nought)
-                cal_p = prm.calibration_factor(burst_idx, cal_type=cal_type)
-                cal_s = sec.calibration_factor(
-                    burst_idx + burst_idx_offset, cal_type=cal_type
+                # Geometry and phase corrections are shared by all polarizations.
+                az_s2p, rg_s2p = coregister(
+                    primary_grid, az_p2g, rg_p2g, az_s2g, rg_s2g
                 )
-                log.info("Apply calibration factor")
-                arr_p /= cal_p
-                arr_s /= cal_s
-
-                # deramp secondary
                 pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
-                log.info("Apply phase deramping")
-                arr_s *= np.exp(1j * pdb_s)
-
-                # project Secondary LUT into Primary grid
-                az_s2p, rg_s2p = coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
-
-                # warp raster secondary and deramping phase
-                arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                deramp = np.exp(1j * pdb_s)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
-
-                # reramp secondary
-                log.info("Apply phase reramping")
-                arr_s *= np.exp(-1j * pdb_s)
-
-                # compute topographic phases
-                rg_p = np.zeros(arr_p.shape[0])[:, None] + np.arange(0, arr_p.shape[1])
-                pht_p = prm.phi_topo(rg_p).reshape(*arr_p.shape)
-                pht_s = sec.phi_topo(rg_s2p.ravel()).reshape(*arr_p.shape)
-                log.info("Apply topographic phase removal")
+                reramp = np.exp(-1j * pdb_s)
+                pht_s = sec.phi_topo(rg_s2p)
                 pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
-
-                arr_s *= pha_topo
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
+                window = Window(0, first_line, nrg, prm.lines_per_burst)
 
-                # write the coregistered SLCs
-                ds_prm.write(
-                    arr_p, 1, window=Window(0, first_line, nrg, prm.lines_per_burst)
-                )
-                ds_sec.write(
-                    arr_s,
-                    1,
-                    window=Window(0, first_line, nrg, prm.lines_per_burst),
-                )
+                for p in primaries:
+                    log.info("Process %s polarization", p.upper())
+                    primary = primaries[p]
+                    secondary = secondaries[p]
+                    # Preserve each channel's valid-sample mask and calibration.
+                    arr_p = primary.read_burst(burst_idx, True)
+                    arr_s = secondary.read_burst(burst_idx + burst_idx_offset, True)
+                    arr_p /= primary.calibration_factor(burst_idx, cal_type=cal_type)
+                    arr_s /= secondary.calibration_factor(
+                        burst_idx + burst_idx_offset, cal_type=cal_type
+                    )
+                    arr_s *= deramp
+                    arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                    arr_s *= reramp
+                    arr_s *= pha_topo
+                    ds_prm[p].write(arr_p, 1, window=window)
+                    ds_sec[p].write(arr_s, 1, window=window)
 
                 # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
                 H = burst_overlap // 2
