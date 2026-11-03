@@ -357,14 +357,15 @@ def test_polsar_cov_dual(create_polsar_data):
     assert c12i.dtype == "float32"
 
 
+@pytest.mark.parametrize("kind", ["insar", "slc"])
 @pytest.mark.parametrize("pol", ["full", ["vv", "vh"], "VV"])
 @pytest.mark.parametrize("skip", [False, True])
-def test_prepare_insar_outputs(tmp_path, pol: str | list[str], skip: bool) -> None:
+def test_prepare_outputs(tmp_path, pol: str | list[str], skip: bool, kind: str) -> None:
     """Preparation batches channels per IW and exposes the shared LUT filenames."""
     from pathlib import Path
     from types import SimpleNamespace
 
-    from eo_tools.S1.process import prepare_insar
+    from eo_tools.S1.process import prepare_insar, prepare_slc
 
     primary_path, secondary_path = tmp_path / "primary", tmp_path / "secondary"
     primary_path.mkdir()
@@ -382,9 +383,11 @@ def test_prepare_insar_outputs(tmp_path, pol: str | list[str], skip: bool) -> No
         scanMetadata=lambda: {"orbitNumber_rel": 42, "start": "20230916T063730"}
     )
 
-    def preprocess(prm_path: str, sec_path: str, output_dir: str, **kwargs) -> None:
+    def preprocess(*args, **kwargs) -> None:
+        output_dir = args[-1]
         for p in kwargs["pol"]:
-            for role in ["primary", "secondary"]:
+            roles = ["primary", "secondary"] if kind == "insar" else ["slc"]
+            for role in roles:
                 (Path(output_dir) / f"{role}_{p}.tif").touch()
         (Path(output_dir) / "lut.tif").touch()
 
@@ -392,16 +395,19 @@ def test_prepare_insar_outputs(tmp_path, pol: str | list[str], skip: bool) -> No
         patch("eo_tools.S1.process.get_burst_geometry", return_value=geometry),
         patch(
             "eo_tools.S1.process.identify_safe_product",
-            side_effect=[primary, secondary],
+            side_effect=[primary, secondary] if kind == "insar" else [primary],
         ),
         patch(
-            "eo_tools.S1.process.preprocess_insar_iw", side_effect=preprocess
+            f"eo_tools.S1.process.preprocess_{kind}_iw", side_effect=preprocess
         ) as prepare,
     ):
+        prepare_func = prepare_insar if kind == "insar" else prepare_slc
+        paths = [str(primary_path)]
+        if kind == "insar":
+            paths.append(str(secondary_path))
         out_dir = Path(
-            prepare_insar(
-                str(primary_path),
-                str(secondary_path),
+            prepare_func(
+                *paths,
                 str(tmp_path),
                 pol=pol,
                 subswaths=["IW1", "IW2"],
@@ -417,11 +423,12 @@ def test_prepare_insar_outputs(tmp_path, pol: str | list[str], skip: bool) -> No
     for call in prepare.call_args_list:
         assert call.kwargs["pol"] == polarizations
     expected = {f"lut_iw{iw}.tif" for iw in [1, 2]}
+    prefixes = ["slc_prm", "slc_sec"] if kind == "insar" else ["slc"]
     expected.update(
-        f"slc_{role}_{p}_iw{iw}.tif"
+        f"{prefix}_{p}_iw{iw}.tif"
         for iw in [1, 2]
         for p in polarizations
-        for role in ["prm", "sec"]
+        for prefix in prefixes
     )
     assert {path.name for path in out_dir.iterdir()} == expected
 

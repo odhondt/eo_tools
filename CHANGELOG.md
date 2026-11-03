@@ -2,8 +2,8 @@
 
 ## Processing optimization
 
-- InSAR preprocessing now handles all requested polarizations in one call per IW. Geocoding LUTs, coregistration coordinates, deramping phase, and topographic phase corrections are computed once and reused across channels. Calibration, signal warping, validity masks, and ESD remain polarization-specific.
-- SLC burst preprocessing now computes geocoding LUTs and terrain normalization once per burst and reuses them across polarizations.
+- InSAR and SLC preprocessing now handle all requested polarizations in one call per IW, computing geocoding LUTs once for all channels. InSAR also reuses coregistration coordinates, deramping phase, and topographic phase corrections. Calibration, signal warping, validity masks, and ESD remain polarization-specific.
+- SLC terrain normalization is also computed once per burst and reused across polarizations.
 - Prepared products now use one shared geocoding LUT per IW, avoiding duplicate LUT files across polarizations.
 
 ### Breaking changes
