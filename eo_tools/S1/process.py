@@ -280,6 +280,9 @@ def prepare_insar(
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
+        Each IW is preprocessed once for all requested polarizations. The SAR
+        directory contains slc_prm_{pol}_iw{iw}.tif, slc_sec_{pol}_iw{iw}.tif,
+        and one shared lut_iw{iw}.tif per IW.
         Partial-product InSAR processing requires both input products to be
         partial products generated for the same AOI, with matching downloaded
         subswaths and polarizations. In this case, the stored partial-product
@@ -361,7 +364,7 @@ def prepare_insar(
                     f"polarization {pol} does not exists in the source product"
                 )
     elif isinstance(pol, list):
-        pol_ = [x for x in pol if x in info_prm.polarizations]
+        pol_ = [x for x in pol if x.upper() in info_prm.polarizations]
     else:
         raise RuntimeError("polarizations must be of type str or list")
 
@@ -396,51 +399,49 @@ def prepare_insar(
     if not os.path.isdir(out_dir):
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
-    for p in pol_:
-        for subswath in unique_subswaths:
-            log.info(f"---- Processing subswath {subswath} in {p.upper()} polarization")
+    for subswath in unique_subswaths:
+        log.info(f"---- Processing subswath {subswath}")
 
-            # identify bursts to process
-            bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
-                "burst"
-            ].values
-            burst_prm_min = bursts_prm.min()
-            burst_prm_max = bursts_prm.max()
+        # identify bursts to process
+        bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
+            "burst"
+        ].values
+        burst_prm_min = bursts_prm.min()
+        burst_prm_max = bursts_prm.max()
 
-            iw = int(subswath[2])
-            if not os.path.isdir(out_dir):
-                os.mkdir(out_dir)
-            if not skip_preprocessing:
-                preprocess_insar_iw(
-                    prm_path,
-                    sec_path,
-                    out_dir,
-                    iw=iw,
-                    pol=p.lower(),
-                    min_burst=burst_prm_min,
-                    max_burst=burst_prm_max,
-                    apply_fast_esd=apply_fast_esd,
-                    warp_kernel=warp_kernel,
-                    cal_type=cal_type,
-                    dem_dir=dem_dir,
-                    dem_name=dem_name,
-                    dem_upsampling=dem_upsampling,
-                    dem_buffer_arc_sec=dem_buffer_arc_sec,
-                    dem_force_download=dem_force_download,
-                    orb_dir=orb_dir,
-                    orbit_interpolator=orbit_interpolator,
-                )
+        iw = int(subswath[2])
+        if not skip_preprocessing:
+            preprocess_insar_iw(
+                prm_path,
+                sec_path,
+                out_dir,
+                iw=iw,
+                pol=[p.lower() for p in pol_],
+                min_burst=burst_prm_min,
+                max_burst=burst_prm_max,
+                apply_fast_esd=apply_fast_esd,
+                warp_kernel=warp_kernel,
+                cal_type=cal_type,
+                dem_dir=dem_dir,
+                dem_name=dem_name,
+                dem_upsampling=dem_upsampling,
+                dem_buffer_arc_sec=dem_buffer_arc_sec,
+                dem_force_download=dem_force_download,
+                orb_dir=orb_dir,
+                orbit_interpolator=orbit_interpolator,
+            )
+            for p in pol_:
                 os.rename(
-                    f"{out_dir}/primary.tif",
+                    f"{out_dir}/primary_{p.lower()}.tif",
                     f"{out_dir}/slc_prm_{p.lower()}_iw{iw}.tif",
                 )
                 os.rename(
-                    f"{out_dir}/secondary.tif",
+                    f"{out_dir}/secondary_{p.lower()}.tif",
                     f"{out_dir}/slc_sec_{p.lower()}_iw{iw}.tif",
                 )
-                os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
-            else:
-                log.info("Skipping preprocessing.")
+            os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_iw{iw}.tif")
+        else:
+            log.info("Skipping preprocessing.")
     if partial_aoi is not None:
         return out_dir, shp
     return out_dir
@@ -1176,7 +1177,7 @@ def prepare_slc(
                     f"{out_dir}/slc.tif",
                     f"{out_dir}/slc_{p.lower()}_iw{iw}.tif",
                 )
-                os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_{p.lower()}_iw{iw}.tif")
+                os.rename(f"{out_dir}/lut.tif", f"{out_dir}/lut_iw{iw}.tif")
             else:
                 log.info("Skipping preprocessing.")
     if partial_aoi is not None:
@@ -1387,14 +1388,7 @@ def geocode_and_merge_iw(
             postfix = "_".join([it for it in [p, iw] if it])
             var_file = sar_dir / f"{var}_{postfix}.tif"
             out_file = sar_dir / f"{var}_{postfix}_geo.tif"
-            if p:
-                lut_file = sar_dir / f"lut_{postfix}.tif"
-            else:
-                try:
-                    lut_file = list(sar_dir.glob(f"lut_*_{iw}.tif"))[0]
-                except:
-                    raise FileNotFoundError(f"No LUT found for {name}.tif")
-
+            lut_file = sar_dir / f"lut_{iw}.tif"
             if not os.path.exists(lut_file):
                 raise FileNotFoundError(
                     f"Corresponding LUT file {lut_file} not found for {name}.tif"

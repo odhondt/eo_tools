@@ -1,3 +1,25 @@
+# Unreleased
+
+## Processing optimization
+
+- InSAR preprocessing now handles all requested polarizations in one call per IW. Geocoding LUTs, coregistration coordinates, deramping phase, and topographic phase corrections are computed once and reused across channels. Calibration, signal warping, validity masks, and ESD remain polarization-specific.
+- Prepared products now use one shared geocoding LUT per IW, avoiding duplicate LUT files across polarizations.
+
+### Breaking changes
+
+- Sentinel-1 preparation now writes one shared geocoding LUT per IW as `sar/lut_iw1.tif`, `sar/lut_iw2.tif`, or `sar/lut_iw3.tif`. Geocoding no longer accepts polarization-specific names such as `lut_vv_iw1.tif` or `lut_vh_iw1.tif`. Regenerate existing intermediate outputs with `skip_preprocessing=False`, or manually rename one existing LUT per IW to the new name (for example, `lut_vv_iw1.tif` to `lut_iw1.tif`) before reusing outputs with `skip_preprocessing=True`. Only one LUT is needed for each IW.
+- Direct calls to `preprocess_insar_iw()` now write `primary_{pol}.tif` and `secondary_{pol}.tif`, including single-polarization calls. Update custom readers that expect `primary.tif` and `secondary.tif`; the shared output remains `lut.tif`.
+
+## Warping improvements
+
+- Added normalized `sinc` and `lanczos` interpolation kernels alongside `nearest`, `bilinear`, `bicubic`, and `bicubic6`. Lanczos uses radius six (12 taps).
+- Changed the default secondary SLC alignment kernel to `lanczos` in `process_insar()`, `prepare_insar()`, `preprocess_insar_iw()`, and `align()`. Select `bicubic` explicitly to retain the previous kernel choice.
+- Optimized `remap()` with separable interpolation, shared axis weights, real arithmetic for real inputs, and single-pass complex interpolation while preserving input dtype.
+- Accelerated sinc and Lanczos interpolation using lazily cached, normalized fractional-phase lookup tables. Results approximate direct kernel evaluation; NaNs propagate through the interpolation stencil without triggering a whole-image fallback.
+- Added `warp_kernel_slc` to `process_insar()` to control secondary SLC alignment independently of geocoding's `warp_kernel`, which retains its `bicubic` default. Deramping phase is always warped with `bicubic`.
+- In a one-burst Sentinel-1 IW1/VV benchmark with four threads after JIT warm-up, optimized remapping was 2.7× faster for bicubic, 36.5× for sinc, and 53.7× for Lanczos compared with each kernel's original implementation. These speedups measure remapping alone, excluding shared geometry preparation and other processing stages.
+- Added focused numerical tests and benchmark scripts for kernel accuracy, dtype preservation, NaN coverage, and runtime comparison.
+
 # 2026.10.0
 
 ## Bugfixes and improvements

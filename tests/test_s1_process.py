@@ -12,6 +12,7 @@ from eo_tools.S1.process import (
     polsar_cov_dual,
 )
 import geopandas as gpd
+from shapely.geometry import box
 import multiprocessing
 import rasterio as rio
 import rioxarray
@@ -354,3 +355,114 @@ def test_polsar_cov_dual(create_polsar_data):
     assert c22.dtype == "float32"
     assert c12r.dtype == "float32"
     assert c12i.dtype == "float32"
+
+
+@pytest.mark.parametrize("pol", ["full", ["vv", "vh"], "VV"])
+@pytest.mark.parametrize("skip", [False, True])
+def test_prepare_insar_outputs(tmp_path, pol: str | list[str], skip: bool) -> None:
+    """Preparation batches channels per IW and exposes the shared LUT filenames."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from eo_tools.S1.process import prepare_insar
+
+    primary_path, secondary_path = tmp_path / "primary", tmp_path / "secondary"
+    primary_path.mkdir()
+    secondary_path.mkdir()
+    geometry = gpd.GeoDataFrame(
+        {"burst": [1, 2], "subswath": ["IW1", "IW2"]},
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:4326",
+    )
+    primary = SimpleNamespace(
+        polarizations=["VV", "VH"],
+        scanMetadata=lambda: {"orbitNumber_rel": 42, "start": "20230904T063730"},
+    )
+    secondary = SimpleNamespace(
+        scanMetadata=lambda: {"orbitNumber_rel": 42, "start": "20230916T063730"}
+    )
+
+    def preprocess(prm_path: str, sec_path: str, output_dir: str, **kwargs) -> None:
+        for p in kwargs["pol"]:
+            for role in ["primary", "secondary"]:
+                (Path(output_dir) / f"{role}_{p}.tif").touch()
+        (Path(output_dir) / "lut.tif").touch()
+
+    with (
+        patch("eo_tools.S1.process.get_burst_geometry", return_value=geometry),
+        patch(
+            "eo_tools.S1.process.identify_safe_product",
+            side_effect=[primary, secondary],
+        ),
+        patch(
+            "eo_tools.S1.process.preprocess_insar_iw", side_effect=preprocess
+        ) as prepare,
+    ):
+        out_dir = Path(
+            prepare_insar(
+                str(primary_path),
+                str(secondary_path),
+                str(tmp_path),
+                pol=pol,
+                subswaths=["IW1", "IW2"],
+                skip_preprocessing=skip,
+            )
+        )
+
+    assert prepare.call_count == (0 if skip else 2)
+    if skip:
+        return
+    polarizations = ["vv"] if pol == "VV" else ["vv", "vh"]
+    assert [call.kwargs["iw"] for call in prepare.call_args_list] == [1, 2]
+    for call in prepare.call_args_list:
+        assert call.kwargs["pol"] == polarizations
+    expected = {f"lut_iw{iw}.tif" for iw in [1, 2]}
+    expected.update(
+        f"slc_{role}_{p}_iw{iw}.tif"
+        for iw in [1, 2]
+        for p in polarizations
+        for role in ["prm", "sec"]
+    )
+    assert {path.name for path in out_dir.iterdir()} == expected
+
+
+@pytest.mark.parametrize("shared", [True, False])
+def test_geocode_iw_lut(tmp_path, shared: bool) -> None:
+    """Geocoding requires a shared IW LUT and rejects legacy channel LUTs."""
+    from eo_tools.S1.process import geocode_and_merge_iw
+
+    sar_dir = tmp_path / "sar"
+    sar_dir.mkdir()
+    rows, cols = np.indices((4, 4), dtype=float)
+    profile = dict(
+        driver="GTiff",
+        width=4,
+        height=4,
+        count=1,
+        dtype="float32",
+        transform=Affine.identity(),
+        nodata=np.nan,
+    )
+    for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
+        with rio.open(sar_dir / f"{name}_iw1.tif", "w", **profile) as dst:
+            dst.write(np.full((4, 4), value, dtype=np.float32), 1)
+    profile.update(
+        count=2, dtype="float64", crs="EPSG:4326", transform=Affine(1, 0, 0, 0, -1, 4)
+    )
+    names = ["lut_iw1"] if shared else ["lut_vv_iw1", "lut_vh_iw1"]
+    for name in names:
+        with rio.open(sar_dir / f"{name}.tif", "w", **profile) as dst:
+            dst.write(np.stack([rows, cols]))
+
+    if not shared:
+        with pytest.raises(FileNotFoundError, match="lut_iw1.tif"):
+            geocode_and_merge_iw(str(tmp_path), ["amp"], subswaths=["IW1"])
+        return
+
+    geocode_and_merge_iw(
+        str(tmp_path), ["amp", "H"], subswaths=["IW1"], warp_kernel="nearest"
+    )
+
+    for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
+        with rio.open(tmp_path / f"{name}.tif") as result:
+            np.testing.assert_array_equal(result.read(1), np.full((4, 4), value))
