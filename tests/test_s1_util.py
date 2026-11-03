@@ -24,7 +24,7 @@ def test_remap():
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
 @pytest.mark.parametrize(
-    "kernel", ["nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos6"]
+    "kernel", ["nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos"]
 )
 def test_remap_constant(dtype: type, kernel: str) -> None:
     """Preserve constants, identity and dtype, including clamped borders."""
@@ -43,7 +43,7 @@ def test_remap_constant(dtype: type, kernel: str) -> None:
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
-@pytest.mark.parametrize("kernel", ["sinc", "lanczos6"])
+@pytest.mark.parametrize("kernel", ["sinc", "lanczos"])
 def test_remap_wave(dtype: type, kernel: str) -> None:
     """Compare LUT output with independent normalized sinc sums on a strided image."""
     rows, cols = np.indices((80, 80), dtype=float)
@@ -59,7 +59,7 @@ def test_remap_wave(dtype: type, kernel: str) -> None:
         cols = np.arange(int(np.floor(c)) - 6, int(np.ceil(c)) + 7)
         dr, dc = r - rows, c - cols
         rw, cw = np.sinc(dr), np.sinc(dc)
-        if kernel == "lanczos6":
+        if kernel == "lanczos":
             rw *= np.sinc(dr / 6)
             cw *= np.sinc(dc / 6)
         rw[np.abs(dr) > 6] = 0
@@ -73,7 +73,7 @@ def test_remap_wave(dtype: type, kernel: str) -> None:
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
-@pytest.mark.parametrize("kernel", ["sinc", "lanczos6"])
+@pytest.mark.parametrize("kernel", ["sinc", "lanczos"])
 def test_remap_nan_border(dtype: type, kernel: str) -> None:
     """Border NaNs stay local; interior zeros are retained without a fallback."""
     image = np.full((40, 40), 2, dtype=dtype)
@@ -86,7 +86,7 @@ def test_remap_nan_border(dtype: type, kernel: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "kernel", ["nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos6"]
+    "kernel", ["nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos"]
 )
 def test_remap_shape_error(kernel: str) -> None:
     with pytest.raises(ValueError, match="same shape"):

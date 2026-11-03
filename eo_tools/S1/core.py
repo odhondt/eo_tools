@@ -914,14 +914,19 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
     return az_s2p, rg_s2p
 
 
-def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
+def align(arr_s, az_s2p, rg_s2p, kernel="lanczos"):
     """Aligns the secondary image to the geometry of the primary
 
     Args:
         arr_s (array): image in the secondary geometry
         az_s2p (array): azimuth lookup table to project secondary to primary
         rg_s2p (array): range lookup table project secondary to primary
-        kernel (str, optional): Type of kernel (values are "nearest", "bilinear", "bicubic" -- 4 point bicubic, "bicubic6" -- six point bicubic). Defaults to "bicubic".
+        kernel (str, optional): SLC interpolation kernel: "nearest", "bilinear",
+            "bicubic" (four-point), "bicubic6" (six-point), "sinc", or
+            "lanczos" (radius six). Defaults to "lanczos". Use bicubic or a
+            higher-order kernel for SLC warping; nearest and bilinear are not
+            recommended. For deramping phase warping, explicitly pass
+            kernel="bicubic".
 
     Returns:
         array: projected image
@@ -941,7 +946,7 @@ def resample(
         out_file (str): output file
         az_p2g (array): azimuth coordinates of the lookup table
         rg_p2g (array): range coordinates of the lookup table
-        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        kernel (str): Geocoding kernel: "nearest", "bilinear", "bicubic", "bicubic6", "sinc", or "lanczos". Defaults to "bicubic".
         write_phase (bool): writes the array's phase . Defaults to False.
     """
     # retrieve dem profile

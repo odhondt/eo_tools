@@ -49,13 +49,13 @@ variants = {
     "bicubic-optimized": (remap, "bicubic"),
     "sinc-original": (remap_reference, "sinc"),
     "sinc-lut": (remap, "sinc"),
-    "lanczos6-original": (remap_reference, "lanczos6"),
-    "lanczos6-lut": (remap, "lanczos6"),
+    "lanczos-original": (remap_reference, "lanczos"),
+    "lanczos-lut": (remap, "lanczos"),
 }
 baselines = {
     "bicubic": "bicubic-original",
     "sinc": "sinc-original",
-    "lanczos6": "lanczos6-original",
+    "lanczos": "lanczos-original",
 }
 
 

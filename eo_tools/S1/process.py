@@ -73,6 +73,7 @@ def process_insar(
     skip_preprocessing: bool = False,
     orb_dir: str = "/tmp",
     orbit_interpolator: str = "chspline",
+    warp_kernel_slc: str = "lanczos",
 ) -> Path:
     """Performs InSAR processing of a pair of SLC Sentinel-1 products, geocode the outputs and writes them as COG (Cloud Optimized GeoTiFF) files.
     AOI crop is optional.
@@ -98,7 +99,13 @@ def process_insar(
         boxcar_coherence (int | list[int], optional): Size of the boxcar filter to apply for coherence estimation. Defaults to [3, 3].
         filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if complex_ifg_file is set to None or write_coherence is set to False. Defaults to True.x
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        warp_kernel (str, optional): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
+        warp_kernel_slc (str, optional): Kernel used only to resample the
+            secondary complex SLC during coregistration, independently of the
+            geocoding kernel warp_kernel. Supports the same kernel names.
+            Defaults to "lanczos". Use bicubic or a higher-order kernel for SLC
+            warping; nearest and bilinear are not recommended. Deramping phase
+            is always resampled with bicubic, regardless of this setting.
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
@@ -124,7 +131,7 @@ def process_insar(
         pol=pol,
         apply_fast_esd=apply_fast_esd,
         subswaths=subswaths,
-        warp_kernel=warp_kernel,
+        warp_kernel=warp_kernel_slc,
         cal_type=cal_type,
         dem_dir=dem_dir,
         dem_name=dem_name,
@@ -233,7 +240,7 @@ def prepare_insar(
     pol: str | list[str] = "full",
     subswaths: list[str] = ["IW1", "IW2", "IW3"],
     apply_fast_esd: bool = False,
-    warp_kernel: str = "bicubic",
+    warp_kernel: str = "lanczos",
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
@@ -255,7 +262,12 @@ def prepare_insar(
         pol (str | list[str], optional):  Polarimetric channels to process (Either 'VH','VV, 'full' or a list like ['HV', 'VV']).  Defaults to "full".
         subswaths (list[str], optional):  limit the processing to a list of subswaths like `["IW1", "IW2"]`. Defaults to ["IW1", "IW2", "IW3"].
         apply_fast_esd (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed.  Defaults to False.
-        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        warp_kernel (str, optional): Kernel used only to resample the
+            secondary complex SLC during coregistration. Possible values are
+            "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos".
+            Defaults to "lanczos". Use bicubic or a higher-order kernel for SLC
+            warping; nearest and bilinear are not recommended. Deramping phase
+            is always resampled with bicubic, regardless of this setting.
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         dem_dir (str, optional): Directory to store DEMs. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
@@ -442,7 +454,7 @@ def preprocess_insar_iw(
     min_burst: int | None = None,
     max_burst: int | None = None,
     apply_fast_esd: bool = True,
-    warp_kernel: str = "bicubic",
+    warp_kernel: str = "lanczos",
     cal_type: str = "beta",
     dem_dir: str = "/tmp",
     dem_name: str = "nasadem",
@@ -465,7 +477,12 @@ def preprocess_insar_iw(
         max_burst (int | None, optional): Last primary burst to process. If not
             set, the last available primary burst is used. Defaults to None.
         apply_fast_esd: (bool, optional): correct the phase to avoid jumps between bursts. This has no effect if only one burst is processed. Defaults to True.
-        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        warp_kernel (str, optional): Kernel used only to resample the
+            secondary complex SLC during coregistration. Possible values are
+            "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos".
+            Defaults to "lanczos". Use bicubic or a higher-order kernel for SLC
+            warping; nearest and bilinear are not recommended. Deramping phase
+            is always resampled with bicubic, regardless of this setting.
         cal_type (str, optional): Type of radiometric calibration. "beta" or "sigma" nought. Defaults to "beta"
         dem_dir (str, optional): directory where DEMs used for geocoding are stored. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'. Defaults to 'nasadem'.
@@ -692,7 +709,7 @@ def process_slc(
         dem_force_download (bool, optional):  To reduce execution time, DEM files are stored on disk. Set to True to redownload these files if necessary. Defaults to False.
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6". Defaults to "bicubic".
+        warp_kernel (str, optional): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
@@ -804,7 +821,7 @@ def process_h_alpha_dual(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        warp_kernel (str, optional): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
@@ -923,7 +940,7 @@ def process_polsar_cov_dual(
         dem_buffer_arc_sec (float, optional): Increase if the image area is not completely inside the DEM. Defaults to 40.
         boxcar_size (int | list[int], optional): Size of the boxcar window applied to the covariance matrix. Defaults to [5, 5].
         multilook (list[int], optional): Multilooking to apply prior to geocoding. Defaults to [1, 4].
-        warp_kernel (str, optional): Resampling kernel used in coregistration and geocoding. Possible values are "nearest", "bilinear", "bicubic", and "bicubic6". Defaults to "bicubic".
+        warp_kernel (str, optional): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought, or "terrain" normalization. Defaults to "beta".
         clip_to_shape (bool, optional): If set to False the geocoded images are not clipped according to the `shp` parameter. They are made of all the bursts intersecting the `shp` geometry. Defaults to True.
         skip_preprocessing (bool, optional): Skip the processing part in case the files are already written. Defaults to False.
@@ -1190,7 +1207,6 @@ def preprocess_slc_iw(
         max_burst (int | None, optional): Last burst to process. If not set,
             the last available burst is used. Defaults to None.
         cal_type (str, optional): Type of radiometric calibration. Possible values are "beta", "sigma" nought or "terrain" normalization. Defaults to "beta"
-        warp_kernel (str, optional): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
         dem_dir (str, optional): directory where the DEM is downloaded. Must be created beforehand. Defaults to "/tmp".
         dem_name (str, optional): Digital Elevation Model to download. Possible values are 'nasadem', 'cop-dem-glo-30', 'cop-dem-glo-90', 'alos-dem'.
         dem_upsampling (float, optional): Upsample the DEM, it is recommended to keep the default value. Defaults to 2.
@@ -1200,7 +1216,7 @@ def preprocess_slc_iw(
         orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
 
     Note:
-        DEM-assisted coregistration is performed to align the secondary with the Primary. A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
+        A lookup table file is written to allow the geocoding images from the radar (single-look) grid to the geographic coordinates of the DEM. Bursts are stitched together to form continuous images. All output files are in the GeoTiff format that can be handled by most GIS softwares and geospatial raster tools such as GDAL and rasterio. Because they are in the SAR geometry, SLC rasters are not georeferenced.
         For partial products, the default burst range is the downloaded
         available range. Explicit burst requests outside that range raise an
         error.
@@ -1477,7 +1493,7 @@ def sar2geo(
         sar_file (Path | str): file in the SAR geometry
         lut_file (Path | str): file containing a lookup table (output of the `preprocess_insar_iw` function)
         out_file (Path | str): output file
-        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        kernel (str): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
         write_phase (bool): writes the array's phase . Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
     Note:
@@ -2376,7 +2392,7 @@ def _process_bursts_insar(
 
                 # warp raster secondary and deramping phase
                 arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
-                pdb_s = align(pdb_s, az_s2p, rg_s2p, warp_kernel)
+                pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
 
                 # reramp secondary
                 log.info("Apply phase reramping")

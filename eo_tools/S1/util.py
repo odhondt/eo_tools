@@ -110,7 +110,7 @@ def remap(
         rr: Row coordinates in the source image.
         cc: Column coordinates, with the same shape as rr.
         kernel: One of nearest, bilinear, bicubic (four-point), bicubic6
-            (six-point), sinc, or lanczos6. Defaults to bicubic.
+            (six-point), sinc, or lanczos. Defaults to bicubic.
 
     Returns:
         Resampled image with the coordinates' shape and the source dtype.
@@ -118,7 +118,7 @@ def remap(
         beyond the image boundary use the nearest edge pixel.
 
     Notes:
-        Sinc is a normalized rectangular-window sinc; lanczos6 is normalized
+        Sinc is a normalized rectangular-window sinc; lanczos is normalized
         Lanczos-windowed sinc with radius six, not six taps. Both use 12-tap
         float64 coefficient tables with 4096 fractional-phase intervals and
         linear interpolation, so results approximate direct kernel evaluation.
@@ -131,7 +131,7 @@ def remap(
     """
     zero = np.complex128(0) if np.iscomplexobj(img) else np.float64(0)
     missing = complex(np.nan, np.nan) if np.iscomplexobj(img) else np.nan
-    if kernel in ("sinc", "lanczos6"):
+    if kernel in ("sinc", "lanczos"):
         return _remap_lut(img, rr, cc, _phase_table(kernel, 4096), zero, missing)
     return _remap(img, rr, cc, kernel, zero, missing)
 
@@ -211,7 +211,7 @@ def _ker_sinc(x):
 
 
 @cfunc("double(double)")
-def _ker_lanczos6(x):
+def _ker_lanczos(x):
     """Lanczos-windowed sinc kernel with six-pixel support."""
     ax = np.abs(x)
     if ax >= 6:
@@ -252,8 +252,8 @@ def _remap(
         ker = _ker_sinc
         half_width = 6
         normalize = True
-    elif kernel == "lanczos6":
-        ker = _ker_lanczos6
+    elif kernel == "lanczos":
+        ker = _ker_lanczos
         half_width = 6
         normalize = True
     else:
@@ -300,13 +300,13 @@ def _remap(
 @lru_cache(maxsize=8)
 def _phase_table(kernel: str, phases: int) -> np.ndarray:
     """Build normalized 12-tap vectors over the closed fractional interval [0, 1]."""
-    if kernel not in ("sinc", "lanczos6") or phases < 2:
-        raise ValueError("LUT requires sinc/lanczos6 and at least two phase intervals")
+    if kernel not in ("sinc", "lanczos") or phases < 2:
+        raise ValueError("LUT requires sinc/lanczos and at least two phase intervals")
     # Fixed indices floor(u)-5 ... floor(u)+6; the omitted integer endpoint
     # contributes only a floating-point sinc residue in the direct implementation.
     distances = np.linspace(0, 1, phases + 1)[:, None] - np.arange(-5, 7)
     weights = np.sinc(distances)
-    if kernel == "lanczos6":
+    if kernel == "lanczos":
         weights *= np.sinc(distances / 6)
         weights[np.abs(distances) >= 6] = 0
     weights /= weights.sum(axis=1, keepdims=True)

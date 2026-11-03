@@ -4,7 +4,7 @@ Run from the repository root, for example::
 
     python scripts/benchmark_remap.py --size 512 --repeats 5 --threads 4
     python scripts/benchmark_remap.py --check-only
-    python scripts/benchmark_remap.py --lut --kernels sinc lanczos6
+    python scripts/benchmark_remap.py --lut --kernels sinc lanczos
 
 The reference retains the original production algorithm with sinc normalized.
 The candidate precomputes axis weights, uses separable accumulation, tightens
@@ -32,7 +32,7 @@ from numba import njit, prange
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eo_tools.S1 import util  # noqa: E402
 
-KERNELS = ("nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos6")
+KERNELS = ("nearest", "bilinear", "bicubic", "bicubic6", "sinc", "lanczos")
 DTYPES = ("float32", "float64", "complex64", "complex128")
 
 
@@ -91,7 +91,7 @@ def validate_lut(args: argparse.Namespace) -> None:
         image = _image(size, dtype, rng)
         is_complex = np.iscomplexobj(image)
         for kernel in args.kernels:
-            if kernel not in ("sinc", "lanczos6"):
+            if kernel not in ("sinc", "lanczos"):
                 continue
             max_error, max_rms = 0.0, 0.0
             sources = [
@@ -215,7 +215,7 @@ def validate(kernels: list[str], dtypes: list[str]) -> None:
                 )
                 cases += 1
 
-            if kernel in ("sinc", "lanczos6"):
+            if kernel in ("sinc", "lanczos"):
                 error, _ = _check_border(image, kernel, remap_optimized)
                 worst[dtype] = max(worst[dtype], error)
                 cases += 1
@@ -265,7 +265,7 @@ def benchmark(args: argparse.Namespace) -> None:
                 timings = [[], []]
                 functions = [remap_reference, remap_optimized]
                 lut_error = lut_rms = 0.0
-                if args.lut and kernel in ("sinc", "lanczos6"):
+                if args.lut and kernel in ("sinc", "lanczos"):
                     lut_actual = remap_lut(image, rr, cc, kernel, args.lut_phases)
                     lut_error, lut_rms = _compare(
                         actual, lut_actual, dtype, (args.lut_rtol, args.lut_atol)
@@ -333,7 +333,7 @@ def main() -> None:
         parser.error("LUT phases must be >=2 and tolerances nonnegative")
     if args.lut:
         for kernel in args.kernels:
-            if kernel in ("sinc", "lanczos6"):
+            if kernel in ("sinc", "lanczos"):
                 start = perf_counter()
                 table = _phase_table(kernel, args.lut_phases)
                 print(
@@ -381,8 +381,8 @@ def _reference(
         ker = util._ker_sinc
         H = 6
         normalize = True
-    elif kernel == "lanczos6":
-        ker = util._ker_lanczos6
+    elif kernel == "lanczos":
+        ker = util._ker_lanczos
         H = 6
         normalize = True
     else:
@@ -430,8 +430,8 @@ def _kernel(kernel: str) -> tuple[Callable[[float], float], int, bool]:
         return util._ker_cub6, 2, False
     if kernel == "sinc":
         return util._ker_sinc, 6, True
-    if kernel == "lanczos6":
-        return util._ker_lanczos6, 6, True
+    if kernel == "lanczos":
+        return util._ker_lanczos, 6, True
     raise ValueError("Unknown interpolation type.")
 
 
