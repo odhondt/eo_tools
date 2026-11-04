@@ -576,3 +576,56 @@ def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
             np.testing.assert_allclose(
                 result.read(1), np.tile(expected, (burst_count, 1))
             )
+
+
+@pytest.mark.parametrize("field", [None, "frequency", "sampling", "origin", "samples"])
+def test_phase_grid(field: str | None) -> None:
+    """Even a one-ULP metadata difference selects the absolute-phase fallback."""
+    from copy import deepcopy
+
+    from eo_tools.S1.core import S1IWSwath
+    from eo_tools.S1.process import _phase_scale
+
+    primary = object.__new__(S1IWSwath)
+    primary.samples_per_burst = 16
+    primary.meta = {
+        "product": {
+            "imageAnnotation": {
+                "imageInformation": {"slantRangeTime": "0.005334431164884956"}
+            },
+            "generalAnnotation": {
+                "productInformation": {
+                    "radarFrequency": "5405000454.33435",
+                    "rangeSamplingRate": "64345238.12571428",
+                }
+            },
+        }
+    }
+    secondary = deepcopy(primary)
+    if field == "samples":
+        secondary.samples_per_burst += 1
+    elif field is not None:
+        product = secondary.meta["product"]
+        if field == "origin":
+            metadata, key = (
+                product["imageAnnotation"]["imageInformation"],
+                "slantRangeTime",
+            )
+        else:
+            metadata = product["generalAnnotation"]["productInformation"]
+            key = {"frequency": "radarFrequency", "sampling": "rangeSamplingRate"}[
+                field
+            ]
+        metadata[key] = np.nextafter(float(metadata[key]), np.inf)
+
+    scale = _phase_scale(primary, secondary)
+
+    if field is not None:
+        assert scale is None
+        return
+    # The coefficient reproduces the phase slope without the large range origin.
+    np.testing.assert_allclose(
+        scale,
+        primary.phi_topo(np.array([1.0]))[0] - primary.phi_topo(np.array([0.0]))[0],
+        rtol=1e-10,
+    )

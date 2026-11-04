@@ -2265,6 +2265,29 @@ def apply_to_patterns_for_single(
 # Auxiliary functions which are not supposed to be used outside of the processor
 
 
+def _phase_scale(prm: S1IWSwath, sec: S1IWSwath) -> float | None:
+    """Return phase per range sample for identical grids, or None for fallback."""
+    grids = []
+    for swath in (prm, sec):
+        product = swath.meta["product"]
+        image = product["imageAnnotation"]["imageInformation"]
+        info = product["generalAnnotation"]["productInformation"]
+        grids.append(
+            (
+                float(info["radarFrequency"]),
+                float(info["rangeSamplingRate"]),
+                float(image["slantRangeTime"]),
+                swath.samples_per_burst,
+            )
+        )
+    if grids[0] != grids[1]:
+        log.info("Range grids differ; using absolute topographic phases")
+        return None
+    frequency, sampling_rate, _, _ = grids[0]
+    log.info("Identical range grids; computing phase from range-index differences")
+    return 2 * np.pi * frequency / sampling_rate
+
+
 def _process_bursts_insar(
     primaries: dict[str, S1IWSwath],
     secondaries: dict[str, S1IWSwath],
@@ -2346,7 +2369,9 @@ def _process_bursts_insar(
             ds_dem = stack.enter_context(rio.open(dem_file))
             # coregister only uses the primary array's shape.
             primary_grid = np.broadcast_to(np.complex64(0), (prm.lines_per_burst, nrg))
-            pht_p = prm.phi_topo(np.arange(nrg))[None, :]
+            range_indices = np.arange(nrg, dtype=np.float64)[None, :]
+            phase_scale = _phase_scale(prm, sec)
+            pht_p = prm.phi_topo(range_indices) if phase_scale is None else None
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
                 burst_offset = round(
@@ -2402,9 +2427,15 @@ def _process_bursts_insar(
                 pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
                 deramp = np.exp(1j * pdb_s)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
-                reramp = np.exp(-1j * pdb_s)
-                pht_s = sec.phi_topo(rg_s2p)
-                pha_topo = np.exp(-1j * (pht_p - pht_s)).astype(np.complex64)
+                if phase_scale is None:
+                    phase = pht_p - sec.phi_topo(rg_s2p)
+                else:
+                    phase = range_indices - rg_s2p
+                    phase *= phase_scale
+                phase += pdb_s
+                correction = np.empty(phase.shape, dtype=np.complex64)
+                np.exp(-1j * phase, out=correction)
+                del phase, pdb_s
                 first_line = (burst_idx - min_burst) * prm.lines_per_burst
                 window = Window(0, first_line, nrg, prm.lines_per_burst)
 
@@ -2421,8 +2452,7 @@ def _process_bursts_insar(
                     )
                     arr_s *= deramp
                     arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
-                    arr_s *= reramp
-                    arr_s *= pha_topo
+                    arr_s *= correction
                     ds_prm[p].write(arr_p, 1, window=window)
                     ds_sec[p].write(arr_s, 1, window=window)
 

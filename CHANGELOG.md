@@ -6,6 +6,7 @@
 - SLC terrain normalization is also computed once per burst and reused across polarizations.
 - DEM coordinates and their ECEF conversion are prepared outside burst geocoding and reused for both InSAR acquisitions. Terrain shadow detection and backscatter simulation are now provided by the standalone core function `simulate_terrain()`.
 - Prepared products now use one shared geocoding LUT per IW, avoiding duplicate LUT files across polarizations.
+- Combined secondary reramping and topographic phase removal into one complex correction factor. When radar frequency, range sampling rate, slant-range origin and sample count match exactly, the phase difference is computed directly from range-index differences; otherwise the previous absolute-phase calculation is retained. Phase arithmetic remains float64 and the shared correction is stored as complex64.
 
 ### Breaking changes
 
