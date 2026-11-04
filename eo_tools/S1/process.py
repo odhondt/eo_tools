@@ -176,9 +176,8 @@ def process_insar(
         sec_file = f"{out_dir}/slc_sec_{pattern}.tif"
 
         if os.path.isfile(prm_file) and os.path.isfile(sec_file):
-            log.info(
-                f"---- Interferometric outputs for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
+            label = " ".join(pattern.split("/")[-1].split("_")).upper()
+            log.info("---- Interferometric outputs for %s", label)
             if write_coherence and write_interferogram:
                 coh_file = f"{out_dir}/coh_{pattern}.tif"
                 ifg_file = f"{out_dir}/ifg_{pattern}.tif"
@@ -532,7 +531,9 @@ def preprocess_insar_iw(
     primaries = {}
     secondaries = {}
     for p in polarizations:
+        log.info("Initialize primary swath (IW%s, %s)", iw, p.upper())
         primaries[p] = S1IWSwath(prm_path, iw=iw, pol=p, orb_dir=orb_dir)
+        log.info("Initialize secondary swath (IW%s, %s)", iw, p.upper())
         secondaries[p] = S1IWSwath(sec_path, iw=iw, pol=p, orb_dir=orb_dir)
     prm = primaries[polarizations[0]]
 
@@ -770,9 +771,8 @@ def process_slc(
         slc_file = f"{out_dir}/slc_{pattern}.tif"
 
         if os.path.isfile(slc_file):
-            log.info(
-                f"---- Amplitude for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
+            label = " ".join(pattern.split("/")[-1].split("_")).upper()
+            log.info("---- Amplitude for %s", label)
 
             ampl_file = f"{out_dir}/amp_{pattern}.tif"
             amplitude(in_file=slc_file, out_file=ampl_file, multilook=multilook)
@@ -878,9 +878,8 @@ def process_h_alpha_dual(
         vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
 
         if os.path.isfile(vv_file) and os.path.isfile(vh_file):
-            log.info(
-                f"---- H-alpha for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
+            label = " ".join(pattern.split("/")[-1].split("_")).upper()
+            log.info("---- H-alpha for %s", label)
 
             h_file = f"{out_dir}/H_{pattern}.tif"
             alpha_file = f"{out_dir}/alpha_{pattern}.tif"
@@ -993,9 +992,8 @@ def process_polsar_cov_dual(
         vh_file = f"{out_dir}/slc_vh_{pattern}.tif"
 
         if os.path.isfile(vv_file) and os.path.isfile(vh_file):
-            log.info(
-                f"---- Dual-PolSAR Covariance for {" ".join(pattern.split('/')[-1].split('_')).upper()}"
-            )
+            label = " ".join(pattern.split("/")[-1].split("_")).upper()
+            log.info("---- Dual-PolSAR Covariance for %s", label)
 
             c11_file = f"{out_dir}/c11_{pattern}.tif"
             c12r_file = f"{out_dir}/c12_real_{pattern}.tif"
@@ -2212,9 +2210,8 @@ def apply_to_patterns_for_pair(
         # Check if both input files exist
         if os.path.exists(prm_file) and os.path.exists(sec_file):
             # Call the original function with updated file names
-            log.info(
-                f"Apply '{func.__name__}' to {Path(prm_file).name} and {Path(sec_file).name}"
-            )
+            pair_label = f"{Path(prm_file).name} and {Path(sec_file).name}"
+            log.info("Apply '%s' to %s", func.__name__, pair_label)
             func(prm_file, sec_file, out_file, *args, **kwargs)
             log.info(f"File {Path(out_file).name} written")
 
@@ -2371,9 +2368,14 @@ def _process_bursts_insar(
             primary_grid = np.broadcast_to(np.complex64(0), (prm.lines_per_burst, nrg))
             range_indices = np.arange(nrg, dtype=np.float64)[None, :]
             phase_scale = _phase_scale(prm, sec)
-            pht_p = prm.phi_topo(range_indices) if phase_scale is None else None
+            if phase_scale is None:
+                log.info("Compute primary topographic phase (IW%s)", iw)
+                pht_p = prm.phi_topo(range_indices)
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
+                sec_idx = burst_idx + burst_idx_offset
+                prm_label = f"primary burst {burst_idx} (IW{iw})"
+                sec_label = f"secondary burst {sec_idx} (IW{iw})"
                 burst_offset = round(
                     prm.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
                 )
@@ -2405,6 +2407,7 @@ def _process_bursts_insar(
                 # The DEM is already upsampled at download. Prepare this window once.
                 lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
                 dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+                log.info("Geocode primary burst %s (IW%s)", burst_idx, iw)
                 az_p2g, rg_p2g = prm.geocode_burst(
                     dem_x,
                     dem_y,
@@ -2412,6 +2415,7 @@ def _process_bursts_insar(
                     burst_idx=burst_idx,
                     orbit_interpolator=orbit_interpolator,
                 )
+                log.info("Geocode %s", sec_label)
                 az_s2g, rg_s2g = sec.geocode_burst(
                     dem_x,
                     dem_y,
@@ -2424,10 +2428,14 @@ def _process_bursts_insar(
                 az_s2p, rg_s2p = coregister(
                     primary_grid, az_p2g, rg_p2g, az_s2g, rg_s2g
                 )
+                log.info("Compute deramping phase for %s", sec_label)
                 pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
                 deramp = np.exp(1j * pdb_s)
+                phase_label = f"primary burst {burst_idx} (IW{iw}, bicubic)"
+                log.info("Warp secondary deramping phase to %s", phase_label)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
                 if phase_scale is None:
+                    log.info("Compute secondary topographic phase on %s", prm_label)
                     phase = pht_p - sec.phi_topo(rg_s2p)
                 else:
                     phase = range_indices - rg_s2p
@@ -2443,14 +2451,23 @@ def _process_bursts_insar(
                     log.info("Process %s polarization", p.upper())
                     primary = primaries[p]
                     secondary = secondaries[p]
+                    context = f"IW{iw}, {p.upper()}"
+                    prm_label = f"primary burst {burst_idx} ({context})"
+                    sec_label = f"secondary burst {sec_idx} ({context})"
                     # Preserve each channel's valid-sample mask and calibration.
+                    log.info("Read raster: %s", prm_label)
                     arr_p = primary.read_burst(burst_idx, True)
+                    log.info("Read raster: %s", sec_label)
                     arr_s = secondary.read_burst(burst_idx + burst_idx_offset, True)
+                    log.info("Calibrate %s", prm_label)
                     arr_p /= primary.calibration_factor(burst_idx, cal_type=cal_type)
+                    log.info("Calibrate %s", sec_label)
                     arr_s /= secondary.calibration_factor(
                         burst_idx + burst_idx_offset, cal_type=cal_type
                     )
                     arr_s *= deramp
+                    warp_label = f"primary burst {burst_idx} ({context}, {warp_kernel})"
+                    log.info("Warp secondary SLC to %s", warp_label)
                     arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
                     arr_s *= correction
                     ds_prm[p].write(arr_p, 1, window=window)
@@ -2575,6 +2592,7 @@ def _process_bursts_slc(
                 # The DEM is already upsampled at download. Prepare this window once.
                 lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
                 dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+                log.info("Geocode SLC burst %s (IW%s)", burst_idx, iw)
                 if cal_type != "terrain":
                     az_p2g, rg_p2g = slc.geocode_burst(
                         dem_x,
@@ -2615,6 +2633,8 @@ def _process_bursts_slc(
                 window = Window(0, first_line, nrg, slc.lines_per_burst)
                 for p, swath in swaths.items():
                     log.info("Process %s polarization", p.upper())
+                    label = f"SLC raster burst {burst_idx} (IW{iw}, {p.upper()})"
+                    log.info("Read %s", label)
                     arr = swath.read_burst(burst_idx, True)
                     calibration = "beta" if cal_type == "terrain" else cal_type
                     arr /= swath.calibration_factor(burst_idx, cal_type=calibration)
