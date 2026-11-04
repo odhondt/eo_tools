@@ -8,6 +8,9 @@
 - Prepared products now use one shared geocoding LUT per IW, avoiding duplicate LUT files across polarizations.
 - Combined secondary reramping and topographic phase removal into one complex correction factor. When radar frequency, range sampling rate, slant-range origin and sample count match exactly, the phase difference is computed directly from range-index differences; otherwise the previous absolute-phase calculation is retained. Phase arithmetic remains float64 and the shared correction is stored as complex64.
 
+- Added `insar_products()` to compute selected coherence, complex interferogram and both amplitudes in one shared Dask execution. The InSAR processor now reuses chunked SLC reads, multilooking and filtered correlation across outputs; standalone amplitude processing is also lazy and chunked. Multilooking trims incomplete windows and preserves NaN propagation.
+- Coherence validity-mask erosion now uses chunk overlap, avoiding mask discontinuities at chunk boundaries.
+
 ### Breaking changes
 
 - Sentinel-1 preparation now writes one shared geocoding LUT per IW as `sar/lut_iw1.tif`, `sar/lut_iw2.tif`, or `sar/lut_iw3.tif`. Geocoding no longer accepts polarization-specific names such as `lut_vv_iw1.tif` or `lut_vh_iw1.tif`. Regenerate existing intermediate outputs with `skip_preprocessing=False`, or manually rename one existing LUT per IW to the new name (for example, `lut_vv_iw1.tif` to `lut_iw1.tif`) before reusing outputs with `skip_preprocessing=True`. Only one LUT is needed for each IW.

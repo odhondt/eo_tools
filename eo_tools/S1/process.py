@@ -7,8 +7,10 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 import dask.array as da
+from dask import compute
 import numpy as np
 import rasterio as rio
 import rioxarray as riox
@@ -178,45 +180,18 @@ def process_insar(
         if os.path.isfile(prm_file) and os.path.isfile(sec_file):
             label = " ".join(pattern.split("/")[-1].split("_")).upper()
             log.info("---- Interferometric outputs for %s", label)
-            if write_coherence and write_interferogram:
-                coh_file = f"{out_dir}/coh_{pattern}.tif"
-                ifg_file = f"{out_dir}/ifg_{pattern}.tif"
-                coherence(
-                    prm_file=prm_file,
-                    sec_file=sec_file,
-                    out_file=coh_file,
-                    box_size=boxcar_coherence,
-                    multilook=multilook,
-                    magnitude=True,
-                    complex_ifg_file=ifg_file,
-                    filter_ifg=filter_ifg,
-                )
-            elif write_coherence and not write_interferogram:
-                coh_file = f"{out_dir}/coh_{pattern}.tif"
-                coherence(
-                    prm_file=prm_file,
-                    sec_file=sec_file,
-                    out_file=coh_file,
-                    box_size=boxcar_coherence,
-                    multilook=multilook,
-                    magnitude=True,
-                )
-            elif not write_coherence and write_interferogram:
-                ifg_file = f"{out_dir}/ifg_{pattern}.tif"
-                interferogram(
-                    prm_file=prm_file,
-                    sec_file=sec_file,
-                    out_file=ifg_file,
-                    multilook=multilook,
-                )
-
-            if write_primary_amplitude:
-                ampl_file = f"{out_dir}/amp_prm_{pattern}.tif"
-                amplitude(in_file=prm_file, out_file=ampl_file, multilook=multilook)
-
-            if write_secondary_amplitude:
-                ampl_file = f"{out_dir}/amp_sec_{pattern}.tif"
-                amplitude(in_file=sec_file, out_file=ampl_file, multilook=multilook)
+            outputs = {var: f"{out_dir}/{var}_{pattern}.tif" for var in var_names}
+            insar_products(
+                prm_file,
+                sec_file,
+                coh_file=outputs.get("coh"),
+                ifg_file=outputs.get("ifg"),
+                amp_prm_file=outputs.get("amp_prm"),
+                amp_sec_file=outputs.get("amp_sec"),
+                box_size=boxcar_coherence,
+                multilook=multilook,
+                filter_ifg=filter_ifg and write_coherence,
+            )
 
     # by default, we use iw and pol which exist
     _child_process(
@@ -1640,74 +1615,28 @@ def amplitude(in_file: str, out_file: str, multilook: list = [1, 1]) -> None:
         multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
     """
 
-    if not isinstance(multilook, list):
-        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
-    else:
-        mlt_az, mlt_rg = multilook
-
     log.info("Compute amplitude")
-    with rio.open(in_file) as ds_slc:
-        slc = ds_slc.read(1)
-        prof = ds_slc.profile.copy()
-        trans = ds_slc.transform
-
-    amp = np.abs(slc)
-
-    amp = presum(amp, mlt_az, mlt_rg)
-    prof.update(
-        {
-            "width": amp.shape[1],
-            "height": amp.shape[0],
-            "transform": trans * Affine.scale(mlt_rg, mlt_az),
-        }
-    )
-
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # prof.update(
-    # {"dtype": amp.dtype.name, "compress": "zstd", "num_threads": "all_cpus"}
-    # )
-    prof.update({"dtype": amp.dtype.name})
-    with rio.open(out_file, "w", **prof) as dst:
-        dst.write(amp, 1)
+    with riox.open_rasterio(
+        in_file, chunks={"band": 1, "y": 1024, "x": 1024}, lock=False
+    ) as source:
+        amp = _multilook(abs(source.isel(band=0)), multilook)
+        _write_sar_products({out_file: amp}, source, multilook)
 
 
 def interferogram(
     prm_file: str, sec_file: str, out_file: str, multilook: list = [1, 1]
 ) -> None:
-    """Compute a complex interferogram from two SLC image files.
+    """Write a multilooked complex interferogram from two SLC rasters.
 
     Args:
-        prm_file (str): GeoTiff file of the primary SLC image
-        sec_file (str): GeoTiff file of the secondary SLC image
-        out_file (str): output file
+        prm_file: Primary SLC raster.
+        sec_file: Coregistered secondary SLC raster.
+        out_file: Output complex interferogram raster.
+        multilook: Number of looks in azimuth and range.
     """
-
-    if not isinstance(multilook, list):
-        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
-    else:
-        mlt_az, mlt_rg = multilook
-
-    log.info("Compute interferogram")
-    with rio.open(prm_file) as ds_prm:
-        prm = ds_prm.read(1)
-        prof = ds_prm.profile.copy()
-        trans = ds_prm.transform
-    with rio.open(sec_file) as ds_sec:
-        sec = ds_sec.read(1)
-    ifg = prm * sec.conj()
-    ifg = presum(ifg, mlt_az, mlt_rg)
-    prof.update(
-        {
-            "width": ifg.shape[1],
-            "height": ifg.shape[0],
-            "transform": trans * Affine.scale(mlt_rg, mlt_az),
-        }
+    insar_products(
+        prm_file, sec_file, ifg_file=out_file, multilook=multilook, filter_ifg=False
     )
-
-    warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-    # prof.update({"compress": "zstd", "num_threads": "all_cpus"})
-    with rio.open(out_file, "w", **prof) as dst:
-        dst.write(ifg, 1)
 
 
 def coherence(
@@ -1720,120 +1649,154 @@ def coherence(
     complex_ifg_file: str | None = None,
     filter_ifg: bool = True,
 ) -> None:
-    """Compute the complex coherence from two SLC image files.
+    """Write coherence and optionally a complex interferogram from two SLCs.
 
     Args:
-        prm_file (str): GeoTiff file of the primary SLC image
-        sec_file (str): GeoTiff file of the secondary SLC image
-        out_file (str): output file
-        box_size (int, optional): Window size in pixels for boxcar filtering. Defaults to 5.
-        magnitude (bool, optional): Writes magnitude only. Otherwise a complex valued raster is written. Defaults to True.
-        complex_ifg_file (str | None, optional): Writes complex interferogram as well. Defaults to None.
-        filter_ifg (bool): Also applies boxcar to interferogram. Has no effect if file_complex_ifg is set to None. Defaults to True.
+        prm_file: Primary SLC raster.
+        sec_file: Coregistered secondary SLC raster.
+        out_file: Output coherence raster.
+        box_size: Boxcar size, scalar or [azimuth, range].
+        multilook: Number of looks in azimuth and range.
+        magnitude: Write coherence magnitude rather than complex coherence.
+        complex_ifg_file: Optional output complex interferogram raster.
+        filter_ifg: Apply the coherence boxcar to the interferogram too.
     """
+    insar_products(
+        prm_file,
+        sec_file,
+        coh_file=out_file,
+        ifg_file=complex_ifg_file,
+        box_size=box_size,
+        multilook=multilook,
+        magnitude=magnitude,
+        filter_ifg=filter_ifg,
+    )
 
-    if not complex_ifg_file:
-        log.info("Compute coherence")
-    else:
-        log.info("Compute coherence & interferogram")
 
-    if isinstance(box_size, list):
-        box_az = box_size[0]
-        box_rg = box_size[1]
-    else:
-        box_az = box_size
-        box_rg = box_size
+def insar_products(
+    prm_file: Path | str,
+    sec_file: Path | str,
+    coh_file: Path | str | None = None,
+    ifg_file: Path | str | None = None,
+    amp_prm_file: Path | str | None = None,
+    amp_sec_file: Path | str | None = None,
+    box_size: int | list[int] = 5,
+    multilook: list[int] = [1, 1],
+    magnitude: bool = True,
+    filter_ifg: bool = True,
+) -> None:
+    """Compute selected InSAR products in one shared, chunked execution.
 
-    if not isinstance(multilook, list):
+    Opens each required SLC once and shares reads, multilooking and filtering
+    between outputs. Amplitude is the mean magnitude, not the RMS amplitude.
+    The interferogram remains complex so phase can be extracted after geocoding.
+
+    Args:
+        prm_file: Primary SLC raster.
+        sec_file: Coregistered secondary SLC raster on the same grid.
+        coh_file: Optional output coherence raster.
+        ifg_file: Optional output complex interferogram raster.
+        amp_prm_file: Optional output primary amplitude raster.
+        amp_sec_file: Optional output secondary amplitude raster.
+        box_size: Boxcar size, scalar or [azimuth, range], after multilooking.
+        multilook: Number of looks in azimuth and range; incomplete looks are trimmed.
+        magnitude: Write coherence magnitude rather than complex coherence.
+        filter_ifg: Apply the boxcar to the output interferogram.
+    """
+    if not any((coh_file, ifg_file, amp_prm_file, amp_sec_file)):
+        return
+    if not isinstance(multilook, list) or len(multilook) != 2:
         raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
-    else:
-        mlt_az, mlt_rg = multilook
+    if any(not isinstance(n, int) or n < 1 for n in multilook):
+        raise ValueError("Multilook factors must be positive integers")
+    box_az, box_rg = box_size if isinstance(box_size, list) else (box_size, box_size)
+    if any(not isinstance(n, int) or n < 1 for n in (box_az, box_rg)):
+        raise ValueError("Boxcar sizes must be positive integers")
 
-    # open_args = dict(lock=False, chunks="auto", cache=True, masked=True)
-    open_args = dict(
-        lock=False, chunks=dict(band=1, y=1024, x=1024), cache=True, masked=True
-    )
-
-    warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
-    ds_prm = riox.open_rasterio(prm_file, **open_args)
-    ds_sec = riox.open_rasterio(sec_file, **open_args)
-
-    # accessing dask arrays
-    prm = ds_prm[0].data
-    sec = ds_sec[0].data
-
-    process_args = dict(
-        dimaz=box_az,
-        dimrg=box_rg,
-        depth=(box_az, box_rg),
-    )
-
-    ifg = presum(prm * sec.conj(), mlt_az, mlt_rg)
-    msk = ~np.isnan(ifg)
-
-    # remove nan to avoid division errors
-    prm2 = presum(np.nan_to_num((prm * prm.conj()).real), mlt_az, mlt_rg)
-    sec2 = presum(np.nan_to_num((sec * sec.conj()).real), mlt_az, mlt_rg)
-
-    ifg_box = da.map_overlap(boxcar, ifg, **process_args, dtype="complex64")
-
-    coh = ifg_box / np.sqrt(
-        da.map_overlap(
-            boxcar,
-            prm2,
-            **process_args,
-            dtype="float32",
-        )
-    )
-    coh /= np.sqrt(
-        da.map_overlap(
-            boxcar,
-            sec2,
-            **process_args,
-            dtype="float32",
-        )
-    )
-    nodataval = np.nan
-    if magnitude:
-        coh = np.abs(coh)
-
-    struct = np.ones((box_az, box_rg))
-    msk_out = da.map_blocks(erosion, msk, footprint=struct)
-    coh = da.where(msk_out, coh, np.nan)
-
-    da_coh = xr.DataArray(
-        name="coh",
-        data=coh[None],
-        dims=("band", "y", "x"),
-    )
-    da_coh.rio.write_transform(
-        ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
-    )
-    da_coh.rio.write_nodata(nodataval, inplace=True)
-    da_coh.rio.to_raster(out_file)
-    # da_coh.rio.to_raster(out_file, compress="zstd", num_threads="all_cpus")
-
-    # useful as users may want non-filtered interferograms
-    if complex_ifg_file:
-        if filter_ifg:
-            # ifg_box = presum(ifg_box, mlt_az, mlt_rg)
-            da_ifg = xr.DataArray(
-                data=ifg_box[None],
-                dims=("band", "y", "x"),
+    log.info("Compute selected InSAR products")
+    chunks = {
+        "band": 1,
+        "y": max(1, 1024 // multilook[0]) * multilook[0],
+        "x": max(1, 1024 // multilook[1]) * multilook[1],
+    }
+    paired = bool(coh_file or ifg_file)
+    with ExitStack() as stack:
+        prm = sec = None
+        if paired or amp_prm_file:
+            source = stack.enter_context(
+                riox.open_rasterio(prm_file, chunks=chunks, masked=True, lock=False)
             )
-        else:
-            # ifg = presum(ifg, mlt_az, mlt_rg)
-            da_ifg = xr.DataArray(
-                data=ifg[None],
-                dims=("band", "y", "x"),
+            prm = source.isel(band=0)
+        if paired or amp_sec_file:
+            secondary = stack.enter_context(
+                riox.open_rasterio(sec_file, chunks=chunks, masked=True, lock=False)
             )
-        da_ifg.rio.write_transform(
-            ds_prm.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
-        )
-        da_ifg.rio.write_nodata(np.nan, inplace=True)
-        da_ifg.rio.to_raster(
-            complex_ifg_file, driver="GTiff", tiled=True, blockxsize=512, blockysize=512
-        )
+            sec = secondary.isel(band=0)
+            if prm is None:
+                source = secondary
+        if paired and (
+            prm.shape != sec.shape
+            or source.rio.transform() != secondary.rio.transform()
+        ):
+            raise ValueError("Primary and secondary SLCs must share the same grid")
+
+        products = {}
+        if paired:
+            # Use primary coordinates for the coregistered pair.
+            sec = sec.assign_coords(y=prm.y, x=prm.x)
+            corr = _multilook(prm * sec.conj(), multilook)
+            filter_args = dict(
+                dimaz=box_az,
+                dimrg=box_rg,
+                depth=(box_az // 2, box_rg // 2),
+                boundary="reflect",
+            )
+            if coh_file or filter_ifg:
+                corr_box = da.map_overlap(
+                    boxcar, corr.data, **filter_args, dtype=corr.dtype
+                )
+            if ifg_file:
+                products[ifg_file] = (
+                    xr.DataArray(corr_box, dims=("y", "x")) if filter_ifg else corr
+                )
+            if coh_file:
+                pow1 = _multilook(
+                    xr.apply_ufunc(
+                        np.nan_to_num, (prm * prm.conj()).real, dask="allowed"
+                    ),
+                    multilook,
+                )
+                pow2 = _multilook(
+                    xr.apply_ufunc(
+                        np.nan_to_num, (sec * sec.conj()).real, dask="allowed"
+                    ),
+                    multilook,
+                )
+                pow1_box = da.map_overlap(
+                    boxcar, pow1.data, **filter_args, dtype=pow1.dtype
+                )
+                pow2_box = da.map_overlap(
+                    boxcar, pow2.data, **filter_args, dtype=pow2.dtype
+                )
+                coh = corr_box / da.sqrt(pow1_box) / da.sqrt(pow2_box)
+                if magnitude:
+                    coh = abs(coh)
+                valid = da.map_overlap(
+                    erosion,
+                    ~da.isnan(corr.data),
+                    footprint=np.ones((box_az, box_rg)),
+                    depth=(box_az // 2, box_rg // 2),
+                    boundary="reflect",
+                    dtype=bool,
+                )
+                products[coh_file] = xr.DataArray(
+                    da.where(valid, coh, np.nan), dims=("y", "x")
+                )
+        if amp_prm_file:
+            products[amp_prm_file] = _multilook(abs(prm), multilook)
+        if amp_sec_file:
+            products[amp_sec_file] = _multilook(abs(sec), multilook)
+        _write_sar_products(products, source, multilook)
 
 
 def eigh_2x2(c11, c22, c12):
@@ -2259,7 +2222,49 @@ def apply_to_patterns_for_single(
             log.info(f"File {Path(out_file).name} written")
 
 
-# Auxiliary functions which are not supposed to be used outside of the processor
+# -----------------------------------------------------------------------------
+# Private helpers
+# -----------------------------------------------------------------------------
+
+
+def _multilook(arr: xr.DataArray, looks: list[int]) -> xr.DataArray:
+    """Average complete look windows, preserving NaNs within each window."""
+    if not isinstance(looks, list) or len(looks) != 2:
+        raise ValueError("Multilook must be a list like [mlt_az, mlt_rg]")
+    if any(not isinstance(n, int) or n < 1 for n in looks):
+        raise ValueError("Multilook factors must be positive integers")
+    if looks[0] > arr.sizes["y"] or looks[1] > arr.sizes["x"]:
+        raise ValueError("Multilook factors exceed the image dimensions")
+    # Explicit mean preserves NaNs and also works with xarray versions whose
+    # generated coarsen.mean method does not accept skipna.
+    return arr.coarsen(y=looks[0], x=looks[1], boundary="trim").reduce(np.mean)
+
+
+def _write_sar_products(
+    products: dict[Path | str, xr.DataArray], source: xr.DataArray, looks: list[int]
+) -> None:
+    """Write products together so Dask shares upstream reads and computations."""
+    transform = source.rio.transform() * Affine.scale(looks[1], looks[0])
+    writes = []
+    for filename, product in products.items():
+        # Drop source coordinates: the output transform defines the trimmed grid.
+        output = xr.DataArray(product.data, dims=("y", "x"))
+        output.rio.write_transform(transform, inplace=True)
+        if source.rio.crs is not None:
+            output.rio.write_crs(source.rio.crs, inplace=True)
+        output.rio.write_nodata(np.nan, inplace=True)
+        writes.append(
+            output.rio.to_raster(
+                filename,
+                driver="GTiff",
+                tiled=True,
+                blockxsize=512,
+                blockysize=512,
+                lock=Lock(),
+                compute=False,
+            )
+        )
+    compute(*writes)
 
 
 def _phase_scale(prm: S1IWSwath, sec: S1IWSwath) -> float | None:
