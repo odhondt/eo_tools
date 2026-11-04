@@ -31,8 +31,8 @@ output_dir = Path("/data/res") / (
 polarizations = ["vv", "vh"]
 
 # %%
-# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
-aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
 process_args = dict(
