@@ -889,7 +889,7 @@ def align(arr_s, az_s2p, rg_s2p, kernel="lanczos"):
     Returns:
         array: projected image
     """
-    log.debug("Warp secondary to primary geometry.")
+    log.debug("Resample secondary to primary geometry (%s)", kernel)
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
@@ -924,7 +924,7 @@ def resample(
         out_prof.pop("blockxsize", None)
         out_prof.pop("blockysize", None)
 
-    log.debug("Warp to match DEM geometry")
+    log.debug("Resample to geographic grid (%s)", kernel)
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
     # TODO: enforce COG

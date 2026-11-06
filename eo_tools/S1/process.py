@@ -1547,7 +1547,7 @@ def sar2geo(
     sx = trans_src.a
     sy = trans_src.e
     warp_label = f"{label}, {kernel}"
-    log.info("Remap SAR raster to geographic grid (%s)", warp_label)
+    log.info("Resample SAR raster to geographic grid (%s)", warp_label)
     arr_out = remap(arr, lut[0] / sy, lut[1] / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
@@ -2519,7 +2519,7 @@ def _process_bursts_insar(
                 pdb_s = sec.deramp_burst(burst_idx + burst_idx_offset)
                 deramp = np.exp(1j * pdb_s)
                 phase_label = f"primary burst {burst_idx} (IW{iw}, bicubic)"
-                log.info("Warp secondary deramping phase to %s", phase_label)
+                log.info("Resample secondary deramping phase to %s", phase_label)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
                 log.info("Compute topographic phase correction: %s", burst_label)
                 if phase_scale is None:
@@ -2558,7 +2558,7 @@ def _process_bursts_insar(
                     log.info("Deramp %s", sec_label)
                     arr_s *= deramp
                     warp_label = f"primary burst {burst_idx} ({context}, {warp_kernel})"
-                    log.info("Warp secondary SLC to %s", warp_label)
+                    log.info("Resample secondary SLC to %s", warp_label)
                     arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
                     log.info("Apply combined phase correction: %s", sec_label)
                     arr_s *= correction
