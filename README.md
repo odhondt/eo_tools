@@ -10,16 +10,9 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
 
 ## **New**
 
-EO-Tools can now download and process Sentinel-1 SLC **partial products**. Instead of downloading an entire Sentinel-1 product, the partial-product downloader retrieves the metadata and only the consecutive bursts intersecting an area of interest. The result is stored as a SAFE-like `<product-id>.partial.SAFE` directory and can be passed directly to the existing Sentinel-1 processors.
+Sentinel-1 processing is faster through shared geometry across polarizations, optimized interpolation kernels, shared computation of InSAR outputs, and fewer intermediate compression steps. See the [processing optimization notes](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#processing-optimization) for details.
 
-Partial products provide several advantages:
-
-- Smaller downloads and reduced local storage requirements.
-- Faster access to the Sentinel-1 data needed for a specific area.
-- The download AOI, available subswaths, polarizations, and burst ranges are stored with the product for reproducible processing.
-- Existing high-level InSAR, SLC geocoding, H-Alpha, and polarimetric covariance processing APIs automatically recognize valid partial products.
-
-See the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/feature-s1-partial-product-s3/s1-partial-product-processing/) to get started.
+**Upgrading from an earlier release?** Geocoding LUTs describe geometry and are shared across polarizations. They now use `lut_iw{iw}.tif` filenames. Regenerate your processing outputs, or manually rename one existing LUT per IW before reusing them with `skip_preprocessing=True`. See the [breaking changes and migration instructions](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#breaking-changes), including changes for custom preprocessing and geocoding workflows.
 
 ## Examples
 
@@ -60,25 +53,20 @@ and the comparison between Beta nought calibration and terrain flattening using 
     </a>
 </p>
 
-## Overview
-- Currently, the available features are:
-    - Sentinel-1
-        - Interferometric processing of Sentinel-1 pairs, including TOPS processing steps like azimuth deramping, DEM assisted coregistration, Range-Doppler terrain correction and Enhanced Spectral Diversity. Individual bursts can be processed as well as full products and cropped to any area of interest provided by the user
-        - Amplitude geocoding of SLC Sentinel-1 images, with Beta or Sigma Nought or terrain flattening calibration.
-        - Ability to apply processing in the SAR geometry and further project the results in a geographic coordinate systems using lookup-tables.
-        - Writing the result as a geocoded (terrain corrected) COG (Cloud Optimized GeoTIFF) file
-        - Displaying these rasters on top of a folium map in a jupyter notebook (docker version only)
-    - Sentinel-2
-        - Tile merging and geocoding
-        - Write any band to COG files
-        - Visualization of color composites (Natural RGB, CIR, SWIR, etc) on a folium map (docker version only)
-    - DEM
-        - Automatically downloads and crops a DEM given a geometry 
-    - All products
-        - Search catalog (using EODAG) and download products
-        - Explore products by displaying their footprint on a folium map (custom function)
-        - Show remote and local images on top of folium maps in the notebook
-- Example notebooks can be found in the `notebooks/` folder
+## Features
+
+| Category | Features |
+| --- | --- |
+| Sentinel-1 InSAR | Compute phase, coherence and amplitudes with TOPS deramping, DEM-assisted coregistration, optional Enhanced Spectral Diversity and burst stitching. Process individual bursts or full products, with optional AOI clipping. |
+| Sentinel-1 calibration and geocoding | Geocode SLC amplitudes with Beta or Sigma Nought calibration or radiometric terrain normalization. Build custom pipelines in SAR geometry and geocode their outputs using LUTs. |
+| Sentinel-1 polarimetry | Compute dual-polarization H-Alpha decomposition and polarimetric covariance elements. |
+| Sentinel-1 partial products | Download only consecutive SLC bursts intersecting an AOI, reducing download size and storage. SAFE-like `.partial.SAFE` products retain their AOI and available bursts, subswaths and polarizations, and work with the InSAR, SLC, H-Alpha and covariance processors. |
+| Sentinel-2 | Geocode and mosaic tiles, write individual bands and create color composites such as natural color, CIR and SWIR. |
+| DEM | Download, mosaic, crop and upsample publicly available elevation models for an AOI. |
+| Output and visualization | Write geocoded Cloud Optimized GeoTIFFs (COGs); display local and remote rasters on Folium maps through TiTiler in the Docker environment, or plot them with xarray in conda notebooks. |
+| Discovery and download | Search catalogs and download full products with EODAG; explore product footprints on a Folium map. |
+
+Start with the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-processing/), or browse the example notebooks in `notebooks/` (Docker) and `notebooks-cf/` (conda).
 
 ## Install & quick start
 
