@@ -13,6 +13,8 @@
 
 - Geocoding now writes temporary subswath rasters as uncompressed GeoTIFFs without overviews, building a compressed COG only for each final merged output. Standalone `sar2geo()` retains its COG default; use `cog=False` for temporary outputs.
 
+- ESD now computes one complex phase factor per azimuth row and broadcasts it across range in both core and raster-based processing. The raster path also applies the correction in place, avoiding an extra full-burst array.
+
 ### Breaking changes
 
 - Sentinel-1 preparation now writes one shared geocoding LUT per IW as `sar/lut_iw1.tif`, `sar/lut_iw2.tif`, or `sar/lut_iw3.tif`. Geocoding no longer accepts polarization-specific names such as `lut_vv_iw1.tif` or `lut_vh_iw1.tif`. Regenerate existing intermediate outputs with `skip_preprocessing=False`, or manually rename one existing LUT per IW to the new name (for example, `lut_vv_iw1.tif` to `lut_iw1.tif`) before reusing outputs with `skip_preprocessing=True`. Only one LUT is needed for each IW.

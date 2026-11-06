@@ -950,7 +950,7 @@ def resample(
                 dst.write(wped, 1)
 
 
-def fast_esd(ifgs, overlap):
+def fast_esd(ifgs: list[np.ndarray], overlap: int) -> None:
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
         ifgs (list): List of complex SLC interferograms
@@ -975,11 +975,11 @@ def fast_esd(ifgs, overlap):
             phi_clx = cross[~np.isnan(cross)]
             phase_diffs.append(np.angle(phi_clx.mean()))
 
-        naz, nrg = ifgs[0].shape
+        naz = ifgs[0].shape[0]
         x = np.arange(naz)
         xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
-        def make_ramp(idx):
+        def make_ramp(idx: int) -> np.ndarray:
             if idx == 0:
                 ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
             elif idx == len(ifgs) - 1:
@@ -989,13 +989,12 @@ def fast_esd(ifgs, overlap):
             slope = (yup - ydown) / (xup - xdown)
             off = ydown - slope * xdown
             ramp = slope * x + off
-            return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
+            return np.exp(-1j * ramp)
 
         # TODO: improve by downweighting points far from mid overlap ?
-        naz, nrg = ifgs[0].shape
         for i, ifg in enumerate(ifgs):
             log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
-            esd_ramp = make_ramp(i).astype(np.complex64)
+            esd_ramp = make_ramp(i).astype(np.complex64)[:, None]
             ifg *= esd_ramp
 
 

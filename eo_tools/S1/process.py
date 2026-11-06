@@ -2688,7 +2688,7 @@ def _apply_fast_esd(
     x = np.arange(naz)
     xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
-    def make_ramp(phase_diffs, idx):
+    def make_ramp(phase_diffs: list[float], idx: int) -> np.ndarray:
         if idx == 0:
             ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
         elif idx == len(phase_diffs):
@@ -2698,7 +2698,7 @@ def _apply_fast_esd(
         slope = (yup - ydown) / (xup - xdown)
         off = ydown - slope * xdown
         ramp = slope * x + off
-        return np.exp(1j * (ramp[:, None] + np.zeros((nrg))))
+        return np.exp(1j * ramp)
 
     with rio.open(tmp_prm_file, "r") as ds_prm:
         with rio.open(tmp_sec_file, "r+") as ds_sec:
@@ -2738,11 +2738,10 @@ def _apply_fast_esd(
                     indexes=1,
                     window=Window(0, first_line, nrg, naz),
                 )
-                esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst).astype(
-                    np.complex64
-                )
+                esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst)
+                arr_s *= esd_ramp.astype(np.complex64)[:, None]
                 ds_sec.write(
-                    arr_s * esd_ramp,
+                    arr_s,
                     indexes=1,
                     window=Window(0, first_line, nrg, naz),
                 )
