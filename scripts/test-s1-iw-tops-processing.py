@@ -2,6 +2,7 @@
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("eo_tools.S1.core").setLevel(logging.DEBUG)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 # logging.getLogger("numexpr").setLevel(logging.WARNING)
 
