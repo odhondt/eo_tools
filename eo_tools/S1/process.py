@@ -127,6 +127,7 @@ def process_insar(
             "At least one of `write_coherence` and `write_interferogram` must be True."
         )
 
+    log.info("-------- Start InSAR processing --------")
     # prepare pair for interferogram computation
     prepare_result = prepare_insar(
         prm_path=prm_path,
@@ -179,7 +180,7 @@ def process_insar(
 
         if os.path.isfile(prm_file) and os.path.isfile(sec_file):
             label = " ".join(pattern.split("/")[-1].split("_")).upper()
-            log.info("---- Interferometric outputs for %s", label)
+            log.info("------ Interferometric outputs for %s ------", label)
             outputs = {var: f"{out_dir}/{var}_{pattern}.tif" for var in var_names}
             insar_products(
                 prm_file,
@@ -206,6 +207,7 @@ def process_insar(
             clip_to_shape=clip_to_shape,
         ),
     )
+    log.info("Completed InSAR processing: %s", Path(out_dir).parent)
     return Path(out_dir).parent
 
 
@@ -274,6 +276,7 @@ def prepare_insar(
         For partial products, returns the output directory and the effective
         stored AOI so downstream geocoding can use the same shape.
     """
+    log.info("-------- InSAR preprocessing --------")
 
     if aoi_name is None:
         aoi_substr = ""
@@ -291,6 +294,7 @@ def prepare_insar(
     partial_info_prm = read_partial_download_info(prm_path)
     partial_info_sec = read_partial_download_info(sec_path)
 
+    log.info("Read primary and secondary burst geometries")
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
         prm_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
@@ -329,6 +333,7 @@ def prepare_insar(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
+    log.info("Read primary product metadata and polarizations")
     info_prm = identify_safe_product(prm_path, bool(partial_info_prm))
     if isinstance(pol, str):
         if pol == "full":
@@ -356,6 +361,7 @@ def prepare_insar(
     )
 
     # do a check on orbits
+    log.info("Read secondary product metadata and check relative orbits")
     info_sec = identify_safe_product(sec_path, bool(partial_info_sec))
     meta_prm = info_prm.scanMetadata()
     meta_sec = info_sec.scanMetadata()
@@ -377,7 +383,7 @@ def prepare_insar(
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
     for subswath in unique_subswaths:
-        log.info(f"---- Processing subswath {subswath}")
+        log.info("------ Processing subswath %s ------", subswath)
 
         # identify bursts to process
         bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
@@ -506,9 +512,10 @@ def preprocess_insar_iw(
     primaries = {}
     secondaries = {}
     for p in polarizations:
-        log.info("Initialize primary swath (IW%s, %s)", iw, p.upper())
+        context = f"IW{iw}, {p.upper()}"
+        log.info("Read primary metadata, calibration LUTs and orbit (%s)", context)
         primaries[p] = S1IWSwath(prm_path, iw=iw, pol=p, orb_dir=orb_dir)
-        log.info("Initialize secondary swath (IW%s, %s)", iw, p.upper())
+        log.info("Read secondary metadata, calibration LUTs and orbit (%s)", context)
         secondaries[p] = S1IWSwath(sec_path, iw=iw, pol=p, orb_dir=orb_dir)
     prm = primaries[polarizations[0]]
 
@@ -638,6 +645,7 @@ def preprocess_insar_iw(
                         nrg,
                         overlap,
                         p,
+                        iw,
                     ),
                 )
 
@@ -651,6 +659,7 @@ def preprocess_insar_iw(
                         max_burst_ - min_burst_ + 1,
                         min_burst_,
                         prm,
+                        f"{role} (IW{iw}, {p.upper()})",
                     ),
                 )
 
@@ -707,6 +716,7 @@ def process_slc(
         Path: output directory
     """
 
+    log.info("-------- Start SLC processing --------")
     # prepare pair for interferogram computation
     prepare_result = prepare_slc(
         slc_path=slc_path,
@@ -747,7 +757,7 @@ def process_slc(
 
         if os.path.isfile(slc_file):
             label = " ".join(pattern.split("/")[-1].split("_")).upper()
-            log.info("---- Amplitude for %s", label)
+            log.info("------ Amplitude for %s ------", label)
 
             ampl_file = f"{out_dir}/amp_{pattern}.tif"
             amplitude(in_file=slc_file, out_file=ampl_file, multilook=multilook)
@@ -765,6 +775,7 @@ def process_slc(
             clip_to_shape=clip_to_shape,
         ),
     )
+    log.info("Completed SLC processing: %s", Path(out_dir).parent)
     return Path(out_dir).parent
 
 
@@ -818,6 +829,7 @@ def process_h_alpha_dual(
         Path: Output directory
     """
 
+    log.info("-------- Start H-alpha processing --------")
     prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
@@ -854,7 +866,7 @@ def process_h_alpha_dual(
 
         if os.path.isfile(vv_file) and os.path.isfile(vh_file):
             label = " ".join(pattern.split("/")[-1].split("_")).upper()
-            log.info("---- H-alpha for %s", label)
+            log.info("------ H-alpha for %s ------", label)
 
             h_file = f"{out_dir}/H_{pattern}.tif"
             alpha_file = f"{out_dir}/alpha_{pattern}.tif"
@@ -887,6 +899,7 @@ def process_h_alpha_dual(
             clip_to_shape=clip_to_shape,
         ),
     )
+    log.info("Completed H-alpha processing: %s", Path(out_dir).parent)
     return Path(out_dir).parent
 
 
@@ -936,6 +949,7 @@ def process_polsar_cov_dual(
         Path: Output directory
     """
 
+    log.info("-------- Start dual-pol covariance processing --------")
     prepare_result = prepare_slc(
         slc_path=slc_path,
         output_dir=output_dir,
@@ -968,7 +982,7 @@ def process_polsar_cov_dual(
 
         if os.path.isfile(vv_file) and os.path.isfile(vh_file):
             label = " ".join(pattern.split("/")[-1].split("_")).upper()
-            log.info("---- Dual-PolSAR Covariance for %s", label)
+            log.info("------ Dual-PolSAR Covariance for %s ------", label)
 
             c11_file = f"{out_dir}/c11_{pattern}.tif"
             c12r_file = f"{out_dir}/c12_real_{pattern}.tif"
@@ -998,6 +1012,7 @@ def process_polsar_cov_dual(
             clip_to_shape=clip_to_shape,
         ),
     )
+    log.info("Completed dual-pol covariance processing: %s", Path(out_dir).parent)
     return Path(out_dir).parent
 
 
@@ -1049,6 +1064,7 @@ def prepare_slc(
         For partial products, returns the output directory and the effective
         stored AOI so downstream geocoding can use the same shape.
     """
+    log.info("-------- SLC preprocessing --------")
 
     if aoi_name is None:
         aoi_substr = ""
@@ -1070,6 +1086,7 @@ def prepare_slc(
         )
         shp = partial_aoi
 
+    log.info("Read SLC burst geometries")
     # retrieve burst geometries
     gdf_burst_prm = get_burst_geometry(
         slc_path, target_subswaths=["IW1", "IW2", "IW3"], polarization="VV"
@@ -1090,6 +1107,7 @@ def prepare_slc(
     unique_subswaths = [it for it in unique_subswaths if it in subswaths]
 
     # check that polarization is correct
+    log.info("Read SLC product metadata and polarizations")
     info_prm = identify_safe_product(slc_path, bool(partial_info))
     if isinstance(pol, str):
         if pol == "full":
@@ -1123,7 +1141,7 @@ def prepare_slc(
         log.info(f"Creating directory {out_dir}")
         os.makedirs(out_dir)
     for subswath in unique_subswaths:
-        log.info(f"---- Processing subswath {subswath}")
+        log.info("------ Processing subswath %s ------", subswath)
 
         # identify bursts to process
         bursts_prm = gdf_burst_prm[gdf_burst_prm["subswath"] == subswath][
@@ -1230,9 +1248,11 @@ def preprocess_slc_iw(
             "Invalid calibration factor. Possible values are 'beta', 'sigma' and 'terrain."
         )
 
-    swaths = {
-        p: S1IWSwath(slc_path, iw=iw, pol=p, orb_dir=orb_dir) for p in polarizations
-    }
+    swaths = {}
+    for p in polarizations:
+        context = f"IW{iw}, {p.upper()}"
+        log.info("Read SLC metadata, calibration LUTs and orbit (%s)", context)
+        swaths[p] = S1IWSwath(slc_path, iw=iw, pol=p, orb_dir=orb_dir)
     slc = swaths[polarizations[0]]
 
     if min_burst is None:
@@ -1307,6 +1327,7 @@ def preprocess_slc_iw(
                     max_burst_ - min_burst_ + 1,
                     min_burst_,
                     slc,
+                    f"SLC (IW{iw}, {p.upper()})",
                 ),
             )
 
@@ -1341,6 +1362,7 @@ def geocode_and_merge_iw(
         interferograms. Their phase will extracted after geocoding. The
         output file will start with 'phi'.
     """
+    log.info("-------- Geocoding and merging --------")
     if isinstance(pol, str):
         if pol == "full":
             pol_ = ["vv", "vh"]
@@ -1438,7 +1460,8 @@ def geocode_and_merge_iw(
                 if var.startswith("ifg"):
                     out_file = Path(str(out_file).replace("ifg", "phi"))
 
-                log.info(f"Merge file {Path(out_file).name}")
+                label = Path(out_file).name
+                log.info("Read geocoded IW rasters for %s", label)
                 da_to_merge = [riox.open_rasterio(file) for file in groups_to_merge[k]]
 
                 if any(np.iscomplexobj(it) for it in da_to_merge):
@@ -1446,12 +1469,12 @@ def geocode_and_merge_iw(
                         f"Trying to merge complex arrays ({var}). This is forbidden to prevent potential type casting errors."
                     )
 
+                log.info("Merge geocoded IW rasters into %s", label)
+                merged = merge_arrays(da_to_merge, parse_coordinates=False)
                 if shp and clip_to_shape:
-                    merged = merge_arrays(
-                        da_to_merge, parse_coordinates=False
-                    ).rio.clip([shp], all_touched=True)
-                else:
-                    merged = merge_arrays(da_to_merge, parse_coordinates=False)
+                    log.info("Clip merged raster to AOI: %s", label)
+                    merged = merged.rio.clip([shp], all_touched=True)
+                log.info("Write merged COG with overviews: %s", label)
                 with MemoryFile() as tmp_file:
                     merged.rio.to_raster(tmp_file.name, driver="GTiff", compress="none")
                     rio_copy(
@@ -1463,6 +1486,7 @@ def geocode_and_merge_iw(
                         resampling="nearest",
                         overview_resampling="nearest",
                     )
+                log.info("Completed geographic output: %s", label)
                 # clean tmp files
             for file in tmp_files:
                 remove(file)
@@ -1492,13 +1516,15 @@ def sar2geo(
     Note:
         Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
-    log.info("Project image with the lookup table.")
+    label = Path(sar_file).name
+    log.info("Read SAR raster: %s", label)
 
     with rio.open(sar_file) as ds_sar:
         arr = ds_sar.read(1)
         prof_src = ds_sar.profile.copy()
         trans_src = ds_sar.transform
 
+    log.info("Read geocoding LUT: %s", Path(lut_file).name)
     with rio.open(lut_file) as ds_lut:
         lut = ds_lut.read()
         prof_dst = ds_lut.profile.copy()
@@ -1520,6 +1546,8 @@ def sar2geo(
     # check if input was rescaled (multilook, etc.)
     sx = trans_src.a
     sy = trans_src.e
+    warp_label = f"{label}, {kernel}"
+    log.info("Remap SAR raster to geographic grid (%s)", warp_label)
     arr_out = remap(arr, lut[0] / sy, lut[1] / sx, kernel)
 
     prof_dst.update({k: prof_src[k] for k in ["count", "dtype", "nodata"]})
@@ -1538,6 +1566,7 @@ def sar2geo(
     prof_dst.pop("compress", None)
     prof_dst["driver"] = "GTiff"
     if write_phase and np.iscomplexobj(arr_out):
+        log.info("Extract geocoded interferogram phase: %s", label)
         phi = np.angle(arr_out)
         nodata = -9999
         phi[np.isnan(phi)] = nodata
@@ -1546,6 +1575,7 @@ def sar2geo(
         write_cog = True
     else:
         if magnitude_only:
+            log.info("Compute geocoded magnitude: %s", label)
             mag = np.abs(arr_out)
             nodata = 0
             mag[np.isnan(mag)] = nodata
@@ -1563,11 +1593,13 @@ def sar2geo(
                 prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
 
     if write_cog and cog:
+        log.info("Write geocoded COG with overviews: %s", Path(out_file).name)
         with MemoryFile() as tmp_file:
             with tmp_file.open(**prof_dst) as dst:
                 dst.write(arr_out, 1)
             rio_copy(tmp_file.name, out_file, driver="COG", **cog_dict)
     else:
+        log.info("Write geocoded GeoTIFF: %s", Path(out_file).name)
         with rio.open(out_file, "w", **prof_dst) as dst:
             dst.write(arr_out, 1)
 
@@ -1590,6 +1622,7 @@ def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:
 
     log.info(f"Apply {mlt_az} by {mlt_rg} multilooking.")
 
+    log.info("Read raster for multilooking: %s", Path(in_file).name)
     with rio.open(in_file) as ds_src:
         prof = ds_src.profile.copy()
         trans = ds_src.transform
@@ -1603,6 +1636,7 @@ def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:
             }
         )
         warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+        log.info("Write multilooked raster: %s", Path(out_file).name)
         with rio.open(out_file, "w", **prof) as dst:
             if mlt_az > 1 or mlt_rg > 1:
                 for i in range(prof["count"]):
@@ -1620,10 +1654,11 @@ def amplitude(in_file: str, out_file: str, multilook: list = [1, 1]) -> None:
         multilook (list): number of looks in azimuth and range. Defaults to [1, 1]
     """
 
-    log.info("Compute amplitude")
+    log.info("Read SLC raster lazily for amplitude: %s", Path(in_file).name)
     with riox.open_rasterio(
         in_file, chunks={"band": 1, "y": 1024, "x": 1024}, lock=False
     ) as source:
+        log.info("Prepare multilooked amplitude")
         amp = _multilook(abs(source.isel(band=0)), multilook)
         _write_sar_products({out_file: amp}, source, multilook)
 
@@ -1728,11 +1763,13 @@ def insar_products(
     with ExitStack() as stack:
         prm = sec = None
         if paired or amp_prm_file:
+            log.info("Read primary SLC raster lazily: %s", Path(prm_file).name)
             source = stack.enter_context(
                 riox.open_rasterio(prm_file, chunks=chunks, masked=True, lock=False)
             )
             prm = source.isel(band=0)
         if paired or amp_sec_file:
+            log.info("Read secondary SLC raster lazily: %s", Path(sec_file).name)
             secondary = stack.enter_context(
                 riox.open_rasterio(sec_file, chunks=chunks, masked=True, lock=False)
             )
@@ -1749,6 +1786,8 @@ def insar_products(
         if paired:
             # Use primary coordinates for the coregistered pair.
             sec = sec.assign_coords(y=prm.y, x=prm.x)
+            looks_label = f"{multilook[0]} x {multilook[1]}"
+            log.info("Prepare complex interferogram with %s multilooking", looks_label)
             corr = _multilook(prm * sec.conj(), multilook)
             filter_args = dict(
                 dimaz=box_az,
@@ -1757,6 +1796,8 @@ def insar_products(
                 boundary="reflect",
             )
             if coh_file or filter_ifg:
+                filter_label = f"{box_az} x {box_rg}"
+                log.info("Prepare interferogram boxcar filter (%s)", filter_label)
                 corr_box = da.map_overlap(
                     boxcar, corr.data, **filter_args, dtype=corr.dtype
                 )
@@ -1765,6 +1806,7 @@ def insar_products(
                     xr.DataArray(corr_box, dims=("y", "x")) if filter_ifg else corr
                 )
             if coh_file:
+                log.info("Prepare coherence and power normalization")
                 pow1 = _multilook(
                     xr.apply_ufunc(
                         np.nan_to_num, (prm * prm.conj()).real, dask="allowed"
@@ -1786,6 +1828,7 @@ def insar_products(
                 coh = corr_box / da.sqrt(pow1_box) / da.sqrt(pow2_box)
                 if magnitude:
                     coh = abs(coh)
+                log.info("Prepare coherence validity mask")
                 valid = da.map_overlap(
                     erosion,
                     ~da.isnan(corr.data),
@@ -1798,8 +1841,10 @@ def insar_products(
                     da.where(valid, coh, np.nan), dims=("y", "x")
                 )
         if amp_prm_file:
+            log.info("Prepare multilooked primary amplitude")
             products[amp_prm_file] = _multilook(abs(prm), multilook)
         if amp_sec_file:
+            log.info("Prepare multilooked secondary amplitude")
             products[amp_sec_file] = _multilook(abs(sec), multilook)
         _write_sar_products(products, source, multilook)
 
@@ -1868,7 +1913,9 @@ def h_alpha_dual(
     )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    log.info("Read VV raster lazily: %s", Path(vv_file).name)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
+    log.info("Read VH raster lazily: %s", Path(vh_file).name)
     ds_vh = riox.open_rasterio(vh_file, **open_args)
 
     # accessing dask arrays
@@ -1881,6 +1928,7 @@ def h_alpha_dual(
         depth=(box_az, box_rg),
     )
 
+    log.info("Prepare multilooked covariance components")
     # multilooking
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
@@ -1894,11 +1942,14 @@ def h_alpha_dual(
     c12 = np.nan_to_num(c12)
     c22 = np.nan_to_num(c22)
 
+    filter_label = f"{box_az} x {box_rg}"
+    log.info("Prepare covariance boxcar filter (%s)", filter_label)
     # additional boxcar
     c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
     c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
     c22 = da.map_overlap(boxcar, c22, **process_args, dtype="float32")
 
+    log.info("Prepare H-alpha eigendecomposition, entropy and mean alpha")
     # fast eigenvalue decomposition
     l1, l2, v11, _, v21, _ = eigh_2x2(c11.real, c22.real, c12)
 
@@ -1935,6 +1986,7 @@ def h_alpha_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_H.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write entropy raster: %s", Path(h_file).name)
     da_H.rio.to_raster(h_file)
 
     alpha = da.where(msk_out, alpha, np.nan)
@@ -1948,6 +2000,7 @@ def h_alpha_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_alpha.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write alpha raster: %s", Path(alpha_file).name)
     da_alpha.rio.to_raster(alpha_file)
 
 
@@ -1994,7 +2047,9 @@ def polsar_cov_dual(
     )
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    log.info("Read VV raster lazily: %s", Path(vv_file).name)
     ds_vv = riox.open_rasterio(vv_file, **open_args)
+    log.info("Read VH raster lazily: %s", Path(vh_file).name)
     ds_vh = riox.open_rasterio(vh_file, **open_args)
 
     # accessing dask arrays
@@ -2007,6 +2062,7 @@ def polsar_cov_dual(
         depth=(box_az, box_rg),
     )
 
+    log.info("Prepare multilooked covariance components")
     # multilooking
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
@@ -2020,6 +2076,8 @@ def polsar_cov_dual(
     c12 = np.nan_to_num(c12)
     c22 = np.nan_to_num(c22)
 
+    filter_label = f"{box_az} x {box_rg}"
+    log.info("Prepare covariance boxcar filter (%s)", filter_label)
     # additional boxcar
     c12 = da.map_overlap(boxcar, c12, **process_args, dtype="complex64")
     c11 = da.map_overlap(boxcar, c11, **process_args, dtype="float32")
@@ -2039,6 +2097,7 @@ def polsar_cov_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_c11.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write covariance raster: %s", Path(c11_file).name)
     da_c11.rio.to_raster(c11_file)
 
     c12 = da.where(msk_out, c12, np.nan)
@@ -2051,6 +2110,7 @@ def polsar_cov_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_c12r.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write covariance raster: %s", Path(c12_real_file).name)
     da_c12r.rio.to_raster(c12_real_file)
 
     da_c12i = xr.DataArray(
@@ -2062,6 +2122,7 @@ def polsar_cov_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_c12i.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write covariance raster: %s", Path(c12_imag_file).name)
     da_c12i.rio.to_raster(c12_imag_file)
 
     c22 = da.where(msk_out, c22, np.nan)
@@ -2074,6 +2135,7 @@ def polsar_cov_dual(
         ds_vv.rio.transform() * Affine.scale(mlt_rg, mlt_az), inplace=True
     )
     da_c22.rio.write_nodata(nodataval, inplace=True)
+    log.info("Compute and write covariance raster: %s", Path(c22_file).name)
     da_c22.rio.to_raster(c22_file)
 
 
@@ -2118,11 +2180,13 @@ def goldstein(
     open_args = dict(lock=False, chunks=dict(band=1, y=2048, x=2048), masked=True)
 
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
+    log.info("Read complex interferogram lazily: %s", Path(ifg_file).name)
     ds_ifg = riox.open_rasterio(ifg_file, **open_args)
     ifg = ds_ifg[0].data
 
     # process multiple chunks in parallel
     process_args = dict(alpha=alpha, depth=(32, 32), dtype="complex64")
+    log.info("Prepare Goldstein phase filter (alpha=%s)", alpha)
     ifg_out = da.map_overlap(filter_chunk, ifg, **process_args)
     da_out = xr.DataArray(
         name="ifg",
@@ -2134,6 +2198,7 @@ def goldstein(
     nodataval = np.nan
     da_out.rio.write_nodata(nodataval, inplace=True)
     # block size manually set until better solution
+    log.info("Compute and write filtered interferogram: %s", Path(out_file).name)
     da_out.rio.to_raster(out_file, tiled=True, blockxsize=512, blockysize=512)
 
 
@@ -2258,6 +2323,7 @@ def _write_sar_products(
         if source.rio.crs is not None:
             output.rio.write_crs(source.rio.crs, inplace=True)
         output.rio.write_nodata(np.nan, inplace=True)
+        log.info("Create SAR output raster: %s", Path(filename).name)
         writes.append(
             output.rio.to_raster(
                 filename,
@@ -2269,7 +2335,10 @@ def _write_sar_products(
                 compute=False,
             )
         )
+    log.info("Compute and write %s SAR products", len(products))
     compute(*writes)
+    for filename in products:
+        log.info("Completed SAR output: %s", Path(filename).name)
 
 
 def _phase_scale(prm: S1IWSwath, sec: S1IWSwath) -> float | None:
@@ -2288,10 +2357,10 @@ def _phase_scale(prm: S1IWSwath, sec: S1IWSwath) -> float | None:
             )
         )
     if grids[0] != grids[1]:
-        log.info("Range grids differ; using absolute topographic phases")
+        log.debug("Range grids differ; using absolute topographic phases")
         return None
     frequency, sampling_rate, _, _ = grids[0]
-    log.info("Identical range grids; computing phase from range-index differences")
+    log.debug("Identical range grids; computing phase from range-index differences")
     return 2 * np.pi * frequency / sampling_rate
 
 
@@ -2330,6 +2399,8 @@ def _process_bursts_insar(
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    dem_label = f"{dem_name}, IW{iw}, bursts {min_burst}–{max_burst}"
+    log.info("Prepare DEM (%s)", dem_label)
     dem_file = prm.fetch_dem(
         min_burst,
         max_burst,
@@ -2340,6 +2411,7 @@ def _process_bursts_insar(
         dem_name=dem_name,
     )
     lut_file = f"{output_dir}/lut.tif"
+    log.info("Read DEM grid metadata (IW%s): %s", iw, Path(dem_file).name)
     with rio.open(dem_file) as ds_dem:
         width_lut = ds_dem.width
         height_lut = ds_dem.height
@@ -2383,6 +2455,7 @@ def _process_bursts_insar(
                 pht_p = prm.phi_topo(range_indices)
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
+                burst_label = f"burst {burst_idx} (IW{iw})"
                 sec_idx = burst_idx + burst_idx_offset
                 prm_label = f"primary burst {burst_idx} (IW{iw})"
                 sec_label = f"secondary burst {sec_idx} (IW{iw})"
@@ -2406,6 +2479,7 @@ def _process_bursts_insar(
 
                 # use virtual raster to keep using the same geocoding function
                 dem_file_burst = f"{output_dir}/dem_burst.vrt"
+                log.info("Create DEM-window VRT for %s", burst_label)
                 gdal.Translate(
                     destName=dem_file_burst,
                     srcDS=dem_file,
@@ -2415,7 +2489,9 @@ def _process_bursts_insar(
                 )
 
                 # The DEM is already upsampled at download. Prepare this window once.
+                log.info("Read DEM coordinates for %s", burst_label)
                 lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
+                log.info("Convert DEM coordinates to ECEF for %s", burst_label)
                 dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
                 log.info("Geocode primary burst %s (IW%s)", burst_idx, iw)
                 az_p2g, rg_p2g = prm.geocode_burst(
@@ -2435,6 +2511,7 @@ def _process_bursts_insar(
                 )
 
                 # Geometry and phase corrections are shared by all polarizations.
+                log.info("Coregister secondary to primary: %s", burst_label)
                 az_s2p, rg_s2p = coregister(
                     primary_grid, az_p2g, rg_p2g, az_s2g, rg_s2g
                 )
@@ -2444,12 +2521,14 @@ def _process_bursts_insar(
                 phase_label = f"primary burst {burst_idx} (IW{iw}, bicubic)"
                 log.info("Warp secondary deramping phase to %s", phase_label)
                 pdb_s = align(pdb_s, az_s2p, rg_s2p, kernel="bicubic")
+                log.info("Compute topographic phase correction: %s", burst_label)
                 if phase_scale is None:
-                    log.info("Compute secondary topographic phase on %s", prm_label)
+                    log.debug("Compute secondary topographic phase on %s", prm_label)
                     phase = pht_p - sec.phi_topo(rg_s2p)
                 else:
                     phase = range_indices - rg_s2p
                     phase *= phase_scale
+                log.info("Combine reramping and topographic phases: %s", burst_label)
                 phase += pdb_s
                 correction = np.empty(phase.shape, dtype=np.complex64)
                 np.exp(-1j * phase, out=correction)
@@ -2458,7 +2537,7 @@ def _process_bursts_insar(
                 window = Window(0, first_line, nrg, prm.lines_per_burst)
 
                 for p in primaries:
-                    log.info("Process %s polarization", p.upper())
+                    log.info("-- Process %s polarization --", p.upper())
                     primary = primaries[p]
                     secondary = secondaries[p]
                     context = f"IW{iw}, {p.upper()}"
@@ -2469,18 +2548,23 @@ def _process_bursts_insar(
                     arr_p = primary.read_burst(burst_idx, True)
                     log.info("Read raster: %s", sec_label)
                     arr_s = secondary.read_burst(burst_idx + burst_idx_offset, True)
-                    log.info("Calibrate %s", prm_label)
+                    calibration_label = f"{cal_type} radiometric calibration"
+                    log.info("Apply %s: %s", calibration_label, prm_label)
                     arr_p /= primary.calibration_factor(burst_idx, cal_type=cal_type)
-                    log.info("Calibrate %s", sec_label)
+                    log.info("Apply %s: %s", calibration_label, sec_label)
                     arr_s /= secondary.calibration_factor(
                         burst_idx + burst_idx_offset, cal_type=cal_type
                     )
+                    log.info("Deramp %s", sec_label)
                     arr_s *= deramp
                     warp_label = f"primary burst {burst_idx} ({context}, {warp_kernel})"
                     log.info("Warp secondary SLC to %s", warp_label)
                     arr_s = align(arr_s, az_s2p, rg_s2p, warp_kernel)
+                    log.info("Apply combined phase correction: %s", sec_label)
                     arr_s *= correction
+                    log.info("Write coregistered raster: %s", prm_label)
                     ds_prm[p].write(arr_p, 1, window=window)
+                    log.info("Write coregistered raster: %s", sec_label)
                     ds_sec[p].write(arr_s, 1, window=window)
 
                 # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
@@ -2497,6 +2581,8 @@ def _process_bursts_insar(
     remove(dem_file_burst)
 
     with rio.Env(GDAL_CACHEMAX=gdal_cachemax) as env:
+        lut_label = f"{Path(lut_file).name} (IW{iw})"
+        log.info("Write shared geocoding LUT: %s", lut_label)
         with rio.open(lut_file, "w", **prof_lut) as ds_lut:
             ds_lut.write(arr_lut)
 
@@ -2531,6 +2617,8 @@ def _process_bursts_slc(
         blockysize=512,
     )
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
+    dem_label = f"{dem_name}, IW{iw}, bursts {min_burst}–{max_burst}"
+    log.info("Prepare DEM (%s)", dem_label)
     dem_file = slc.fetch_dem(
         min_burst,
         max_burst,
@@ -2541,6 +2629,7 @@ def _process_bursts_slc(
         dem_name=dem_name,
     )
     lut_file = f"{output_dir}/lut.tif"
+    log.info("Read DEM grid metadata (IW%s): %s", iw, Path(dem_file).name)
     with rio.open(dem_file) as ds_dem:
         width_lut = ds_dem.width
         height_lut = ds_dem.height
@@ -2570,6 +2659,7 @@ def _process_bursts_slc(
             ds_dem = stack.enter_context(rio.open(dem_file))
             for burst_idx in range(min_burst, max_burst + 1):
                 log.info("---- Processing burst %s (IW%s) ----", burst_idx, iw)
+                burst_label = f"burst {burst_idx} (IW{iw})"
                 # position of the burst in the stitched SLC
                 burst_offset = round(
                     slc.compute_burst_offset(burst_idx=burst_idx, min_burst=min_burst)
@@ -2591,6 +2681,7 @@ def _process_bursts_slc(
 
                 # use virtual raster to keep using the same geocoding function
                 dem_file_burst = f"{output_dir}/dem_burst.vrt"
+                log.info("Create DEM-window VRT for %s", burst_label)
                 gdal.Translate(
                     destName=dem_file_burst,
                     srcDS=dem_file,
@@ -2600,7 +2691,9 @@ def _process_bursts_slc(
                 )
 
                 # The DEM is already upsampled at download. Prepare this window once.
+                log.info("Read DEM coordinates for %s", burst_label)
                 lat, lon, alt, _, composite_crs = load_dem_coords(dem_file_burst)
+                log.info("Convert DEM coordinates to ECEF for %s", burst_label)
                 dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
                 log.info("Geocode SLC burst %s (IW%s)", burst_idx, iw)
                 if cal_type != "terrain":
@@ -2622,6 +2715,7 @@ def _process_bursts_slc(
                     )
 
                 if cal_type == "terrain":
+                    log.info("Simulate terrain backscatter and shadow: %s", burst_label)
                     gamma_t = simulate_terrain(
                         lat,
                         lon,
@@ -2642,15 +2736,19 @@ def _process_bursts_slc(
                 first_line = (burst_idx - min_burst) * slc.lines_per_burst
                 window = Window(0, first_line, nrg, slc.lines_per_burst)
                 for p, swath in swaths.items():
-                    log.info("Process %s polarization", p.upper())
+                    log.info("-- Process %s polarization --", p.upper())
                     label = f"SLC raster burst {burst_idx} (IW{iw}, {p.upper()})"
                     log.info("Read %s", label)
                     arr = swath.read_burst(burst_idx, True)
                     calibration = "beta" if cal_type == "terrain" else cal_type
+                    cal_label = f"{calibration} radiometric calibration: {label}"
+                    log.info("Apply %s", cal_label)
                     arr /= swath.calibration_factor(burst_idx, cal_type=calibration)
                     if cal_type == "terrain":
+                        log.info("Apply terrain normalization: %s", label)
                         arr[valid_terrain] /= terrain_scale
                         arr[~valid_terrain] = np.nan
+                    log.info("Write calibrated %s", label)
                     datasets[p].write(arr, 1, window=window)
 
                 # remove half of the azimuth overlap at burst start (for min_burst overlap is zero)
@@ -2667,6 +2765,8 @@ def _process_bursts_slc(
     remove(dem_file_burst)
 
     with rio.Env(GDAL_CACHEMAX=512) as env:
+        lut_label = f"{Path(lut_file).name} (IW{iw})"
+        log.info("Write shared geocoding LUT: %s", lut_label)
         with rio.open(lut_file, "w", **prof_lut) as ds_lut:
             ds_lut.write(arr_lut)
 
@@ -2680,11 +2780,13 @@ def _apply_fast_esd(
     nrg: int,
     overlap: int,
     pol: str,
+    iw: int | None = None,
 ) -> None:
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Based on ideas introduced in:
     Qin, Y.; Perissin, D.; Bai, J. A Common “Stripmap-Like” Interferometric Processing Chain for TOPS and ScanSAR Wide Swath Mode. Remote Sens. 2018, 10, 1504.
     """
+    context = f"IW{iw}, {pol.upper()}" if iw is not None else pol.upper()
     x = np.arange(naz)
     xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
@@ -2703,11 +2805,13 @@ def _apply_fast_esd(
     with rio.open(tmp_prm_file, "r") as ds_prm:
         with rio.open(tmp_sec_file, "r+") as ds_sec:
             # computing cross interferograms in overlapping areas
-            log.info("Fast ESD (%s): computing cross interferograms", pol.upper())
+            log.info("Fast ESD (%s): estimate overlap phase shifts", context)
             phase_diffs = []
             for burst_idx in range(min_burst, max_burst):
                 first_line_tail = (burst_idx - min_burst + 1) * naz - overlap
                 first_line_head = (burst_idx - min_burst + 1) * naz
+                pair_label = f"bursts {burst_idx}/{burst_idx + 1} ({context})"
+                log.info("Read primary/secondary overlap rasters: %s", pair_label)
                 # read last lines of current burst
                 tail_p = ds_prm.read(
                     indexes=1, window=Window(0, first_line_tail, nrg, overlap)
@@ -2724,6 +2828,7 @@ def _apply_fast_esd(
                     indexes=1,
                     window=Window(0, first_line_head, nrg, overlap),
                 )
+                log.info("Estimate ESD phase shift: %s", pair_label)
                 ifg1 = tail_p * tail_s.conj()
                 ifg2 = head_p * head_s.conj()
                 cross_ifg = ifg1 * ifg2.conj()
@@ -2731,15 +2836,19 @@ def _apply_fast_esd(
                 phase_diffs.append(np.angle(dphi_clx.mean()))
 
             # making phase ramps and applying to secondary
-            log.info("Fast ESD (%s): applying phase corrections", pol.upper())
+            log.info("Fast ESD (%s): correct secondary bursts", context)
             for burst_idx in range(min_burst, max_burst + 1):
                 first_line = (burst_idx - min_burst) * naz
+                label = f"secondary burst {burst_idx} ({context})"
+                log.info("Read raster for ESD correction: %s", label)
                 arr_s = ds_sec.read(
                     indexes=1,
                     window=Window(0, first_line, nrg, naz),
                 )
+                log.info("Apply ESD phase correction: %s", label)
                 esd_ramp = make_ramp(phase_diffs, burst_idx - min_burst)
                 arr_s *= esd_ramp.astype(np.complex64)[:, None]
+                log.info("Write ESD-corrected raster: %s", label)
                 ds_sec.write(
                     arr_s,
                     indexes=1,
@@ -2753,10 +2862,12 @@ def _stitch_bursts(
     burst_count,
     min_burst=1,
     swath=None,
+    label: str | None = None,
 ):
     warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
 
-    log.info("Stitch bursts to make a continuous image")
+    label = label or Path(out_file).name
+    log.info("Stitch bursts into a continuous raster: %s", label)
 
     naz = swath.lines_per_burst
 
@@ -2789,11 +2900,14 @@ def _stitch_bursts(
                 off_src = i * naz + H
                 nlines = naz - H
 
+                burst_label = f"burst {i + min_burst}, {label}"
+                log.info("Read burst raster for stitching: %s", burst_label)
                 for j in range(src.count):
                     arr = src.read(
                         j + 1,
                         window=Window(0, off_src, nrg, nlines),
                     )
+                    log.info("Write stitched burst: %s", burst_label)
                     dst.write(
                         arr, window=Window(0, off_dst, nrg, nlines), indexes=j + 1
                     )
