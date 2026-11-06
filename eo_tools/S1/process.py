@@ -1400,6 +1400,7 @@ def geocode_and_merge_iw(
                     warp_kernel,
                     write_phase=True,
                     magnitude_only=False,
+                    cog=False,
                 )
             else:
                 sar2geo(
@@ -1409,6 +1410,7 @@ def geocode_and_merge_iw(
                     warp_kernel,
                     write_phase=False,
                     magnitude_only=False,
+                    cog=False,
                 )
             tmp_files.append(out_file)
 
@@ -1451,7 +1453,7 @@ def geocode_and_merge_iw(
                 else:
                     merged = merge_arrays(da_to_merge, parse_coordinates=False)
                 with MemoryFile() as tmp_file:
-                    merged.rio.to_raster(tmp_file.name, driver="GTiff")
+                    merged.rio.to_raster(tmp_file.name, driver="GTiff", compress="none")
                     rio_copy(
                         tmp_file.name,
                         out_file,
@@ -1475,6 +1477,7 @@ def sar2geo(
     kernel: str = "bicubic",
     write_phase: bool = False,
     magnitude_only: bool = False,
+    cog: bool = True,
 ) -> None:
     """Reproject slc file to a geographic grid using a lookup table with optional multilooking.
 
@@ -1485,6 +1488,7 @@ def sar2geo(
         kernel (str): Geocoding kernel. Possible values are "nearest", "bilinear", "bicubic", "bicubic6", "sinc" and "lanczos". Defaults to "bicubic".
         write_phase (bool): writes the array's phase . Defaults to False.
         magnitude_only (bool): writes the array's magnitude instead of its complex values. Has no effect it `write_phase` is True. Defaults to False.
+        cog (bool): Write real-valued outputs as compressed COGs. Set False for an uncompressed GeoTIFF without overviews, suitable for temporary rasters. Complex outputs always use GeoTIFF. Defaults to True.
     Note:
         Multilooking is recommended as it reduces the spatial resolution and mitigates speckle effects.
     """
@@ -1531,6 +1535,8 @@ def sar2geo(
     prof_dst.pop("blockysize", None)
     prof_dst.pop("tiled", None)
     prof_dst.pop("interleave", None)
+    prof_dst.pop("compress", None)
+    prof_dst["driver"] = "GTiff"
     if write_phase and np.iscomplexobj(arr_out):
         phi = np.angle(arr_out)
         nodata = -9999
@@ -1553,11 +1559,10 @@ def sar2geo(
                 nodata = 0
                 prof_dst.update({"nodata": nodata})
                 arr_out[np.isnan(arr_out)] = nodata
-            else:
+            elif cog:
                 prof_dst.update({"compress": "zstd", "num_threads": "all_cpus"})
 
-    if write_cog:
-        prof_dst["driver"] = "GTiff"
+    if write_cog and cog:
         with MemoryFile() as tmp_file:
             with tmp_file.open(**prof_dst) as dst:
                 dst.write(arr_out, 1)

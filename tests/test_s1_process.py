@@ -434,7 +434,7 @@ def test_prepare_outputs(tmp_path, pol: str | list[str], skip: bool, kind: str) 
 
 
 @pytest.mark.parametrize("shared", [True, False])
-def test_geocode_iw_lut(tmp_path, shared: bool) -> None:
+def test_geocode_iw_lut(tmp_path, monkeypatch, shared: bool) -> None:
     """Geocoding requires a shared IW LUT and rejects legacy channel LUTs."""
     from eo_tools.S1.process import geocode_and_merge_iw
 
@@ -466,6 +466,8 @@ def test_geocode_iw_lut(tmp_path, shared: bool) -> None:
             geocode_and_merge_iw(str(tmp_path), ["amp"], subswaths=["IW1"])
         return
 
+    # Retain intermediate rasters to inspect their storage and values.
+    monkeypatch.setattr("eo_tools.S1.process.remove", lambda path: None)
     geocode_and_merge_iw(
         str(tmp_path), ["amp", "H"], subswaths=["IW1"], warp_kernel="nearest"
     )
@@ -473,6 +475,13 @@ def test_geocode_iw_lut(tmp_path, shared: bool) -> None:
     for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
         with rio.open(tmp_path / f"{name}.tif") as result:
             np.testing.assert_array_equal(result.read(1), np.full((4, 4), value))
+            assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
+            assert result.compression == rio.enums.Compression.zstd
+        with rio.open(sar_dir / f"{name}_iw1_geo.tif") as intermediate:
+            np.testing.assert_array_equal(intermediate.read(1), np.full((4, 4), value))
+            assert intermediate.compression is None
+            assert intermediate.overviews(1) == []
+            assert intermediate.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") != "COG"
 
 
 @pytest.mark.parametrize("cal_type", ["beta", "sigma", "terrain"])

@@ -37,45 +37,82 @@ def test_s1iwswath_init(create_swath):
     assert swath.beta_nought == 2.370000e02
 
 
-def test_sar2geo_cog(tmp_path):
-    """COG conversion preserves float phase values."""
-    phases = np.array([[-3.0, -1.5], [0.5, 3.0]], dtype="float32")
+@pytest.mark.parametrize("mode", ["phase", "magnitude", "real", "complex"])
+@pytest.mark.parametrize("cog", [True, False])
+def test_sar2geo_cog(tmp_path, mode, cog):
+    """Temporary GeoTIFFs preserve geocoded values without COG overhead."""
+    shape = (4, 600)
+    phases = np.linspace(-3, 3, np.prod(shape), dtype="float32").reshape(shape)
+    values = (np.exp(1j * phases) * 2).astype("complex64")
+    if mode == "real":
+        values = values.real
+    values[0, 0] = np.nan
     sar_file = tmp_path / "sar.tif"
     lut_file = tmp_path / "lut.tif"
-    out_file = tmp_path / "phase.tif"
+    out_file = tmp_path / "geocoded.tif"
+    profile = dict(
+        driver="GTiff",
+        width=shape[1],
+        height=shape[0],
+        count=1,
+        dtype=values.dtype,
+        nodata=np.nan,
+        transform=Affine.identity(),
+    )
+    with rasterio.open(sar_file, "w", **profile) as dst:
+        dst.write(values, 1)
 
-    sar_profile = {
-        "driver": "GTiff",
-        "width": 2,
-        "height": 2,
-        "count": 1,
-        "dtype": "complex64",
-        "nodata": np.nan,
-        "transform": Affine.identity(),
-    }
-    with rasterio.open(sar_file, "w", **sar_profile) as dst:
-        dst.write(np.exp(1j * phases).astype("complex64"), 1)
-
-    lut_profile = {
-        "driver": "GTiff",
-        "width": 2,
-        "height": 2,
-        "count": 2,
-        "dtype": "float64",
-        "nodata": np.nan,
-        "transform": Affine.identity(),
-        "crs": "EPSG:4326",
-    }
-    rows, cols = np.indices((2, 2), dtype="float64")
-    with rasterio.open(lut_file, "w", **lut_profile) as dst:
+    transform = Affine(0.01, 0, 12, 0, -0.01, 43)
+    profile.update(
+        count=2,
+        dtype="float64",
+        transform=transform,
+        crs="EPSG:4326",
+        compress="deflate",
+    )
+    rows, cols = np.indices(shape, dtype="float64")
+    rows[-1, -1] = np.nan
+    with rasterio.open(lut_file, "w", **profile) as dst:
         dst.write(np.stack([rows, cols]))
 
-    sar2geo(sar_file, lut_file, out_file, kernel="nearest", write_phase=True)
+    # Exercise the unchanged default as well as the temporary-raster option.
+    options = {} if cog else {"cog": False}
+    sar2geo(
+        sar_file,
+        lut_file,
+        out_file,
+        kernel="nearest",
+        write_phase=mode == "phase",
+        magnitude_only=mode == "magnitude",
+        **options,
+    )
 
+    expected = values.copy()
+    expected[-1, -1] = np.nan
+    nodata = np.nan
+    if mode == "phase":
+        expected = np.angle(expected)
+        nodata = -9999
+    elif mode == "magnitude":
+        expected = abs(expected)
+        nodata = 0
+    elif mode == "real":
+        nodata = 0
+    if mode != "complex":
+        expected[np.isnan(expected)] = nodata
     with rasterio.open(out_file) as result:
-        assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
-        assert result.dtypes == ("float32",)
-        assert np.allclose(result.read(1), phases)
+        np.testing.assert_allclose(result.read(1), expected, rtol=1e-6)
+        assert result.dtypes == (expected.dtype.name,)
+        assert result.transform == transform
+        assert result.crs == rasterio.crs.CRS.from_epsg(4326)
+        np.testing.assert_equal(result.nodata, nodata)
+        if cog and mode != "complex":
+            assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
+            assert result.compression == rasterio.enums.Compression.zstd
+        elif not cog:
+            assert result.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") != "COG"
+            assert result.compression is None
+            assert result.overviews(1) == []
 
 
 def test_dem_coord_transform(tmp_path):
