@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from math import pi
 from pathlib import Path
+from time import perf_counter
 
 import folium
 import geopandas as gpd
@@ -31,8 +32,8 @@ output_dir = Path("/data/res") / (
 polarizations = ["vv", "vh"]
 
 # %%
-aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
-# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
 process_args = dict(
@@ -60,7 +61,9 @@ process_args = dict(
     clip_to_shape=True,
     orb_dir="/data/S1_orbits/",
 )
+started = perf_counter()
 out_dir = process_insar(**process_args)
+elapsed = perf_counter() - started
 
 # %%
 # Confirm that both channels produced every requested final output.
@@ -70,6 +73,7 @@ for pol in polarizations:
         if not path.is_file():
             raise FileNotFoundError(f"Missing {pol.upper()} output: {path}")
 logging.info("Dual-polarization InSAR outputs: %s", out_dir)
+print(f"Processing elapsed time: {elapsed:.1f} s ({elapsed / 60:.2f} min)", flush=True)
 
 # %%
 # Inspect VV and VH phase/coherence layers independently; no reference data needed.
