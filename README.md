@@ -12,6 +12,8 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
 
 Sentinel-1 processing is faster through shared geometry across polarizations, optimized interpolation kernels, shared computation of InSAR outputs, and fewer intermediate compression steps. See the [processing optimization notes](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#processing-optimization) for details.
 
+New Lanczos and truncated sinc interpolation kernels are available for SLC coregistration in the InSAR pipeline, with Lanczos now the default. Precomputed lookup tables avoid direct evaluation of kernel weights during remapping, keeping these higher-order kernels efficient.
+
 **Upgrading from an earlier release?** Geocoding LUTs describe geometry and are shared across polarizations. They now use `lut_iw{iw}.tif` filenames. Regenerate your processing outputs, or manually rename one existing LUT per IW before reusing them with `skip_preprocessing=True`. See the [breaking changes and migration instructions](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#breaking-changes), including changes for custom preprocessing and geocoding workflows.
 
 ## Examples
