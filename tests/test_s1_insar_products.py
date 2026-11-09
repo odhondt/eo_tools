@@ -63,8 +63,8 @@ def test_products_chunk_parity(tmp_path, looks, box, filtered, magnitude):
     expected = {
         "coh": np.where(valid, coh, np.nan),
         "ifg": corr_box if filtered else corr,
-        "amp_prm": presum(abs(prm), *looks),
-        "amp_sec": presum(abs(sec), *looks),
+        "amp_prm": np.sqrt(presum(prm.real**2 + prm.imag**2, *looks)),
+        "amp_sec": np.sqrt(presum(sec.real**2 + sec.imag**2, *looks)),
     }
     for key, path in paths.items():
         with rio.open(path) as ds:
@@ -79,6 +79,7 @@ def test_products_chunk_parity(tmp_path, looks, box, filtered, magnitude):
 def test_amplitude_selection(tmp_path, role):
     """Amplitude-only requests need only the selected acquisition."""
     arr = np.arange(35, dtype="float32").reshape(5, 7).astype("complex64") * (1 + 2j)
+    arr[0, 0] = np.nan
     source = tmp_path / f"{role}.tif"
     with rio.open(
         source,
@@ -101,7 +102,9 @@ def test_amplitude_selection(tmp_path, role):
     standalone = tmp_path / "standalone.tif"
     amplitude(source, standalone, multilook=[2, 3])
     with rio.open(output) as selected, rio.open(standalone) as separate:
-        np.testing.assert_allclose(selected.read(1), presum(abs(arr), 2, 3), rtol=3e-7)
+        power = presum(arr.real**2 + arr.imag**2, 2, 3)
+        np.testing.assert_allclose(selected.read(1), np.sqrt(power), rtol=3e-7)
+        np.testing.assert_allclose(selected.read(1) ** 2, power, rtol=3e-7)
         np.testing.assert_array_equal(selected.read(1), separate.read(1))
 
 

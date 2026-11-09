@@ -1636,7 +1636,7 @@ def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:
             }
         )
         warnings.filterwarnings("ignore", category=rio.errors.NotGeoreferencedWarning)
-        log.info("Write multilooked raster: %s", Path(out_file).name)
+        log.info("Write raster: %s", Path(out_file).name)
         with rio.open(out_file, "w", **prof) as dst:
             if mlt_az > 1 or mlt_rg > 1:
                 for i in range(prof["count"]):
@@ -1646,7 +1646,7 @@ def multilook(in_file: str, out_file: str, mlt: list = [1, 1]) -> None:
 
 
 def amplitude(in_file: str, out_file: str, multilook: list = [1, 1]) -> None:
-    """Compute the amplitude of a complex-valued image.
+    """Compute amplitude as the square root of multilooked SLC power.
 
     Args:
         in_file (str): GeoTiff file of the primary SLC image
@@ -1658,8 +1658,9 @@ def amplitude(in_file: str, out_file: str, multilook: list = [1, 1]) -> None:
     with riox.open_rasterio(
         in_file, chunks={"band": 1, "y": 1024, "x": 1024}, lock=False
     ) as source:
-        log.info("Prepare multilooked amplitude")
-        amp = _multilook(abs(source.isel(band=0)), multilook)
+        log.info("Prepare amplitude")
+        slc = source.isel(band=0)
+        amp = np.sqrt(_multilook(slc.real**2 + slc.imag**2, multilook))
         _write_sar_products({out_file: amp}, source, multilook)
 
 
@@ -1728,7 +1729,8 @@ def insar_products(
     """Compute selected InSAR products in one shared, chunked execution.
 
     Opens each required SLC once and shares reads, multilooking and filtering
-    between outputs. Amplitude is the mean magnitude, not the RMS amplitude.
+    between outputs. Amplitude is the square root of multilooked SLC power,
+    without the additional coherence boxcar filter.
     The interferogram remains complex so phase can be extracted after geocoding.
 
     Args:
@@ -1783,6 +1785,12 @@ def insar_products(
             raise ValueError("Primary and secondary SLCs must share the same grid")
 
         products = {}
+        if coh_file or amp_prm_file:
+            log.info("Prepare primary power")
+            pow1 = _multilook(prm.real**2 + prm.imag**2, multilook)
+        if coh_file or amp_sec_file:
+            log.info("Prepare secondary power")
+            pow2 = _multilook(sec.real**2 + sec.imag**2, multilook)
         if paired:
             # Use primary coordinates for the coregistered pair.
             sec = sec.assign_coords(y=prm.y, x=prm.x)
@@ -1807,23 +1815,11 @@ def insar_products(
                 )
             if coh_file:
                 log.info("Prepare coherence and power normalization")
-                pow1 = _multilook(
-                    xr.apply_ufunc(
-                        np.nan_to_num, (prm * prm.conj()).real, dask="allowed"
-                    ),
-                    multilook,
-                )
-                pow2 = _multilook(
-                    xr.apply_ufunc(
-                        np.nan_to_num, (sec * sec.conj()).real, dask="allowed"
-                    ),
-                    multilook,
-                )
                 pow1_box = da.map_overlap(
-                    boxcar, pow1.data, **filter_args, dtype=pow1.dtype
+                    boxcar, da.nan_to_num(pow1.data), **filter_args, dtype=pow1.dtype
                 )
                 pow2_box = da.map_overlap(
-                    boxcar, pow2.data, **filter_args, dtype=pow2.dtype
+                    boxcar, da.nan_to_num(pow2.data), **filter_args, dtype=pow2.dtype
                 )
                 coh = corr_box / da.sqrt(pow1_box) / da.sqrt(pow2_box)
                 if magnitude:
@@ -1841,11 +1837,11 @@ def insar_products(
                     da.where(valid, coh, np.nan), dims=("y", "x")
                 )
         if amp_prm_file:
-            log.info("Prepare multilooked primary amplitude")
-            products[amp_prm_file] = _multilook(abs(prm), multilook)
+            log.info("Prepare primary amplitude")
+            products[amp_prm_file] = np.sqrt(pow1)
         if amp_sec_file:
-            log.info("Prepare multilooked secondary amplitude")
-            products[amp_sec_file] = _multilook(abs(sec), multilook)
+            log.info("Prepare secondary amplitude")
+            products[amp_sec_file] = np.sqrt(pow2)
         _write_sar_products(products, source, multilook)
 
 
@@ -1928,7 +1924,7 @@ def h_alpha_dual(
         depth=(box_az, box_rg),
     )
 
-    log.info("Prepare multilooked covariance components")
+    log.info("Prepare covariance components")
     # multilooking
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)
@@ -2062,7 +2058,7 @@ def polsar_cov_dual(
         depth=(box_az, box_rg),
     )
 
-    log.info("Prepare multilooked covariance components")
+    log.info("Prepare covariance components")
     # multilooking
     c11 = presum((vv * vv.conj()).real, mlt_az, mlt_rg)
     c22 = presum((vh * vh.conj()).real, mlt_az, mlt_rg)

@@ -32,8 +32,8 @@ output_dir = Path("/data/res") / (
 polarizations = ["vv", "vh"]
 
 # %%
-aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
-# aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
+# aoi_file = "/eo_tools/data/Morocco_tiny.geojson"
+aoi_file = "/eo_tools/data/Morocco_AOI.geojson"
 shp = gpd.read_file(aoi_file).geometry[0]
 
 process_args = dict(
@@ -76,7 +76,7 @@ logging.info("Dual-polarization InSAR outputs: %s", out_dir)
 print(f"Processing elapsed time: {elapsed:.1f} s ({elapsed / 60:.2f} min)", flush=True)
 
 # %%
-# Inspect VV and VH phase/coherence layers independently; no reference data needed.
+# Inspect all VV and VH output layers independently; no reference data needed.
 m = folium.Map()
 for pol in polarizations:
     show_cog(
@@ -86,5 +86,7 @@ for pol in polarizations:
         colormap=palette_phi(),
     )
     show_cog(str(out_dir / f"coh_{pol}.tif"), m, rescale="0,1")
+    for role in ("prm", "sec"):
+        show_cog(str(out_dir / f"amp_{role}_{pol}.tif"), m, rescale="0,1")
 LayerControl().add_to(m)
 serve_map(m)

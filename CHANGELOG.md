@@ -6,6 +6,7 @@
 - DEM coordinates and ECEF conversion are computed once per burst window and reused for both InSAR acquisitions. Terrain simulation is now a standalone core function, `simulate_terrain()`.
 - Combined secondary reramping and topographic phase removal into one correction. Matching range grids use range-index differences directly; other grids retain the previous calculation.
 - Added `insar_products()` to compute selected coherence, interferogram and amplitudes in one Dask execution, sharing chunked reads and intermediate calculations. Standalone amplitude processing is also chunked. Multilooking trims incomplete windows and preserves NaNs.
+- Corrected multilooked amplitudes to `sqrt(multilook(real**2 + imag**2))` instead of mean magnitude. InSAR reuses these multilooked powers for coherence, applying its boxcar only during coherence estimation.
 - Fixed coherence-mask discontinuities at chunk boundaries using overlap-aware erosion.
 - Temporary geocoded rasters are uncompressed GeoTIFFs without overviews; only final mosaics are compressed COGs. Standalone `sar2geo()` keeps its COG default and adds `cog=False` for temporary outputs.
 - ESD broadcasts one phase factor per azimuth row across range, reducing computation and memory use.
