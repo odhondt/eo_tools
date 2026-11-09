@@ -1,6 +1,6 @@
 # Unreleased
 
-## Processing optimization
+## Processor architecture optimization
 
 - InSAR and SLC preprocessing share geometry and geocoding LUTs across polarizations. InSAR also shares coregistration coordinates and phase corrections; SLC shares terrain normalization.
 - DEM coordinates and ECEF conversion are computed once per burst window and reused for both InSAR acquisitions. Terrain simulation is now a standalone core function, `simulate_terrain()`.
@@ -40,6 +40,11 @@ Dual-polarization InSAR against 2026.10.0: **10 bursts per polarization across t
 | **Overall processing call** | **1.98×** | **1.80×** |
 
 Bicubic matches the previous SLC kernel; geocoding uses bicubic in both cases. Single run per configuration, including JIT compilation, with cached DEMs/orbits and unflushed filesystem caches. Numba/Dask/OpenMP used four threads, BLAS one; COG writing retained all CPUs. Results depend on hardware and inputs.
+
+## Validation
+
+- Successfully retested the InSAR processor, calibration and H-alpha workflows (user report, 2026-11-09).
+- The dual-polarization InSAR test script now displays each amplitude layer using its 2nd–98th percentile range.
 
 # 2026.10.0
 
