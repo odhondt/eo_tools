@@ -2,7 +2,7 @@ import pytest
 import os
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import coregister
-from eo_tools.S1.core import load_dem_coords
+from eo_tools.S1.core import load_dem_coords, lla_to_ecef, simulate_terrain
 from eo_tools.S1.core import range_doppler
 from eo_tools.S1.core import simulate_terrain_backscatter, detect_active_shadow
 from eo_tools.S1.process import sar2geo
@@ -37,45 +37,82 @@ def test_s1iwswath_init(create_swath):
     assert swath.beta_nought == 2.370000e02
 
 
-def test_sar2geo_cog(tmp_path):
-    """COG conversion preserves float phase values."""
-    phases = np.array([[-3.0, -1.5], [0.5, 3.0]], dtype="float32")
+@pytest.mark.parametrize("mode", ["phase", "magnitude", "real", "complex"])
+@pytest.mark.parametrize("cog", [True, False])
+def test_sar2geo_cog(tmp_path, mode, cog):
+    """Temporary GeoTIFFs preserve geocoded values without COG overhead."""
+    shape = (4, 600)
+    phases = np.linspace(-3, 3, np.prod(shape), dtype="float32").reshape(shape)
+    values = (np.exp(1j * phases) * 2).astype("complex64")
+    if mode == "real":
+        values = values.real
+    values[0, 0] = np.nan
     sar_file = tmp_path / "sar.tif"
     lut_file = tmp_path / "lut.tif"
-    out_file = tmp_path / "phase.tif"
+    out_file = tmp_path / "geocoded.tif"
+    profile = dict(
+        driver="GTiff",
+        width=shape[1],
+        height=shape[0],
+        count=1,
+        dtype=values.dtype,
+        nodata=np.nan,
+        transform=Affine.identity(),
+    )
+    with rasterio.open(sar_file, "w", **profile) as dst:
+        dst.write(values, 1)
 
-    sar_profile = {
-        "driver": "GTiff",
-        "width": 2,
-        "height": 2,
-        "count": 1,
-        "dtype": "complex64",
-        "nodata": np.nan,
-        "transform": Affine.identity(),
-    }
-    with rasterio.open(sar_file, "w", **sar_profile) as dst:
-        dst.write(np.exp(1j * phases).astype("complex64"), 1)
-
-    lut_profile = {
-        "driver": "GTiff",
-        "width": 2,
-        "height": 2,
-        "count": 2,
-        "dtype": "float64",
-        "nodata": np.nan,
-        "transform": Affine.identity(),
-        "crs": "EPSG:4326",
-    }
-    rows, cols = np.indices((2, 2), dtype="float64")
-    with rasterio.open(lut_file, "w", **lut_profile) as dst:
+    transform = Affine(0.01, 0, 12, 0, -0.01, 43)
+    profile.update(
+        count=2,
+        dtype="float64",
+        transform=transform,
+        crs="EPSG:4326",
+        compress="deflate",
+    )
+    rows, cols = np.indices(shape, dtype="float64")
+    rows[-1, -1] = np.nan
+    with rasterio.open(lut_file, "w", **profile) as dst:
         dst.write(np.stack([rows, cols]))
 
-    sar2geo(sar_file, lut_file, out_file, kernel="nearest", write_phase=True)
+    # Exercise the unchanged default as well as the temporary-raster option.
+    options = {} if cog else {"cog": False}
+    sar2geo(
+        sar_file,
+        lut_file,
+        out_file,
+        kernel="nearest",
+        write_phase=mode == "phase",
+        magnitude_only=mode == "magnitude",
+        **options,
+    )
 
+    expected = values.copy()
+    expected[-1, -1] = np.nan
+    nodata = np.nan
+    if mode == "phase":
+        expected = np.angle(expected)
+        nodata = -9999
+    elif mode == "magnitude":
+        expected = abs(expected)
+        nodata = 0
+    elif mode == "real":
+        nodata = 0
+    if mode != "complex":
+        expected[np.isnan(expected)] = nodata
     with rasterio.open(out_file) as result:
-        assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
-        assert result.dtypes == ("float32",)
-        assert np.allclose(result.read(1), phases)
+        np.testing.assert_allclose(result.read(1), expected, rtol=1e-6)
+        assert result.dtypes == (expected.dtype.name,)
+        assert result.transform == transform
+        assert result.crs == rasterio.crs.CRS.from_epsg(4326)
+        np.testing.assert_equal(result.nodata, nodata)
+        if cog and mode != "complex":
+            assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
+            assert result.compression == rasterio.enums.Compression.zstd
+        elif not cog:
+            assert result.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") != "COG"
+            assert result.compression is None
+            assert result.overviews(1) == []
 
 
 def test_dem_coord_transform(tmp_path):
@@ -420,81 +457,97 @@ def test_fetch_dem_filename_uniqueness(create_swath):
         ), "Generated DEM filename for dem_name='alos-dem' is incorrect"
 
 
-def test_burst_geocoding(create_swath):
+@pytest.mark.parametrize("interpolator", ["chspline", "bary", "poly"])
+@pytest.mark.parametrize("vectors", [False, True])
+def test_geocode_coords(interpolator: str, vectors: bool) -> None:
+    """A straight orbit gives analytic indices/vectors without changing shared DEM arrays."""
+    from datetime import datetime, timezone
+
+    swath = object.__new__(S1IWSwath)
+    swath.min_burst = swath.max_burst = 1
+    swath.lines_per_burst = 10
+    swath.samples_per_burst = 20
+    swath.meta = {
+        "product": {
+            "imageAnnotation": {
+                "imageInformation": {
+                    "azimuthTimeInterval": 1,
+                    "slantRangeTime": 0,
+                }
+            },
+            "generalAnnotation": {
+                "productInformation": {"rangeSamplingRate": 299792458 / 2}
+            },
+            "swathTiming": {
+                "burstList": {"burst": [{"azimuthTime": "2026-01-01T00:00:00+00:00"}]}
+            },
+        }
+    }
+    times = np.arange(10, dtype=float)
+    swath.state_vectors = dict(
+        t0=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        t=times,
+        x=1000000 + times - 5,
+        y=np.zeros_like(times),
+        z=np.full_like(times, 10),
+        vx=np.ones_like(times),
+        vy=np.zeros_like(times),
+        vz=np.zeros_like(times),
+    )
+    dem_x = 1000000 + np.array([[-1.0, 0.0], [20.0, 1.0]])
+    dem_y = np.array([[0.0, 1.0], [0.0, 30.0]])
+    dem_z = np.zeros((2, 2))
+    original = [a.copy() for a in (dem_x, dem_y, dem_z)]
+
+    result = swath.geocode_burst(
+        dem_x, dem_y, dem_z, return_vectors=vectors, orbit_interpolator=interpolator
+    )
+
+    assert len(result) == (5 if vectors else 2)
+    np.testing.assert_allclose(result[0][0], [4, 5], atol=1e-7)
+    np.testing.assert_allclose(result[1][0], [10, np.sqrt(101)], atol=1e-7)
+    if vectors:
+        for actual, expected in zip(result[2:], [[0, 0], [0, 1], [-10, -10]]):
+            np.testing.assert_allclose(actual[0], expected, atol=1e-7)
+    for array in result:
+        assert array.shape == dem_x.shape
+        assert np.isnan(array[1]).all()
+    for actual, expected in zip((dem_x, dem_y, dem_z), original):
+        np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("interpolator", ["chspline", "bary", "poly"])
+def test_burst_geocoding(create_swath, interpolator: str) -> None:
     swath = create_swath
     dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
-    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file, burst_idx=3, dem_upsampling=dem_upsampling, simulate_terrain=True
-    )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
-    )
-
-    assert (
-        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
-    )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
-    assert gamma_t.shape == raster_shape
-
-
-def test_burst_geocoding_bary(create_swath):
-    swath = create_swath
-    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
-    raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file,
+    lat, lon, alt, _, composite_crs = load_dem_coords(dem_file, 0.1)
+    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+    geometry = swath.geocode_burst(
+        dem_x,
+        dem_y,
+        dem_z,
         burst_idx=3,
-        dem_upsampling=dem_upsampling,
-        simulate_terrain=True,
-        orbit_interpolator="bary",
+        return_vectors=True,
+        orbit_interpolator=interpolator,
     )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
-    )
-
-    assert (
-        np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
-    )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
-    assert gamma_t.shape == raster_shape
-
-def test_burst_geocoding_poly(create_swath):
-    swath = create_swath
-    dem_file = swath.fetch_dem_burst(burst_idx=3, force_download=True)
-    arr = riox.open_rasterio(dem_file)
-    dem_shape = arr[0].shape
+    az, rg = geometry[:2]
     raster_shape = (swath.lines_per_burst, swath.samples_per_burst)
-    dem_upsampling = 0.1
-    az, rg, gamma_t = swath.geocode_burst(
-        dem_file,
-        burst_idx=3,
-        dem_upsampling=dem_upsampling,
-        simulate_terrain=True,
-        orbit_interpolator="poly",
-    )
-
-    out_shape = (
-        int(dem_shape[0] * dem_upsampling),
-        int(dem_shape[1] * dem_upsampling),
+    gamma_t = simulate_terrain(
+        lat,
+        lon,
+        composite_crs,
+        dem_x,
+        dem_y,
+        dem_z,
+        *geometry,
+        sar_shape=raster_shape,
     )
 
     assert (
         np.isfinite(az).any() and np.isfinite(rg).any() and np.isfinite(gamma_t).any()
     )
-    assert (az.shape == out_shape) and (rg.shape == out_shape)
+    assert az.shape == alt.shape and rg.shape == alt.shape
     assert gamma_t.shape == raster_shape
-
 
 
 def test_burst_deramping(create_swath):

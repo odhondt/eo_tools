@@ -12,6 +12,7 @@ from eo_tools.S1.process import (
     polsar_cov_dual,
 )
 import geopandas as gpd
+from shapely.geometry import box
 import multiprocessing
 import rasterio as rio
 import rioxarray
@@ -20,7 +21,7 @@ from tempfile import NamedTemporaryFile
 from eo_tools.S1.process import multilook
 from eo_tools.S1.process import goldstein
 import tempfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 multiprocessing.set_start_method("forkserver", force=True)
 import warnings
@@ -354,3 +355,286 @@ def test_polsar_cov_dual(create_polsar_data):
     assert c22.dtype == "float32"
     assert c12r.dtype == "float32"
     assert c12i.dtype == "float32"
+
+
+@pytest.mark.parametrize("kind", ["insar", "slc"])
+@pytest.mark.parametrize("pol", ["full", ["vv", "vh"], "VV"])
+@pytest.mark.parametrize("skip", [False, True])
+def test_prepare_outputs(tmp_path, pol: str | list[str], skip: bool, kind: str) -> None:
+    """Preparation batches channels per IW and exposes the shared LUT filenames."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from eo_tools.S1.process import prepare_insar, prepare_slc
+
+    primary_path, secondary_path = tmp_path / "primary", tmp_path / "secondary"
+    primary_path.mkdir()
+    secondary_path.mkdir()
+    geometry = gpd.GeoDataFrame(
+        {"burst": [1, 2], "subswath": ["IW1", "IW2"]},
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs="EPSG:4326",
+    )
+    primary = SimpleNamespace(
+        polarizations=["VV", "VH"],
+        scanMetadata=lambda: {"orbitNumber_rel": 42, "start": "20230904T063730"},
+    )
+    secondary = SimpleNamespace(
+        scanMetadata=lambda: {"orbitNumber_rel": 42, "start": "20230916T063730"}
+    )
+
+    def preprocess(*args, **kwargs) -> None:
+        output_dir = args[-1]
+        for p in kwargs["pol"]:
+            roles = ["primary", "secondary"] if kind == "insar" else ["slc"]
+            for role in roles:
+                (Path(output_dir) / f"{role}_{p}.tif").touch()
+        (Path(output_dir) / "lut.tif").touch()
+
+    with (
+        patch("eo_tools.S1.process.get_burst_geometry", return_value=geometry),
+        patch(
+            "eo_tools.S1.process.identify_safe_product",
+            side_effect=[primary, secondary] if kind == "insar" else [primary],
+        ),
+        patch(
+            f"eo_tools.S1.process.preprocess_{kind}_iw", side_effect=preprocess
+        ) as prepare,
+    ):
+        prepare_func = prepare_insar if kind == "insar" else prepare_slc
+        paths = [str(primary_path)]
+        if kind == "insar":
+            paths.append(str(secondary_path))
+        out_dir = Path(
+            prepare_func(
+                *paths,
+                str(tmp_path),
+                pol=pol,
+                subswaths=["IW1", "IW2"],
+                skip_preprocessing=skip,
+            )
+        )
+
+    assert prepare.call_count == (0 if skip else 2)
+    if skip:
+        return
+    polarizations = ["vv"] if pol == "VV" else ["vv", "vh"]
+    assert [call.kwargs["iw"] for call in prepare.call_args_list] == [1, 2]
+    for call in prepare.call_args_list:
+        assert call.kwargs["pol"] == polarizations
+    expected = {f"lut_iw{iw}.tif" for iw in [1, 2]}
+    prefixes = ["slc_prm", "slc_sec"] if kind == "insar" else ["slc"]
+    expected.update(
+        f"{prefix}_{p}_iw{iw}.tif"
+        for iw in [1, 2]
+        for p in polarizations
+        for prefix in prefixes
+    )
+    assert {path.name for path in out_dir.iterdir()} == expected
+
+
+@pytest.mark.parametrize("shared", [True, False])
+def test_geocode_iw_lut(tmp_path, monkeypatch, shared: bool) -> None:
+    """Geocoding requires a shared IW LUT and rejects legacy channel LUTs."""
+    from eo_tools.S1.process import geocode_and_merge_iw
+
+    sar_dir = tmp_path / "sar"
+    sar_dir.mkdir()
+    rows, cols = np.indices((4, 4), dtype=float)
+    profile = dict(
+        driver="GTiff",
+        width=4,
+        height=4,
+        count=1,
+        dtype="float32",
+        transform=Affine.identity(),
+        nodata=np.nan,
+    )
+    for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
+        with rio.open(sar_dir / f"{name}_iw1.tif", "w", **profile) as dst:
+            dst.write(np.full((4, 4), value, dtype=np.float32), 1)
+    profile.update(
+        count=2, dtype="float64", crs="EPSG:4326", transform=Affine(1, 0, 0, 0, -1, 4)
+    )
+    names = ["lut_iw1"] if shared else ["lut_vv_iw1", "lut_vh_iw1"]
+    for name in names:
+        with rio.open(sar_dir / f"{name}.tif", "w", **profile) as dst:
+            dst.write(np.stack([rows, cols]))
+
+    if not shared:
+        with pytest.raises(FileNotFoundError, match="lut_iw1.tif"):
+            geocode_and_merge_iw(str(tmp_path), ["amp"], subswaths=["IW1"])
+        return
+
+    # Retain intermediate rasters to inspect their storage and values.
+    monkeypatch.setattr("eo_tools.S1.process.remove", lambda path: None)
+    geocode_and_merge_iw(
+        str(tmp_path), ["amp", "H"], subswaths=["IW1"], warp_kernel="nearest"
+    )
+
+    for name, value in [("amp_vv", 2), ("amp_vh", 3), ("H", 4)]:
+        with rio.open(tmp_path / f"{name}.tif") as result:
+            np.testing.assert_array_equal(result.read(1), np.full((4, 4), value))
+            assert result.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
+            assert result.compression == rio.enums.Compression.zstd
+        with rio.open(sar_dir / f"{name}_iw1_geo.tif") as intermediate:
+            np.testing.assert_array_equal(intermediate.read(1), np.full((4, 4), value))
+            assert intermediate.compression is None
+            assert intermediate.overviews(1) == []
+            assert intermediate.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") != "COG"
+
+
+@pytest.mark.parametrize("cal_type", ["beta", "sigma", "terrain"])
+@pytest.mark.parametrize("burst_count", [1, 2])
+def test_slc_channels(tmp_path, cal_type: str, burst_count: int) -> None:
+    """Reuse burst geometry and terrain factors while retaining channel masks."""
+    from types import SimpleNamespace
+
+    from eo_tools.S1.process import preprocess_slc_iw
+
+    rows, cols = np.indices((4, 4), dtype=float)
+    gamma = np.full((4, 4), 4.0)
+    gamma[0, 0] = np.nan
+    image = np.full((4, 4), 2 + 3j, dtype=np.complex64)
+    vh_image = image.copy()
+    vh_image[2, 2] = np.nan
+    geometry = gpd.GeoDataFrame(
+        {"burst": range(1, burst_count + 1)},
+        geometry=[box(0, 4 * i, 4, 4 * (i + 1)) for i in range(burst_count)],
+        crs="EPSG:4326",
+    )
+    dem = tmp_path / "dem.tif"
+    with rio.open(
+        dem,
+        "w",
+        driver="GTiff",
+        width=4,
+        height=4 * burst_count,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=Affine(1, 0, 0, 0, -1, 4 * burst_count),
+    ) as dst:
+        dst.write(np.zeros((4 * burst_count, 4), dtype=np.float32), 1)
+
+    def geocode(*args, **kwargs) -> tuple:
+        coordinates = (rows.copy(), cols.copy())
+        return (
+            (*coordinates, rows.copy(), cols.copy(), rows.copy())
+            if kwargs.get("return_vectors")
+            else coordinates
+        )
+
+    primary = SimpleNamespace(
+        is_partial=False,
+        min_burst=1,
+        max_burst=burst_count,
+        burst_count=burst_count,
+        lines_per_burst=4,
+        samples_per_burst=4,
+        gdf_burst_geom=geometry,
+        fetch_dem=Mock(return_value=str(dem)),
+        geocode_burst=Mock(side_effect=geocode),
+        compute_burst_overlap=lambda *args, **kwargs: 0,
+        compute_burst_offset=lambda burst_idx, min_burst: 4 * (burst_idx - min_burst),
+        read_burst=lambda *args: image.copy(),
+        calibration_factor=Mock(return_value=2),
+    )
+    secondary = SimpleNamespace(**vars(primary))
+    secondary.geocode_burst = Mock(side_effect=geocode)
+    secondary.read_burst = lambda *args: vh_image.copy()
+    secondary.calibration_factor = Mock(return_value=4)
+    with (
+        patch("eo_tools.S1.process.S1IWSwath", side_effect=[primary, secondary]),
+        patch(
+            "eo_tools.S1.process.load_dem_coords",
+            return_value=(rows, cols, gamma, {}, "EPSG:4326"),
+        ) as load,
+        patch(
+            "eo_tools.S1.process.lla_to_ecef", return_value=(rows, cols, gamma)
+        ) as ecef,
+        patch("eo_tools.S1.process.simulate_terrain", return_value=gamma) as terrain,
+    ):
+        preprocess_slc_iw(
+            "product",
+            str(tmp_path),
+            pol=["vv", "vh"],
+            cal_type=cal_type,
+            dem_buffer_arc_sec=0,
+        )
+
+    assert load.call_count == burst_count
+    assert ecef.call_count == burst_count
+    assert terrain.call_count == (burst_count if cal_type == "terrain" else 0)
+    assert primary.fetch_dem.call_count == 1
+    assert primary.geocode_burst.call_count == burst_count
+    secondary.geocode_burst.assert_not_called()
+    assert (tmp_path / "lut.tif").is_file()
+    for p, source, factor, swath in [
+        ("vv", image, 2, primary),
+        ("vh", vh_image, 4, secondary),
+    ]:
+        expected = source / factor
+        if cal_type == "terrain":
+            expected /= np.sqrt(gamma)
+        assert swath.calibration_factor.call_count == burst_count
+        assert swath.calibration_factor.call_args.kwargs["cal_type"] == (
+            "beta" if cal_type == "terrain" else cal_type
+        )
+        with rio.open(tmp_path / f"slc_{p}.tif") as result:
+            np.testing.assert_allclose(
+                result.read(1), np.tile(expected, (burst_count, 1))
+            )
+
+
+@pytest.mark.parametrize("field", [None, "frequency", "sampling", "origin", "samples"])
+def test_phase_grid(field: str | None) -> None:
+    """Even a one-ULP metadata difference selects the absolute-phase fallback."""
+    from copy import deepcopy
+
+    from eo_tools.S1.core import S1IWSwath
+    from eo_tools.S1.process import _phase_scale
+
+    primary = object.__new__(S1IWSwath)
+    primary.samples_per_burst = 16
+    primary.meta = {
+        "product": {
+            "imageAnnotation": {
+                "imageInformation": {"slantRangeTime": "0.005334431164884956"}
+            },
+            "generalAnnotation": {
+                "productInformation": {
+                    "radarFrequency": "5405000454.33435",
+                    "rangeSamplingRate": "64345238.12571428",
+                }
+            },
+        }
+    }
+    secondary = deepcopy(primary)
+    if field == "samples":
+        secondary.samples_per_burst += 1
+    elif field is not None:
+        product = secondary.meta["product"]
+        if field == "origin":
+            metadata, key = (
+                product["imageAnnotation"]["imageInformation"],
+                "slantRangeTime",
+            )
+        else:
+            metadata = product["generalAnnotation"]["productInformation"]
+            key = {"frequency": "radarFrequency", "sampling": "rangeSamplingRate"}[
+                field
+            ]
+        metadata[key] = np.nextafter(float(metadata[key]), np.inf)
+
+    scale = _phase_scale(primary, secondary)
+
+    if field is not None:
+        assert scale is None
+        return
+    # The coefficient reproduces the phase slope without the large range origin.
+    np.testing.assert_allclose(
+        scale,
+        primary.phi_topo(np.array([1.0]))[0] - primary.phi_topo(np.array([0.0]))[0],
+        rtol=1e-10,
+    )

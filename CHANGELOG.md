@@ -1,3 +1,46 @@
+# Unreleased
+
+## Processing optimization
+
+- InSAR and SLC preprocessing share geometry and geocoding LUTs across polarizations. InSAR also shares coregistration coordinates and phase corrections; SLC shares terrain normalization.
+- DEM coordinates and ECEF conversion are computed once per burst window and reused for both InSAR acquisitions. Terrain simulation is now a standalone core function, `simulate_terrain()`.
+- Combined secondary reramping and topographic phase removal into one correction. Matching range grids use range-index differences directly; other grids retain the previous calculation.
+- Added `insar_products()` to compute selected coherence, interferogram and amplitudes in one Dask execution, sharing chunked reads and intermediate calculations. Standalone amplitude processing is also chunked. Multilooking trims incomplete windows and preserves NaNs.
+- Corrected multilooked amplitudes to `sqrt(multilook(real**2 + imag**2))` instead of mean magnitude. InSAR reuses these multilooked powers for coherence, applying its boxcar only during coherence estimation.
+- Fixed coherence-mask discontinuities at chunk boundaries using overlap-aware erosion.
+- Temporary geocoded rasters are uncompressed GeoTIFFs without overviews; only final mosaics are compressed COGs. Standalone `sar2geo()` keeps its COG default and adds `cog=False` for temporary outputs.
+- ESD broadcasts one phase factor per azimuth row across range, reducing computation and memory use.
+- Core diagnostics now use DEBUG. Processor INFO logs show the processing stages, including reads, calibration, DEM/ECEF conversion and output writing.
+
+### Breaking changes
+
+Processor APIs can be used as before. InSAR now defaults to Lanczos for more accurate SLC coregistration resampling; use `warp_kernel_slc="bicubic"` in `process_insar()` to retain the previous kernel. Breaking changes affect intermediate filenames and low-level preprocessing/geocoding calls:
+
+- **Shared LUT names:** preparation writes `sar/lut_iw{iw}.tif`, without polarization. Regenerate outputs with `skip_preprocessing=False`, or rename one existing LUT per IW (e.g. `lut_vv_iw1.tif` to `lut_iw1.tif`) before using `skip_preprocessing=True`. Legacy LUT names are no longer accepted.
+- **Direct preprocessing outputs:** `preprocess_insar_iw()` writes `primary_{pol}.tif` and `secondary_{pol}.tif`; `preprocess_slc_iw()` writes `slc_{pol}.tif`, including single-polarization calls. Both keep one shared `lut.tif`. Update custom readers accordingly.
+- **Core geocoding:** `S1IWSwath.geocode_burst()` takes `dem_x`, `dem_y`, `dem_z` arrays instead of a DEM filename. Prepare them with `load_dem_coords()` and `lla_to_ecef()`. DEM upsampling belongs in `load_dem_coords()`. For terrain simulation, request `return_vectors=True` and pass the returned geometry to standalone `simulate_terrain()`; the old `dem_upsampling` and `simulate_terrain` arguments are removed.
+
+## Resampling improvements
+
+- Added normalized truncated sinc and Lanczos kernels. Lanczos uses radius six (12 taps) and is the default for secondary SLC alignment in `process_insar()`, `prepare_insar()`, `preprocess_insar_iw()` and `align()`.
+- `process_insar(warp_kernel_slc=...)` controls SLC resampling independently of geocoding's `warp_kernel`, which still defaults to bicubic. Deramping phase is always resampled with bicubic.
+- Optimized `remap()` using separable interpolation and shared weights, preserving real/complex input dtype. Cached lookup tables accelerate sinc and Lanczos weight evaluation; NaNs propagate through the interpolation stencil.
+- One-burst IW1/VV benchmark, four threads after JIT warm-up: **2.7×** faster bicubic, **36.5×** sinc and **53.7×** Lanczos versus each kernel's original implementation. These measure resampling alone.
+- Added numerical tests and benchmark scripts for accuracy, dtype preservation, NaN coverage and runtime.
+
+## Benchmark
+
+Dual-polarization InSAR against 2026.10.0: **10 bursts per polarization across two subswaths** (six in IW1, four in IW2), using zipped products, ESD, burst stitching and all eight final outputs.
+
+| Stage | Bicubic speedup | New Lanczos default speedup |
+| --- | --- | --- |
+| Preprocessing, including ESD and stitching | 2.12× | 1.85× |
+| Interferometry and amplitudes | 1.74× | 1.77× |
+| Geocoding and merging | 1.59× | 1.64× |
+| **Overall processing call** | **1.98×** | **1.80×** |
+
+Bicubic matches the previous SLC kernel; geocoding uses bicubic in both cases. Single run per configuration, including JIT compilation, with cached DEMs/orbits and unflushed filesystem caches. Numba/Dask/OpenMP used four threads, BLAS one; COG writing retained all CPUs. Results depend on hardware and inputs.
+
 # 2026.10.0
 
 ## Bugfixes and improvements

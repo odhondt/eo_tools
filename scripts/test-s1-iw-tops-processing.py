@@ -2,6 +2,7 @@
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("eo_tools.S1.core").setLevel(logging.DEBUG)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 # logging.getLogger("numexpr").setLevel(logging.WARNING)
 
@@ -83,8 +84,8 @@ preprocess_insar_iw(
 # %%
 from eo_tools.S1.process import sar2geo, coherence, amplitude
 
-prm_file = f"{out_dir}/primary.tif"
-sec_file = f"{out_dir}/secondary.tif"
+prm_file = f"{out_dir}/primary_{pol}.tif"
+sec_file = f"{out_dir}/secondary_{pol}.tif"
 amp_file = f"{out_dir}/amp.tif"
 coh_file = f"{out_dir}/coh.tif"
 phi_geo_file = f"{out_dir}/phi_geo.tif"

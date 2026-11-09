@@ -191,7 +191,7 @@ class S1IWSwath:
             self.min_burst = int(self.partial_subset["min_burst"])
             self.max_burst = int(self.partial_subset["max_burst"])
             self.raster_line_offset = int(self.partial_subset["line_start"])
-            log.info(
+            log.debug(
                 "Partial product detected for IW%s/%s: available bursts %s to %s.",
                 iw,
                 pol,
@@ -218,11 +218,11 @@ class S1IWSwath:
         if self.gdf_burst_geom.empty:
             raise RuntimeError("Invalid product: no burst geometry was found.")
 
-        log.info(f"S1IWSwath Initialization:")
-        log.info(f"- Read metadata file {pth_xml}")
-        log.info(f"- Read calibration file {pth_cal}")
-        log.info(f"- Set up raster path {self.pth_tiff}")
-        log.info(f"- Look for available OSV (Orbit State Vectors)")
+        log.debug(f"S1IWSwath Initialization:")
+        log.debug(f"- Read metadata file {pth_xml}")
+        log.debug(f"- Read calibration file {pth_cal}")
+        log.debug(f"- Set up raster path {self.pth_tiff}")
+        log.debug(f"- Look for available OSV (Orbit State Vectors)")
 
         # read state vectors (orbit)
         product = identify_safe_product(safe_path, self.is_partial)
@@ -231,9 +231,9 @@ class S1IWSwath:
             raise RuntimeError("No orbit file available for this product")
 
         if "POEORB" in zip_orb:
-            log.info("-- Precise orbit found")
+            log.debug("Precise orbit found")
         elif "RESORB" in zip_orb:
-            log.info("-- Restituted orbit found")
+            log.debug("Restituted orbit found")
         else:
             raise RuntimeError("Unknown orbit file")
 
@@ -332,7 +332,7 @@ class S1IWSwath:
                 ds.update_tags(COMPOSITE_CRS=composite_crs)
 
         else:
-            log.info("--DEM already on disk")
+            log.debug("DEM already on disk")
 
         return dem_file
 
@@ -371,29 +371,35 @@ class S1IWSwath:
 
     def geocode_burst(
         self,
-        dem_file,
-        burst_idx=1,
-        dem_upsampling=1,
-        simulate_terrain=False,
-        orbit_interpolator="chspline",
-    ):
-        """Computes azimuth-range lookup tables for each pixel of the DEM by solving the Range Doppler equations.
+        dem_x: np.ndarray,
+        dem_y: np.ndarray,
+        dem_z: np.ndarray,
+        burst_idx: int = 1,
+        return_vectors: bool = False,
+        orbit_interpolator: str = "chspline",
+    ) -> tuple[np.ndarray, ...]:
+        """Solve Range-Doppler geometry for prepared DEM coordinates.
 
         Args:
-            dem_file (str): path to the DEM
-            burst_idx (int, optional): Burst index. Defaults to 1.
-            dem_upsampling (int, optional): DEM upsampling to increase the resolution of the geocoded image. Defaults to 2.
-            simulate_terrain (bool): terrain backscatter simulation in the SAR geometry which can be used for terrain flattening.
-            orbit_interpolator (str): interpolation method. Possible values are 'chspline' (cubic Hermit splines), 'bary' (Barycentric Lagrange polynomials), 'poly' (simple polynomial). Default to 'chspline'.
+            dem_x: Absolute ECEF x coordinates on a two-dimensional DEM grid.
+            dem_y: Absolute ECEF y coordinates on the same grid.
+            dem_z: Absolute ECEF z coordinates on the same grid.
+            burst_idx: Original burst index. Defaults to 1.
+            return_vectors: Also return the satellite-to-terrain displacement
+                components dx, dy, dz used by terrain simulation. Defaults to False.
+            orbit_interpolator: Orbit interpolation method: "chspline", "bary",
+                or "poly". Defaults to "chspline".
 
         Returns:
-            (array, array, dict, optional array): azimuth and slant range indices. Arrays have the shape of the DEM. Also returns the rasterio profile of the DEM as a dict. If simulate_terrain is set to True, returns gamma_t, the simulated terrain backscatter of the burst in the SAR geometry.
+            Azimuth and range indices with the DEM grid shape. If return_vectors
+            is True, also returns dx, dy, dz with the same shape. Indices and
+            vectors outside the burst are masked with NaN.
         """
 
         self._validate_available_burst(burst_idx)
 
-        if dem_upsampling < 0:
-            raise ValueError("dem_upsampling must be > 0")
+        if dem_x.ndim != 2 or dem_x.shape != dem_y.shape or dem_x.shape != dem_z.shape:
+            raise ValueError("DEM ECEF coordinates must share a two-dimensional shape")
 
         if orbit_interpolator not in ["chspline", "bary", "poly"]:
             raise ValueError(
@@ -413,21 +419,6 @@ class S1IWSwath:
         burst_info = meta["product"]["swathTiming"]
         burst = burst_info["burstList"]["burst"][burst_idx - 1]
         az_time = burst["azimuthTime"]
-
-        # state vectors
-        # orbit_list = meta["product"]["generalAnnotation"]["orbitList"]
-        # state_vectors = orbit_list["orbit"]
-
-        if dem_upsampling != 1:
-            log.info("Resample DEM and extract coordinates")
-        else:
-            log.info("Extract DEM coordinates")
-        lat, lon, alt, dem_prof, composite_crs = load_dem_coords(
-            dem_file, dem_upsampling
-        )
-
-        log.info("Convert latitude, longitude & altitude to ECEF x, y & z")
-        dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
 
         tt0 = self.state_vectors["t0"]
         t0_az = (isoparse(az_time) - tt0).total_seconds()
@@ -452,34 +443,22 @@ class S1IWSwath:
         elif orbit_interpolator == "poly":
             interp_pos, interp_vel = sv_interpolator_poly(state_vectors)
 
-        log.info("Interpolate orbit")
+        log.debug("Interpolate orbit")
         t_arr = np.linspace(t0_az, t0_az + dt_az * (naz - 1), naz)
         pos = interp_pos(t_arr)
         vel = interp_vel(t_arr)
 
-        log.info("Range-Doppler terrain correction (LUT computation)")
-        if simulate_terrain:
-            az_geo, dist_geo, dx, dy, dz = range_doppler(
-                # Removing first pos to get more precision. Is this useful?
-                dem_x.ravel() - pos[0, 0],
-                dem_y.ravel() - pos[0, 1],
-                dem_z.ravel() - pos[0, 2],
-                pos - pos[0],
-                vel,
-                tol=1e-8,
-                maxiter=10000,
-            )
-        else:
-            az_geo, dist_geo, _, _, _ = range_doppler(
-                # Removing first pos to get more precision. Is this useful?
-                dem_x.ravel() - pos[0, 0],
-                dem_y.ravel() - pos[0, 1],
-                dem_z.ravel() - pos[0, 2],
-                pos - pos[0],
-                vel,
-                tol=1e-8,
-                maxiter=10000,
-            )
+        log.debug("Range-Doppler terrain correction (LUT computation)")
+        az_geo, dist_geo, dx, dy, dz = range_doppler(
+            # Translate both DEM and orbit coordinates by the same origin.
+            dem_x.ravel() - pos[0, 0],
+            dem_y.ravel() - pos[0, 1],
+            dem_z.ravel() - pos[0, 2],
+            pos - pos[0],
+            vel,
+            tol=1e-8,
+            maxiter=10000,
+        )
 
         # convert range - azimuth to pixel indices
         c0 = 299792458.0
@@ -495,42 +474,21 @@ class S1IWSwath:
         az_geo[~valid] = np.nan
 
         # reshape to DEM dimensions
-        rg_geo = rg_geo.reshape(alt.shape)
-        az_geo = az_geo.reshape(alt.shape)
+        rg_geo = rg_geo.reshape(dem_x.shape)
+        az_geo = az_geo.reshape(dem_x.shape)
 
-        if simulate_terrain:
+        if return_vectors:
             dx[~valid] = np.nan
             dy[~valid] = np.nan
             dz[~valid] = np.nan
-
-            # reshape to DEM dimensions
-            dx = dx.reshape(alt.shape)
-            dy = dy.reshape(alt.shape)
-            dz = dz.reshape(alt.shape)
-
-            # finding occluded shadow pixels
-            log.info("Shadow detection")
-            # compute ero altitude coordinates (use DEM reference height)
-            dem_xg, dem_yg, dem_zg = lla_to_ecef(
-                lat,
-                lon,
-                np.zeros_like(lat),
-                composite_crs,
+            return (
+                az_geo,
+                rg_geo,
+                dx.reshape(dem_x.shape),
+                dy.reshape(dem_x.shape),
+                dz.reshape(dem_x.shape),
             )
-
-            shadow_mask = detect_active_shadow(
-                az_geo, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
-            )
-
-            # simulating terrain backscatter
-            log.info("Terrain simulation")
-            gamma_t = simulate_terrain_backscatter(
-                naz, nrg, az_geo, rg_geo, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
-            )
-
-            return az_geo, rg_geo, gamma_t
-        else:
-            return az_geo, rg_geo
+        return az_geo, rg_geo
 
     def deramp_burst(self, burst_idx=1):
         """Computes the azimuth deramping phase using product metadata.
@@ -549,7 +507,7 @@ class S1IWSwath:
         meta_general = meta["product"]["generalAnnotation"]
         meta_burst = meta["product"]["swathTiming"]["burstList"]["burst"][burst_idx - 1]
 
-        log.info("Compute TOPS deramping phase")
+        log.debug("Compute TOPS deramping phase")
 
         c0 = 299792458.0
         # lines_per_burst = int(meta["product"]["swathTiming"]["linesPerBurst"])
@@ -654,7 +612,7 @@ class S1IWSwath:
         grid_sigma = np.zeros((len(self.calvec), len(cols)), dtype="float64")
         list_lines = []
 
-        log.info(f"Compute {cal_type} nought calibration factor.")
+        log.debug(f"Compute {cal_type} nought calibration factor.")
         # interpolate values on image grid
         if cal_type == "sigma":
             for i, it in enumerate(self.calvec):
@@ -744,7 +702,7 @@ class S1IWSwath:
         product_info = meta["product"]["generalAnnotation"]["productInformation"]
         range_sampling_rate = product_info["rangeSamplingRate"]
 
-        log.info("Compute topographic phase")
+        log.debug("Compute topographic phase")
 
         freq = float(product_info["radarFrequency"])
         c0 = 299792458.0
@@ -848,7 +806,7 @@ def coregister(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g):
     Returns:
         (array, array): az_co and rg_co are azimuth range of the secondary expressed in the primary geometry
     """
-    log.info("Project secondary coordinates to primary grid.")
+    log.debug("Project secondary coordinates to primary grid.")
     return coreg_fast(arr_p, az_p2g, rg_p2g, az_s2g, rg_s2g)
 
 
@@ -914,19 +872,24 @@ def coreg_fast(arr_p, azp, rgp, azs, rgs):
     return az_s2p, rg_s2p
 
 
-def align(arr_s, az_s2p, rg_s2p, kernel="bicubic"):
+def align(arr_s, az_s2p, rg_s2p, kernel="lanczos"):
     """Aligns the secondary image to the geometry of the primary
 
     Args:
         arr_s (array): image in the secondary geometry
         az_s2p (array): azimuth lookup table to project secondary to primary
         rg_s2p (array): range lookup table project secondary to primary
-        kernel (str, optional): Type of kernel (values are "nearest", "bilinear", "bicubic" -- 4 point bicubic, "bicubic6" -- six point bicubic). Defaults to "bicubic".
+        kernel (str, optional): SLC interpolation kernel: "nearest", "bilinear",
+            "bicubic" (four-point), "bicubic6" (six-point), "sinc", or
+            "lanczos" (radius six). Defaults to "lanczos". Use bicubic or a
+            higher-order kernel for SLC warping; nearest and bilinear are not
+            recommended. For deramping phase warping, explicitly pass
+            kernel="bicubic".
 
     Returns:
         array: projected image
     """
-    log.info("Warp secondary to primary geometry.")
+    log.debug("Resample secondary to primary geometry (%s)", kernel)
     return remap(arr_s, az_s2p, rg_s2p, kernel)
 
 
@@ -941,7 +904,7 @@ def resample(
         out_file (str): output file
         az_p2g (array): azimuth coordinates of the lookup table
         rg_p2g (array): range coordinates of the lookup table
-        kernel (str): kernel used to align secondary SLC. Possible values are "nearest", "bilinear", "bicubic" and "bicubic6".Defaults to "bilinear".
+        kernel (str): Geocoding kernel: "nearest", "bilinear", "bicubic", "bicubic6", "sinc", or "lanczos". Defaults to "bicubic".
         write_phase (bool): writes the array's phase . Defaults to False.
     """
     # retrieve dem profile
@@ -957,12 +920,15 @@ def resample(
         )
 
     out_prof.update({"width": dst_width, "height": dst_height, "transform": dst_trans})
+    if not out_prof.get("tiled", False):
+        out_prof.pop("blockxsize", None)
+        out_prof.pop("blockysize", None)
 
-    log.info("Warp to match DEM geometry")
+    log.debug("Project raster to geographic grid (%s)", kernel)
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
     # TODO: enforce COG
-    log.info("Write output GeoTIFF")
+    log.debug("Write output GeoTIFF")
     if write_phase:
         phi = np.angle(wped)
         nodata = -9999
@@ -984,7 +950,7 @@ def resample(
                 dst.write(wped, 1)
 
 
-def fast_esd(ifgs, overlap):
+def fast_esd(ifgs: list[np.ndarray], overlap: int) -> None:
     """Applies an in-place phase correction to burst (complex) interferograms to mitigate phase jumps between the bursts.
     Args:
         ifgs (list): List of complex SLC interferograms
@@ -1004,16 +970,16 @@ def fast_esd(ifgs, overlap):
         # nodataval = np.nan + 1j * np.nan
         phase_diffs = []
         for i in range(len(ifgs) - 1):
-            log.info(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
+            log.debug(f"Compute cross interferogram {i+1} / {len(ifgs) - 1}")
             cross = ifgs[i][-overlap:] * ifgs[i + 1][:overlap].conj()
             phi_clx = cross[~np.isnan(cross)]
             phase_diffs.append(np.angle(phi_clx.mean()))
 
-        naz, nrg = ifgs[0].shape
+        naz = ifgs[0].shape[0]
         x = np.arange(naz)
         xdown, xup = overlap / 2, naz - 1 - overlap / 2
 
-        def make_ramp(idx):
+        def make_ramp(idx: int) -> np.ndarray:
             if idx == 0:
                 ydown, yup = -phase_diffs[idx] / 2, phase_diffs[idx] / 2
             elif idx == len(ifgs) - 1:
@@ -1023,13 +989,12 @@ def fast_esd(ifgs, overlap):
             slope = (yup - ydown) / (xup - xdown)
             off = ydown - slope * xdown
             ramp = slope * x + off
-            return np.exp(-1j * (ramp[:, None] + np.zeros((nrg))))
+            return np.exp(-1j * ramp)
 
         # TODO: improve by downweighting points far from mid overlap ?
-        naz, nrg = ifgs[0].shape
         for i, ifg in enumerate(ifgs):
-            log.info(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
-            esd_ramp = make_ramp(i).astype(np.complex64)
+            log.debug(f"Apply ESD to interferogram {i+1} / {len(ifgs)}")
+            esd_ramp = make_ramp(i).astype(np.complex64)[:, None]
             ifg *= esd_ramp
 
 
@@ -1055,7 +1020,7 @@ def stitch_bursts(bursts, overlap):
     else:
         raise ValueError("Empty burst list")
 
-    log.info("Stitch bursts to make a continuous image")
+    log.debug("Stitch bursts to make a continuous image")
     arr = np.zeros((siz, nrg), dtype=bursts[0].dtype)
     off = 0
     for i in range(nburst):
@@ -1074,12 +1039,15 @@ def stitch_bursts(bursts, overlap):
 
 
 def read_metadata(pth_xml):
+    log.debug("Read metadata: %s", pth_xml)
     with pth_xml.open() as f:
         meta = xmltodict.parse(f.read())
     return meta
 
 
 def read_chunk(pth_tiff, first_line=0, number_of_lines=1500):
+    window = (first_line, number_of_lines)
+    log.debug("Read raster rows (start, count) %s from %s", window, pth_tiff)
 
     with rasterio.open(pth_tiff) as src:
         arr = src.read(
@@ -1148,6 +1116,7 @@ def sv_interpolator_poly(state_vectors):
 # TODO add resampling type option
 def load_dem_coords(dem_file, upscale_factor=1):
 
+    log.debug("Read DEM coordinates: %s", dem_file)
     with rasterio.open(dem_file) as ds:
         if upscale_factor != 1:
             # on-read resampling
@@ -1209,6 +1178,7 @@ def load_dem_coords(dem_file, upscale_factor=1):
 
 def lla_to_ecef(lat, lon, alt, composite_crs):
 
+    log.debug("Convert DEM coordinates from %s to ECEF", composite_crs)
     # WGS84_crs = "EPSG:4326+5773"
     ECEF_crs = "EPSG:4978"
 
@@ -1261,7 +1231,7 @@ def lla_to_ecef(lat, lon, alt, composite_crs):
     grid_path = proj_path / grid_name
     if not grid_path.exists():
         grid_url = f"{grid_repo_url}/{grid_name}"
-        log.info(f"Download {grid_url}")
+        log.debug(f"Download {grid_url}")
         urllib.request.urlretrieve(grid_url, grid_path)
 
     # since pyproj 3.7.0 we need to create one transformer per thread
@@ -1368,6 +1338,52 @@ def range_doppler(xx, yy, zz, positions, velocities, tol=1e-8, maxiter=10000):
         r_zd[i] = np.sqrt(dx[i] ** 2 + dy[i] ** 2 + dz[i] ** 2)
 
     return i_zd, r_zd, dx, dy, dz
+
+
+def simulate_terrain(
+    lat: np.ndarray,
+    lon: np.ndarray,
+    composite_crs: str,
+    dem_x: np.ndarray,
+    dem_y: np.ndarray,
+    dem_z: np.ndarray,
+    az: np.ndarray,
+    rg: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    dz: np.ndarray,
+    sar_shape: tuple[int, int],
+) -> np.ndarray:
+    """Simulate terrain backscatter from prepared DEM and burst geometry.
+
+    Args:
+        lat: DEM latitude coordinates from load_dem_coords().
+        lon: DEM longitude coordinates from load_dem_coords().
+        composite_crs: DEM horizontal and vertical CRS from load_dem_coords().
+        dem_x: Absolute DEM ECEF x coordinates.
+        dem_y: Absolute DEM ECEF y coordinates.
+        dem_z: Absolute DEM ECEF z coordinates.
+        az: Azimuth indices on the DEM grid.
+        rg: Range indices on the DEM grid.
+        dx: Displacement x component returned by geocode_burst().
+        dy: Displacement y component returned by geocode_burst().
+        dz: Displacement z component returned by geocode_burst().
+        sar_shape: Output burst dimensions in azimuth and range.
+
+    Returns:
+        Simulated terrain gamma nought in the SAR grid, including shadow masking.
+    """
+    # Compute zero altitude coordinates (use DEM reference height).
+    log.debug("Compute ellipsoid ECEF coordinates")
+    dem_xg, dem_yg, dem_zg = lla_to_ecef(lat, lon, np.zeros_like(lat), composite_crs)
+    log.debug("Shadow detection")
+    shadow_mask = detect_active_shadow(
+        az, dem_xg, dem_yg, dem_zg, dem_x, dem_y, dem_z, dx, dy, dz
+    )
+    log.debug("Terrain simulation")
+    return simulate_terrain_backscatter(
+        *sar_shape, az, rg, dem_x, dem_y, dem_z, dx, dy, dz, shadow_mask
+    )
 
 
 @njit(nogil=True, parallel=True, cache=True)

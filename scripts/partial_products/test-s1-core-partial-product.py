@@ -8,6 +8,7 @@
 # print(f"EO-Tools imported from:")
 # print(f"{eo_tools.__file__=}")
 
+from eo_tools.S1.core import lla_to_ecef, load_dem_coords
 from eo_tools.S1.core import S1IWSwath
 from eo_tools.S1.core import align, coregister
 from eo_tools.S1.util import presum
@@ -22,6 +23,7 @@ import os
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("eo_tools.S1.core").setLevel(logging.DEBUG)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 # logging.getLogger("numexpr").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
@@ -96,8 +98,10 @@ for burst_idx in range(min_burst, max_burst + 1):
 
     # compute geocoding LUTs for master and slave bursts
     dem_file = prm.fetch_dem_burst(burst_idx, dem_dir="/data/tmp", force_download=False)
-    az_p2g, rg_p2g = prm.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
-    az_s2g, rg_s2g = sec.geocode_burst(dem_file, burst_idx=burst_idx, dem_upsampling=up)
+    lat, lon, alt, _, composite_crs = load_dem_coords(dem_file, up)
+    dem_x, dem_y, dem_z = lla_to_ecef(lat, lon, alt, composite_crs)
+    az_p2g, rg_p2g = prm.geocode_burst(dem_x, dem_y, dem_z, burst_idx=burst_idx)
+    az_s2g, rg_s2g = sec.geocode_burst(dem_x, dem_y, dem_z, burst_idx=burst_idx)
 
     # read primary and secondary burst raster
     arr_p = prm.read_burst(burst_idx, True)
