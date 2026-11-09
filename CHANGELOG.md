@@ -1,4 +1,4 @@
-# Unreleased
+# 2026.11.0
 
 ## Processor architecture optimization
 
@@ -45,6 +45,12 @@ Bicubic matches the previous SLC kernel; geocoding uses bicubic in both cases. S
 
 - Successfully retested the InSAR processor, calibration and H-alpha workflows (user report, 2026-11-09).
 - The dual-polarization InSAR test script now displays each amplitude layer using its 2nd–98th percentile range.
+
+## Dependencies and packaging
+
+- Validated the rebuilt Python 3.12 environment with pystac 1.16.0, boto3 1.43.123, pandas 3.1.1 and numba 0.68.1. Exact conda dependency pins are maintained separately in the feedstock recipe.
+- Declared direct numerical, geometry, date parsing and GDAL dependencies in Python metadata. Python metadata constrains EODAG to 3.10.0 and SQLAlchemy below 2.1 for compatibility; other dependencies remain unpinned.
+- Moved pytest and Black into the `dev` extra and removed pip from runtime dependencies; pip remains a conda build requirement.
 
 # 2026.10.0
 

@@ -4,27 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eo_tools"
-version = "2026.10.0"
+version = "2026.11.0"
 description = "A toolbox for easily searching, downloading & processing remote sensing imagery from various public sources. "
 
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pyproj",
-    "pytest",
     "rasterio",
     "pyrosar",
+    "sqlalchemy<2.1",
     "spatialist",
-    "pip",
     "pystac",
     "pystac-client",
     "boto3",
     "pyyaml",
     "geopandas",
     "pandas",
-    "eodag",
+    "eodag==3.10.0",
     "ipykernel",
     "ipywidgets",
-    "black",
     "scikit-image",
     "ipyleaflet",
     "folium",
@@ -38,7 +36,20 @@ dependencies = [
     "dask",
     "bottleneck",
     "planetary-computer",
+    "numpy",
+    "scipy",
+    "shapely",
+    "affine",
+    "python-dateutil",
+    "gdal",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+]
+
 [[project.authors]]
 name = "Olivier D'Hondt"
 email = "dhondt.olivier@gmail.com"
