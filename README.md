@@ -16,6 +16,21 @@ New Lanczos and truncated sinc interpolation kernels are available for SLC coreg
 
 **Upgrading from an earlier release?** Geocoding LUTs describe geometry and are shared across polarizations. They now use `lut_iw{iw}.tif` filenames. Regenerate your processing outputs, or manually rename one existing LUT per IW before reusing them with `skip_preprocessing=True`. See the [breaking changes and migration instructions](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#breaking-changes), including changes for custom preprocessing and geocoding workflows.
 
+## Features
+
+| Category | Features |
+| --- | --- |
+| Sentinel-1 InSAR | Compute phase, coherence and amplitudes with TOPS deramping, DEM-assisted coregistration, optional Enhanced Spectral Diversity and burst stitching. Process individual bursts or full products, with optional AOI clipping. |
+| Sentinel-1 calibration and geocoding | Geocode SLC amplitudes with Beta or Sigma Nought calibration or radiometric terrain normalization. Build custom pipelines in SAR geometry and geocode their outputs using LUTs. |
+| Sentinel-1 polarimetry | Compute dual-polarization H-Alpha decomposition and polarimetric covariance elements. |
+| Sentinel-1 partial products | Download only consecutive SLC bursts intersecting an AOI, reducing download size and storage. SAFE-like `.partial.SAFE` products retain their AOI and available bursts, subswaths and polarizations, and work with the InSAR, SLC, H-Alpha and covariance processors. |
+| Sentinel-2 | Geocode and mosaic tiles, write individual bands and create color composites such as natural color, CIR and SWIR. |
+| DEM | Download, mosaic, crop and upsample publicly available elevation models for an AOI. |
+| Output and visualization | Write geocoded Cloud Optimized GeoTIFFs (COGs); display local and remote rasters on Folium maps through TiTiler in the Docker environment, or plot them with xarray in conda notebooks. |
+| Discovery and download | Search catalogs and download full products with EODAG; explore product footprints on a Folium map. |
+
+Start with the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-processing/), or browse the example notebooks in `notebooks/` (Docker) and `notebooks-cf/` (conda).
+
 ## Examples
 
 Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco,
@@ -54,21 +69,6 @@ and the comparison between Beta nought calibration and terrain flattening using 
         <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened_lowres.png" width="300" alt="Flattened.">
     </a>
 </p>
-
-## Features
-
-| Category | Features |
-| --- | --- |
-| Sentinel-1 InSAR | Compute phase, coherence and amplitudes with TOPS deramping, DEM-assisted coregistration, optional Enhanced Spectral Diversity and burst stitching. Process individual bursts or full products, with optional AOI clipping. |
-| Sentinel-1 calibration and geocoding | Geocode SLC amplitudes with Beta or Sigma Nought calibration or radiometric terrain normalization. Build custom pipelines in SAR geometry and geocode their outputs using LUTs. |
-| Sentinel-1 polarimetry | Compute dual-polarization H-Alpha decomposition and polarimetric covariance elements. |
-| Sentinel-1 partial products | Download only consecutive SLC bursts intersecting an AOI, reducing download size and storage. SAFE-like `.partial.SAFE` products retain their AOI and available bursts, subswaths and polarizations, and work with the InSAR, SLC, H-Alpha and covariance processors. |
-| Sentinel-2 | Geocode and mosaic tiles, write individual bands and create color composites such as natural color, CIR and SWIR. |
-| DEM | Download, mosaic, crop and upsample publicly available elevation models for an AOI. |
-| Output and visualization | Write geocoded Cloud Optimized GeoTIFFs (COGs); display local and remote rasters on Folium maps through TiTiler in the Docker environment, or plot them with xarray in conda notebooks. |
-| Discovery and download | Search catalogs and download full products with EODAG; explore product footprints on a Folium map. |
-
-Start with the [partial-product download tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-download/) and [partial-product processing tutorial](https://eo-tools.readthedocs.io/en/latest/s1-partial-product-processing/), or browse the example notebooks in `notebooks/` (Docker) and `notebooks-cf/` (conda).
 
 ## Install & quick start
 
