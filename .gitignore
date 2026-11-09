@@ -8,3 +8,4 @@ __pycache__/
 *.EOF
 notebooks/scratchpad.ipynb
 .codex/
+recipe/

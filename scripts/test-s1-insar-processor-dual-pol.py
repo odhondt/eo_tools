@@ -12,7 +12,7 @@ import geopandas as gpd
 from folium import LayerControl
 
 from eo_tools.S1.process import process_insar
-from eo_tools_dev.util import palette_phi, serve_map, show_cog
+from eo_tools_dev.util import palette_phi, serve_map, show_cog, ttcog_get_stats
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -87,6 +87,12 @@ for pol in polarizations:
     )
     show_cog(str(out_dir / f"coh_{pol}.tif"), m, rescale="0,1")
     for role in ("prm", "sec"):
-        show_cog(str(out_dir / f"amp_{role}_{pol}.tif"), m, rescale="0,1")
+        amplitude_path = str(out_dir / f"amp_{role}_{pol}.tif")
+        stats = ttcog_get_stats(amplitude_path)["b1"]
+        show_cog(
+            amplitude_path,
+            m,
+            rescale=f"{stats['percentile_2']},{stats['percentile_98']}",
+        )
 LayerControl().add_to(m)
 serve_map(m)

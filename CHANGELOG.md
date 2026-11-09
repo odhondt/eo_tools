@@ -1,6 +1,6 @@
-# Unreleased
+# 2026.11.0
 
-## Processing optimization
+## Processor architecture optimization
 
 - InSAR and SLC preprocessing share geometry and geocoding LUTs across polarizations. InSAR also shares coregistration coordinates and phase corrections; SLC shares terrain normalization.
 - DEM coordinates and ECEF conversion are computed once per burst window and reused for both InSAR acquisitions. Terrain simulation is now a standalone core function, `simulate_terrain()`.
@@ -40,6 +40,17 @@ Dual-polarization InSAR against 2026.10.0: **10 bursts per polarization across t
 | **Overall processing call** | **1.98×** | **1.80×** |
 
 Bicubic matches the previous SLC kernel; geocoding uses bicubic in both cases. Single run per configuration, including JIT compilation, with cached DEMs/orbits and unflushed filesystem caches. Numba/Dask/OpenMP used four threads, BLAS one; COG writing retained all CPUs. Results depend on hardware and inputs.
+
+## Validation
+
+- Successfully retested the InSAR processor, calibration and H-alpha workflows (user report, 2026-11-09).
+- The dual-polarization InSAR test script now displays each amplitude layer using its 2nd–98th percentile range.
+
+## Dependencies and packaging
+
+- Validated the rebuilt Python 3.12 environment with pystac 1.16.0, boto3 1.43.123, pandas 3.1.1 and numba 0.68.1. Exact conda dependency pins are maintained separately in the feedstock recipe.
+- Declared direct numerical, geometry, date parsing and GDAL dependencies in Python metadata. Python metadata constrains EODAG to 3.10.0 and SQLAlchemy below 2.1 for compatibility; other dependencies remain unpinned.
+- Moved pytest and Black into the `dev` extra and removed pip from runtime dependencies; pip remains a conda build requirement.
 
 # 2026.10.0
 
