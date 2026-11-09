@@ -924,7 +924,7 @@ def resample(
         out_prof.pop("blockxsize", None)
         out_prof.pop("blockysize", None)
 
-    log.debug("Resample to geographic grid (%s)", kernel)
+    log.debug("Project raster to geographic grid (%s)", kernel)
     wped = remap(arr, az_p2g, rg_p2g, kernel=kernel)
 
     # TODO: enforce COG
