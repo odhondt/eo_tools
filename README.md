@@ -60,13 +60,13 @@ a comparison between Sentinel-1 amplitude, coherence, change map using two dates
         <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin_lowres.png" width="350" alt="S2 Berlin.">
     </a>
 </p>
-and the comparison between Beta nought calibration and terrain flattening using Copernicus DEM on Sentinel-1 data over Etna.
+and a comparison of Beta nought calibration (left) and radiometric terrain flattening (right) in Sentinel-1 dual-polarization color composites, showcasing both dual-pol visualization and terrain normalization.
 <p float="left">
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_beta0_lowres.png" width="300" alt="Beta0.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/beta_small.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/beta_small.png" width="350" alt="Sentinel-1 dual-polarization color composite with Beta nought calibration.">
     </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_etna_flattened_lowres.png" width="300" alt="Flattened.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/flattened_small.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/flattened_small.png" width="350" alt="Sentinel-1 dual-polarization color composite with radiometric terrain flattening.">
     </a>
 </p>
 
