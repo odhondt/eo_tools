@@ -33,16 +33,16 @@ Start with the [partial-product download tutorial](https://eo-tools.readthedocs.
 
 ## Examples
 
-Here are examples of EO-Tools outputs showing amplitude, coherence and inteferometric phase of a 2023 earthquake in Morocco,
+Here are examples of EO-Tools outputs showing a Sentinel-1 dual-polarization amplitude color composite, VV coherence and VV interferometric phase over Erta Ale,
 <p float="left">
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_amp_lowres.png" width="220" alt="Amplitude.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" width="220" alt="Sentinel-1 dual-polarization amplitude color composite over Erta Ale.">
     </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_coh_lowres.png" width="220" alt="Coherence.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" width="220" alt="Sentinel-1 VV coherence over Erta Ale.">
     </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/ex_phi_lowres.png" width="220" alt="Phase.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="220" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
     </a>
 </p>
 a comparison between Sentinel-1 amplitude, coherence, change map using two dates in 2021 and Sentinel-2 RGB image over the city of Berlin in Germany,
