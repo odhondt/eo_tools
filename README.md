@@ -45,19 +45,10 @@ Here are examples of EO-Tools outputs showing a Sentinel-1 dual-polarization amp
         <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="220" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
     </a>
 </p>
-a comparison between Sentinel-1 amplitude, coherence, change map using two dates in 2021 and Sentinel-2 RGB image over the city of Berlin in Germany,
+a demonstration of placing Earth observation data in geographic context by cropping Sentinel-1 amplitude and coherence and Sentinel-2 RGB imagery to arbitrary polygons, shown here using Berlin's boundary alongside OpenStreetMap,
 <p float="left">
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_vh_berlin_lowres.png" width="350" alt="Amplitude Berlin.">
-    </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vh_berlin_lowres.png" width="350" alt="Coherence Berlin.">
-    </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/change_berlin_lowres.png" width="350" alt="Change Berlin.">
-    </a>
-    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/s2_berlin_lowres.png" width="350" alt="S2 Berlin.">
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/vz_2x2_demo.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/vz_2x2_demo.png" width="700" alt="Four-panel comparison over Berlin: Sentinel-1 amplitude (top left), Sentinel-1 coherence (top right), Sentinel-2 RGB (bottom left) and OpenStreetMap (bottom right).">
     </a>
 </p>
 and a comparison of Beta nought calibration (left) and radiometric terrain flattening (right) in Sentinel-1 dual-polarization color composites, showcasing both dual-pol visualization and terrain normalization.
