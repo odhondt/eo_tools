@@ -38,6 +38,13 @@ and a comparison of Beta nought calibration (left) and radiometric terrain flatt
     </a>
 </p>
 
+Watch the [Sentinel-1 partial-product video demo](https://www.youtube.com/watch?v=XEcMni4UbuU) for an example of downloading and processing only the bursts intersecting an area of interest. Click the preview to watch on YouTube.
+<p float="left">
+    <a href="https://www.youtube.com/watch?v=XEcMni4UbuU" target="_blank">
+        <img src="https://img.youtube.com/vi/XEcMni4UbuU/hqdefault.jpg" width="480" alt="Watch the Sentinel-1 partial-product video demo on YouTube.">
+    </a>
+</p>
+
 ## **New**
 
 Sentinel-1 processing is faster through shared geometry across polarizations, optimized interpolation kernels, shared computation of InSAR outputs, and fewer intermediate compression steps. See the [processing optimization notes](https://github.com/odhondt/eo_tools/blob/main/CHANGELOG.md#processing-optimization) for details.
