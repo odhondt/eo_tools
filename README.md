@@ -41,7 +41,7 @@ and a comparison of Beta nought calibration (left) and radiometric terrain flatt
 Watch the [Sentinel-1 partial-product video demo](https://www.youtube.com/watch?v=XEcMni4UbuU) for an example of downloading and processing only the bursts intersecting an area of interest. Click the preview to watch on YouTube.
 <p float="left">
     <a href="https://www.youtube.com/watch?v=XEcMni4UbuU" target="_blank">
-        <img src="https://img.youtube.com/vi/XEcMni4UbuU/hqdefault.jpg" width="480" alt="Watch the Sentinel-1 partial-product video demo on YouTube.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/partial_product_video.png" width="400" alt="Watch the Sentinel-1 partial-product video demo on YouTube.">
     </a>
 </p>
 
