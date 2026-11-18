@@ -36,13 +36,13 @@ Start with the [partial-product download tutorial](https://eo-tools.readthedocs.
 Here are examples of EO-Tools outputs showing a Sentinel-1 dual-polarization amplitude color composite, VV coherence and VV interferometric phase over Erta Ale,
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" width="220" alt="Sentinel-1 dual-polarization amplitude color composite over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" width="230" alt="Sentinel-1 dual-polarization amplitude color composite over Erta Ale.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" width="220" alt="Sentinel-1 VV coherence over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" width="230" alt="Sentinel-1 VV coherence over Erta Ale.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="220" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="230" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
     </a>
 </p>
 a demonstration of placing Earth observation data in geographic context by cropping Sentinel-1 amplitude and coherence and Sentinel-2 RGB imagery to arbitrary polygons, shown here using Berlin's boundary alongside OpenStreetMap,
