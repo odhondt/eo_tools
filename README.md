@@ -10,16 +10,20 @@ EO-Tools is a pure python toolbox that is currently able to search, download and
 
 ## Examples
 
-Here are examples of EO-Tools outputs showing a Sentinel-1 dual-polarization amplitude color composite, VV interferometric phase and VV coherence over Erta Ale,
+Here are examples of EO-Tools outputs showing a Sentinel-1 dual-polarization amplitude color composite,  interferometric phase, coherence and single-polarization amplitude over Erta Ale,
 <p float="left">
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" width="230" alt="Sentinel-1 dual-polarization amplitude color composite over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/dualpol_erta_ale.png" width="350" alt="Sentinel-1 dual-polarization amplitude color composite over Erta Ale.">
     </a>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="230" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/phi_vv_erta_ale.png" width="350" alt="Sentinel-1 VV interferometric phase over Erta Ale.">
     </a>
+    <br>
     <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" target="_blank">
-        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" width="230" alt="Sentinel-1 VV coherence over Erta Ale.">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/coh_vv_erta_ale.png" width="350" alt="Sentinel-1 VV coherence over Erta Ale.">
+    </a>
+    <a href="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_erta_ale.png" target="_blank">
+        <img src="https://raw.githubusercontent.com/odhondt/eo_tools/main/data/amp_erta_ale.png" width="350" alt="Sentinel-1 single-polarization amplitude over Erta Ale.">
     </a>
 </p>
 a demonstration of placing Earth observation data in geographic context by cropping Sentinel-1 amplitude and coherence and Sentinel-2 RGB imagery to arbitrary polygons, shown here using Berlin's boundary alongside OpenStreetMap,
